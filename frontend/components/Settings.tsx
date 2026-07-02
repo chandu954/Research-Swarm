@@ -7,7 +7,7 @@ import type { ProviderSettings } from "@/lib/useSettings";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const OLLAMA_PRESETS = {
+const OLLAMA_PRESETS: Record<string, string[]> = {
   planner: ["qwen3:14b", "llama3:8b", "qwen3:8b", "gemma3:12b"],
   research: ["llama3:8b", "qwen3:8b", "mistral:7b"],
   document: ["gemma3:12b", "llama3:8b", "nomic-embed-text"],
