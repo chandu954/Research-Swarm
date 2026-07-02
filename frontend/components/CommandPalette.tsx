@@ -1,14 +1,29 @@
 "use client";
 
-import { useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  FileText,
-  Home,
   MessageSquarePlus,
+  FolderOpen,
+  Upload,
+  FileDown,
+  Settings,
   Search,
-  X,
+  Command,
+  ArrowUp,
+  ArrowDown,
+  CornerDownLeft,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface Action {
+  id: string;
+  label: string;
+  description: string;
+  icon: typeof Search;
+  shortcut?: string;
+  action: () => void;
+}
 
 interface CommandPaletteProps {
   open: boolean;
@@ -16,6 +31,8 @@ interface CommandPaletteProps {
   onNewChat: () => void;
   onFocusComposer: () => void;
   onOpenDocuments: () => void;
+  onExportReport?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export default function CommandPalette({
@@ -24,121 +41,159 @@ export default function CommandPalette({
   onNewChat,
   onFocusComposer,
   onOpenDocuments,
+  onExportReport,
+  onOpenSettings,
 }: CommandPaletteProps) {
+  const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const actions: Action[] = [
+    { id: "new", label: "New Research", description: "Start a fresh research session", icon: MessageSquarePlus, shortcut: "⌘N", action: () => { onNewChat(); onClose(); } },
+    { id: "focus", label: "Focus Composer", description: "Jump to the message input", icon: Search, shortcut: "⌘K", action: () => { onFocusComposer(); onClose(); } },
+    { id: "documents", label: "Upload Documents", description: "Add PDFs to the workspace", icon: Upload, shortcut: "⌘U", action: () => { onOpenDocuments(); onClose(); } },
+    { id: "export", label: "Export Report", description: "Download report as Markdown or HTML", icon: FileDown, shortcut: "⌘E", action: () => { onExportReport?.(); onClose(); } },
+    { id: "settings", label: "Settings", description: "Configure LLM provider and models", icon: Settings, shortcut: "⌘,", action: () => { onOpenSettings?.(); onClose(); } },
+  ];
+
+  const filtered = query.trim()
+    ? actions.filter((a) =>
+        a.label.toLowerCase().includes(query.toLowerCase()) ||
+        a.description.toLowerCase().includes(query.toLowerCase()),
+      )
+    : actions;
+
   useEffect(() => {
-    if (!open) return;
+    if (open) {
+      setQuery("");
+      setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter" && filtered[selectedIndex]) {
+        e.preventDefault();
+        filtered[selectedIndex].action();
+      } else if (e.key === "Escape") {
+        onClose();
+      }
+    },
+    [filtered, selectedIndex, onClose],
+  );
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        if (open) onClose();
+      }
     };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose, open]);
-
-  if (!open) return null;
-
-  const actions = [
-    {
-      label: "Focus research composer",
-      detail: "Start typing a question",
-      icon: Search,
-      action: onFocusComposer,
-      shortcut: "/",
-    },
-    {
-      label: "New research",
-      detail: "Clear the current conversation",
-      icon: MessageSquarePlus,
-      action: () => {
-        onNewChat();
-        onClose();
-      },
-      shortcut: "N",
-    },
-    {
-      label: "Add documents",
-      detail: "Upload PDF evidence",
-      icon: FileText,
-      action: () => {
-        onOpenDocuments();
-        onClose();
-      },
-      shortcut: "D",
-    },
-  ] as const;
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/65 px-4 pt-[14vh] backdrop-blur-sm"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="command-title"
-        className="command-palette"
-      >
-        <div className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-3">
-          <Search className="h-4 w-4 text-violet-400" />
-          <div className="min-w-0 flex-1">
-            <h2 id="command-title" className="text-sm text-[var(--text-primary)]">
-              Quick actions
-            </h2>
-            <p className="text-[10px] text-[var(--text-muted)]">
-              Jump anywhere in the workspace
-            </p>
-          </div>
-          <button
-            type="button"
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
             onClick={onClose}
-            className="icon-button h-7 w-7"
-            aria-label="Close command palette"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: -8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className="fixed left-1/2 top-[15%] z-50 w-full max-w-lg -translate-x-1/2"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Command palette"
           >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+            <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0a0a0f]/95 shadow-2xl backdrop-blur-xl">
+              {/* Search Input */}
+              <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2.5">
+                <Search className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={query}
+                  onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Search actions..."
+                  className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
+                  autoFocus
+                />
+                <kbd className="flex items-center gap-0.5 rounded border border-white/[0.06] bg-white/[0.04] px-1.5 py-0.5 text-[9px] text-gray-500">
+                  <Command className="h-2.5 w-2.5" />K
+                </kbd>
+              </div>
 
-        <div className="p-2">
-          {actions.map(({ label, detail, icon: Icon, action, shortcut }) => (
-            <button
-              type="button"
-              key={label}
-              onClick={action}
-              className="command-item"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-[var(--text-secondary)]">
-                <Icon className="h-3.5 w-3.5" />
-              </span>
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block text-xs text-[var(--text-primary)]">
-                  {label}
-                </span>
-                <span className="block text-[10px] text-[var(--text-muted)]">
-                  {detail}
-                </span>
-              </span>
-              <kbd>{shortcut}</kbd>
-            </button>
-          ))}
+              {/* Action List */}
+              <div className="max-h-72 overflow-y-auto p-1.5">
+                {filtered.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-xs text-gray-500">
+                    No results for &ldquo;{query}&rdquo;
+                  </p>
+                ) : (
+                  filtered.map((action, i) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={action.action}
+                      onMouseEnter={() => setSelectedIndex(i)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
+                        i === selectedIndex
+                          ? "bg-violet-500/10 text-violet-300"
+                          : "text-gray-400 hover:bg-white/[0.04] hover:text-gray-200",
+                      )}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.04]">
+                        <action.icon className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="flex-1">
+                        <span className="block text-xs font-medium">{action.label}</span>
+                        <span className="block text-[9px] text-gray-500">{action.description}</span>
+                      </span>
+                      <span className="flex items-center gap-1 text-[9px] text-gray-600">
+                        {action.shortcut && <kbd className="rounded border border-white/[0.06] bg-white/[0.04] px-1 py-0.5">{action.shortcut}</kbd>}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
 
-          <Link href="/" onClick={onClose} className="command-item">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-[var(--text-secondary)]">
-              <Home className="h-3.5 w-3.5" />
-            </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block text-xs text-[var(--text-primary)]">
-                Return to landing page
-              </span>
-              <span className="block text-[10px] text-[var(--text-muted)]">
-                View the ResearchSwarm overview
-              </span>
-            </span>
-          </Link>
-        </div>
-      </section>
-    </div>
+              {/* Footer */}
+              <div className="flex items-center gap-3 border-t border-white/[0.06] px-3 py-1.5">
+                <span className="flex items-center gap-1 text-[9px] text-gray-600">
+                  <ArrowUp className="h-2.5 w-2.5" />
+                  <ArrowDown className="h-2.5 w-2.5" />
+                  Navigate
+                </span>
+                <span className="flex items-center gap-1 text-[9px] text-gray-600">
+                  <CornerDownLeft className="h-2.5 w-2.5" />
+                  Select
+                </span>
+                <span className="flex items-center gap-1 text-[9px] text-gray-600">
+                  Esc Close
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }

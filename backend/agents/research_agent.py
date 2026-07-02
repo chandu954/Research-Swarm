@@ -24,13 +24,13 @@ class WebResearchAgent:
         try:
             self.registry.get_spec("web_search")
         except KeyError:
-            from backend.tools.search import search_web as search_fn
+            from backend.tools.search import hybrid_search_web as search_fn
             self.registry.register(
                 "web_search",
                 search_fn,
                 ToolSpec(
                     name="web_search",
-                    description="Search the web using DuckDuckGo",
+                    description="Search the web with hybrid BM25+dense reranking",
                     category=ToolCategory.SEARCH,
                     input_schema={"query": "string", "max_results": "int"},
                 ),

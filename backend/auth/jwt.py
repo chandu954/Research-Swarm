@@ -13,6 +13,9 @@ ALGORITHM: str = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_EXPIRE", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("JWT_REFRESH_EXPIRE", "7"))
 
+if SECRET_KEY == "change-me-in-production":
+    logger.warning("JWT_SECRET_KEY is set to default 'change-me-in-production'. Set a strong random secret in production.")
+
 
 def create_access_token(subject: str, extra_claims: Optional[dict[str, Any]] = None) -> str:
     """Create a short-lived JWT access token."""

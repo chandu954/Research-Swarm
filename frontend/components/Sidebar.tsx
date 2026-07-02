@@ -18,6 +18,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import type { UploadedDocument } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { listConversations } from "@/lib/api";
 import ThemeToggle from "./ThemeToggle";
 import Link from "next/link";
@@ -30,6 +31,8 @@ interface SidebarProps {
   onNewChat: () => void;
   onOpenDocuments?: () => void;
   onOpenSettings?: () => void;
+  onSelectConversation?: (id: string) => void;
+  activeConversationId?: string | null;
 }
 
 interface Conversation {
@@ -54,6 +57,8 @@ export default function Sidebar({
   onNewChat,
   onOpenDocuments,
   onOpenSettings,
+  onSelectConversation,
+  activeConversationId,
 }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -204,7 +209,11 @@ export default function Sidebar({
               <button
                 type="button"
                 key={conv.id}
-                className="conversation-item group w-full text-left"
+                onClick={() => onSelectConversation?.(conv.id)}
+                className={cn(
+                  "conversation-item group w-full text-left",
+                  activeConversationId === conv.id && "bg-violet-500/10 border-l-2 border-violet-400",
+                )}
                 title={conv.query}
               >
                 <span className="conversation-dot bg-white/15" />

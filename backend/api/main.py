@@ -3,12 +3,13 @@ from __future__ import annotations
 import os, time, uuid, asyncio
 from typing import Optional
 from contextlib import asynccontextmanager
+from sqlalchemy import select
 from dotenv import load_dotenv
 from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -22,11 +23,16 @@ from backend.agents.entity_extractor import extract_entities
 from backend.agents.memory import get_memory
 from backend.api.stream import get_stream_manager, make_log, event_stream
 from backend.api.auth import router as auth_router
+from backend.api.websocket import get_workspace_manager, Connection
 from backend.tools.registry import get_registry
 from backend.db.session import init_db, close_db
 from backend.auth.dependencies import get_current_user, get_optional_user
 from backend.db.models import User
-from backend.db.schemas import ResearchRequest, ResearchResponse
+from backend.db.schemas import ResearchRequest, ResearchResponse, PluginConfigRequest, PluginStatus, WorkspaceCreate, WorkspaceResponse
+from backend.plugins.registry import get_plugin_registry
+from backend.plugins.github import GitHubPlugin
+from backend.plugins.notion import NotionPlugin
+from backend.plugins.slack import SlackPlugin
 
 UPLOAD_DIR = "./data/uploads"
 for d in [UPLOAD_DIR, "./data/chroma_db", "./data/memory", "./data/logs"]:
@@ -47,6 +53,15 @@ async def lifespan(app: FastAPI):
         logger.info(f"Tools registered: {[t.name for t in tools]}")
     except Exception as e:
         logger.warning(f"Tool listing failed: {e}")
+
+    # Register built-in plugins
+    plugin_reg = get_plugin_registry()
+    plugin_reg.register(GitHubPlugin(config={"token": os.getenv("GITHUB_TOKEN", "")}))
+    plugin_reg.register(NotionPlugin(config={"token": os.getenv("NOTION_TOKEN", "")}))
+    plugin_reg.register(SlackPlugin(config={"token": os.getenv("SLACK_TOKEN", "")}))
+    logger.info("Built-in plugins registered")
+
+    app.state.plugin_registry = plugin_reg
     yield
     await close_db()
     logger.info("ResearchSwarm AI shutting down")
@@ -64,6 +79,8 @@ def _ensure_app_state() -> None:
         app.state.registry = get_registry()
     if not hasattr(app.state, "stream_manager"):
         app.state.stream_manager = get_stream_manager()
+    if not hasattr(app.state, "plugin_registry"):
+        app.state.plugin_registry = get_plugin_registry()
 
 
 app = FastAPI(
@@ -374,6 +391,103 @@ def _resolve_pdf_paths(document_ids: list[str]) -> list[str]:
         else:
             logger.warning(f"Document not found: {doc_id}")
     return paths
+
+
+# ── WebSocket (Real-time Collaboration) ─────────────────────────
+
+@app.websocket("/ws/workspace/{workspace_id}")
+async def workspace_ws(workspace_id: str, ws: WebSocket):
+    await ws.accept()
+    token = ws.query_params.get("token", "")
+    user_id = ws.query_params.get("user_id", "anonymous")
+    user_name = ws.query_params.get("name", "Anonymous")
+
+    mgr = get_workspace_manager()
+    room = mgr.get_or_create(workspace_id)
+    conn = Connection(ws, user_id, user_name)
+    room.add(conn)
+    mgr.broadcast_presence(workspace_id)
+
+    try:
+        while True:
+            data = await ws.receive_text()
+            # Simple echo/ping-pong for now
+            if data == "ping":
+                await ws.send_text('{"type":"pong"}')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        mgr.disconnect(workspace_id, user_id)
+
+
+# ── Plugin Endpoints ────────────────────────────────────────────
+
+@app.get("/plugins", response_model=list[PluginStatus])
+async def list_plugins():
+    registry = get_plugin_registry()
+    return [
+        PluginStatus(
+            name=spec.name,
+            configured=registry.is_configured(spec.name),
+            actions=spec.actions,
+        )
+        for spec in registry.list_plugins()
+    ]
+
+
+@app.post("/plugins/{name}/configure")
+async def configure_plugin(name: str, req: PluginConfigRequest):
+    registry = get_plugin_registry()
+    try:
+        plugin = registry.get(name)
+        plugin.config.update(req.config)
+        plugin._initialized = False
+        logger.info(f"Plugin '{name}' configured")
+        return {"status": "configured", "name": name}
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
+
+
+@app.post("/plugins/{name}/execute")
+async def execute_plugin(name: str, action: str = Query(...), request: Request = None):
+    registry = get_plugin_registry()
+    try:
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        result = registry.execute(name, action, **body)
+        return {"status": "ok", "name": name, "action": action, "result": result}
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Workspace Endpoints ────────────────────────────────────────
+
+@app.post("/workspaces", response_model=WorkspaceResponse)
+async def create_workspace(req: WorkspaceCreate, current_user: User = Depends(get_current_user)):
+    _ensure_app_state()
+    from backend.db.session import get_session
+    from backend.db.models import Workspace as WorkspaceModel
+    async with get_session() as session:
+        ws = WorkspaceModel(name=req.name, owner_id=current_user.id)
+        session.add(ws)
+        await session.flush()
+        return WorkspaceResponse(id=ws.id, name=ws.name, owner_id=ws.owner_id, member_count=1, created_at=ws.created_at)
+
+
+@app.get("/workspaces", response_model=list[WorkspaceResponse])
+async def list_workspaces(current_user: User = Depends(get_current_user)):
+    _ensure_app_state()
+    from backend.db.session import get_session
+    from backend.db.models import Workspace as WorkspaceModel
+    async with get_session() as session:
+        stmt = select(WorkspaceModel).where(WorkspaceModel.owner_id == current_user.id)
+        result = await session.execute(stmt)
+        workspaces = result.scalars().all()
+        return [
+            WorkspaceResponse(id=w.id, name=w.name, owner_id=w.owner_id, member_count=len(w.members), created_at=w.created_at)
+            for w in workspaces
+        ]
 
 
 @app.exception_handler(Exception)

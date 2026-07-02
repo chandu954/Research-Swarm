@@ -54,7 +54,7 @@ class StreamManager:
 
     def create_stream(self, task_id: str) -> asyncio.Queue:
         """Create a new log queue for a task stream."""
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=500)
         self._queues[task_id] = queue
         return queue
 

@@ -21,7 +21,7 @@ import KnowledgeGraph from "@/components/KnowledgeGraph";
 import ReportGenerator from "@/components/ReportGenerator";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import SourceInspector from "@/components/SourceInspector";
-import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF } from "@/lib/api";
+import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConversation } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
   AgentMetric,
@@ -50,6 +50,7 @@ export default function ResearchWorkspace() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inspectedSource, setInspectedSource] = useState<SourceCitation | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
 
   useEffect(() => {
@@ -132,7 +133,8 @@ export default function ResearchWorkspace() {
           query,
           selectedDocs,
           providerSettings,
-          taskId
+          taskId,
+          conversationId || undefined,
         );
 
         setPlan(result.plan || []);
@@ -140,6 +142,7 @@ export default function ResearchWorkspace() {
         setSources(result.sources || []);
         setAgentMetrics(result.agent_metrics || {});
         setExecutionTime(result.execution_time);
+        if (result.conversation_id) setConversationId(result.conversation_id);
 
         if (!result.answer?.trim()) {
           throw new Error(
@@ -190,6 +193,7 @@ export default function ResearchWorkspace() {
     setAgentMetrics({});
     setExecutionTime(undefined);
     setElapsed(0);
+    setConversationId(null);
     setSidebarOpen(false);
   }, []);
 
@@ -203,6 +207,25 @@ export default function ResearchWorkspace() {
     setAgentMetrics({});
     setExecutionTime(undefined);
     setElapsed(0);
+    setConversationId(null);
+  }, []);
+
+  const handleSelectConversation = useCallback(async (id: string) => {
+    try {
+      const data = await loadConversation(id);
+      setConversationId(id);
+      if (data.messages) {
+        setMessages(data.messages.map((m: any) => ({
+          id: m.id || m.message_id,
+          role: m.role,
+          content: m.content || "",
+          timestamp: m.created_at || m.timestamp || Date.now(),
+          sources: m.sources || [],
+        })));
+      }
+    } catch {
+      // conversation load failed silently
+    }
   }, []);
 
   const recentQueries = useMemo(
@@ -264,6 +287,8 @@ export default function ResearchWorkspace() {
           onNewChat={handleNewChat}
           onOpenDocuments={openDocumentPicker}
           onOpenSettings={() => setSettingsOpen(true)}
+          onSelectConversation={handleSelectConversation}
+          activeConversationId={conversationId}
         />
       </aside>
 

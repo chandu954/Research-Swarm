@@ -23,10 +23,12 @@ function researchBody(
   query: string,
   documentIds: string[],
   providerSettings?: ProviderSettings,
-  streamTaskId?: string
+  streamTaskId?: string,
+  conversationId?: string,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = { query, document_ids: documentIds };
   if (streamTaskId) body.stream_task_id = streamTaskId;
+  if (conversationId) body.conversation_id = conversationId;
   if (providerSettings) {
     body.llm_provider = providerSettings.provider;
     body.planner_model = providerSettings.plannerModel;
@@ -44,11 +46,12 @@ export async function runResearch(
   query: string,
   documentIds: string[] = [],
   providerSettings?: ProviderSettings,
-  streamTaskId?: string
+  streamTaskId?: string,
+  conversationId?: string,
 ) {
   return request<ResearchResult>("/research", {
     method: "POST",
-    body: JSON.stringify(researchBody(query, documentIds, providerSettings, streamTaskId)),
+    body: JSON.stringify(researchBody(query, documentIds, providerSettings, streamTaskId, conversationId)),
   });
 }
 
@@ -131,6 +134,10 @@ export async function listDocuments() {
 
 export async function listConversations() {
   return request<{ conversations: any[] }>("/conversations");
+}
+
+export async function loadConversation(id: string) {
+  return request<{ conversation: any; messages: any[] }>(`/conversations/${id}`);
 }
 
 export async function healthCheck() {

@@ -82,7 +82,7 @@ class DocumentAgent:
         return {"doc_id": path.stem, "filename": path.name, "chunks": len(chunks)}
 
     def retrieve(self, query: str, top_k: int = TOP_K) -> List[Dict[str, Any]]:
-        """Retrieve relevant chunks and rerank them."""
+        """Retrieve relevant chunks with hybrid BM25 + dense fusion + reranking."""
         if not query:
             return []
 
@@ -92,12 +92,22 @@ class DocumentAgent:
             return []
 
         vs = self.registry.get("vector_store")
-        results = vs.query(query_embedding=query_embedding, top_k=top_k)
+        results = vs.query(query_embedding=query_embedding, top_k=top_k * 2)
 
         if not results:
             return []
 
-        reranked = self._rerank(query, results)
+        # Hybrid rerank: combine vector score with BM25 over chunk content
+        from backend.search.hybrid import hybrid_rerank
+        scored = hybrid_rerank(
+            query,
+            results,
+            query_embedding=query_embedding,
+            bm25_weight=0.2,
+            top_k=top_k,
+        )
+
+        reranked = self._rerank(query, scored)
 
         return reranked[:RERANK_TOP_K]
 

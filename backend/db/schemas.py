@@ -94,6 +94,46 @@ class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Workspace ──────────────────────────────────────────────────
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class WorkspaceMemberResponse(BaseModel):
+    user_id: str
+    name: str = ""
+    email: str = ""
+    role: str = "member"
+    joined_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    owner_id: str
+    member_count: int = 0
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Plugin ─────────────────────────────────────────────────────
+
+class PluginConfigRequest(BaseModel):
+    name: str = Field(..., description="Plugin name")
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class PluginStatus(BaseModel):
+    name: str
+    configured: bool
+    actions: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
 # ── Research ───────────────────────────────────────────────────
 
 class ResearchRequest(BaseModel):

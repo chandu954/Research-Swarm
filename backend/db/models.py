@@ -100,6 +100,36 @@ class Document(Base):
     user = relationship("User", back_populates="documents")
 
 
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    name = Column(String(255), nullable=False)
+    owner_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
+
+    owner = relationship("User", backref="owned_workspaces")
+    members = relationship("WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan")
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id = Column(UUID(as_uuid=False), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(20), default="member", nullable=False)
+    joined_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    workspace = relationship("Workspace", back_populates="members")
+    user = relationship("User", backref="workspace_memberships")
+
+    __table_args__ = (
+        Index("ix_workspace_members_unique", "workspace_id", "user_id", unique=True),
+    )
+
+
 class ResearchTask(Base):
     __tablename__ = "research_tasks"
 

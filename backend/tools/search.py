@@ -170,6 +170,30 @@ def _format_results(raw: List[Dict[str, Any]], source: str) -> List[Dict[str, An
     return results
 
 
+def hybrid_search_web(
+    query: str,
+    max_results: int = 5,
+    region: str = "wt-wt",
+    safesearch: str = "moderate",
+) -> List[Dict[str, Any]]:
+    """Search the web and hybrid-rerank results by BM25 + embedding relevance."""
+    raw = search_web(query, max_results * 2, region, safesearch)
+    if not raw:
+        return []
+
+    from backend.search.hybrid import hybrid_rerank
+    from backend.llm.factory import get_llm_provider
+
+    try:
+        llm = get_llm_provider()
+        embed_fn = lambda t: llm.create_embedding(text=t, model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"))
+        reranked = hybrid_rerank(query, raw, bm25_weight=0.3, top_k=max_results, embed_fn=embed_fn)
+        return reranked
+    except Exception as e:
+        logger.warning(f"Hybrid rerank failed, falling back to raw results: {e}")
+        return raw[:max_results]
+
+
 def _clean_url(url: str) -> str:
     if not url:
         return ""

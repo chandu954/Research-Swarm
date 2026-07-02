@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Settings2, ChevronDown, Check, RefreshCw } from "lucide-react";
+import { X, Settings2, ChevronDown, Check, RefreshCw, Puzzle, Key } from "lucide-react";
 import type { ProviderSettings } from "@/lib/useSettings";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -132,6 +132,121 @@ function useModelList(provider: string) {
   }, [fetchModels, provider]);
 
   return { models, loading, error, refresh: fetchModels };
+}
+
+interface PluginInfo {
+  name: string;
+  configured: boolean;
+  actions: string[];
+}
+
+function PluginSection() {
+  const [plugins, setPlugins] = useState<PluginInfo[]>([]);
+  const [configs, setConfigs] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_URL}/plugins`)
+      .then((r) => r.json())
+      .then(setPlugins)
+      .catch(() => {});
+  }, []);
+
+  const configure = async (name: string) => {
+    try {
+      await fetch(`${API_URL}/plugins/${name}/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, config: { token: configs[name] || "" } }),
+      });
+      const res = await fetch(`${API_URL}/plugins`);
+      const data = await res.json();
+      setPlugins(data);
+    } catch {}
+  };
+
+  if (plugins.length === 0) return null;
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider mb-2"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        <Puzzle className="w-3 h-3" />
+        Integrations
+        <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="space-y-2 overflow-hidden"
+          >
+            {plugins.map((p) => (
+              <div
+                key={p.name}
+                className="rounded-lg p-3"
+                style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--border)' }}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium capitalize" style={{ color: 'var(--text-primary)' }}>
+                    {p.name}
+                  </span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${p.configured ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400'}`}
+                  >
+                    {p.configured ? "Connected" : "Not configured"}
+                  </span>
+                </div>
+
+                {!p.configured && (
+                  <div className="flex gap-1.5 mt-2">
+                    <input
+                      type="password"
+                      placeholder="API Key"
+                      value={configs[p.name] || ""}
+                      onChange={(e) => setConfigs((prev) => ({ ...prev, [p.name]: e.target.value }))}
+                      className="flex-1 text-[11px] px-2 py-1.5 rounded"
+                      style={{
+                        backgroundColor: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text-primary)',
+                      }}
+                    />
+                    <button
+                      onClick={() => configure(p.name)}
+                      className="px-2 py-1.5 rounded text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                    >
+                      <Key className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                {p.actions.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {p.actions.map((a) => (
+                      <span
+                        key={a}
+                        className="text-[9px] px-1.5 py-0.5 rounded"
+                        style={{ backgroundColor: 'var(--surface-hover)', color: 'var(--text-muted)' }}
+                      >
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 export default function Settings({ open, onClose, settings, onSettingsChange }: SettingsProps) {
@@ -297,6 +412,8 @@ export default function Settings({ open, onClose, settings, onSettingsChange }: 
                     onChange={(v) => update({ answerModel: v })}
                   />
                 </div>
+
+                <PluginSection />
               </div>
             </div>
           </motion.div>
