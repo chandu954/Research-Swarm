@@ -86,16 +86,18 @@ export function buildGraph(text: string, sources: { title?: string; url?: string
     }
   }
 
+  const relTypes = ["relates to", "connected to", "associated with", "references"];
   for (let i = 0; i < entities.length; i++) {
     for (let j = i + 1; j < entities.length; j++) {
-      if (Math.random() > 0.7) continue;
       if (entities[i].type === entities[j].type) continue;
       relations.push({
         source: entities[i].id,
         target: entities[j].id,
-        label: entities[i].type === "technology" ? "relates to" : "connected to",
+        label: relTypes[(i + j) % relTypes.length],
       });
+      if (relations.length >= 10) break;
     }
+    if (relations.length >= 10) break;
   }
 
   return { entities, relations };

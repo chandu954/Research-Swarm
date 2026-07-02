@@ -2,19 +2,16 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bot,
   Check,
   Clock3,
-  Database,
-  FileText,
   Loader2,
-  Search,
   Sparkles,
   X,
   Zap,
 } from "lucide-react";
 import type { AgentLog, AgentMetric } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { AGENT_MAP } from "@/lib/agents";
 
 interface ExecutionTimelineProps {
   logs: AgentLog[];
@@ -22,32 +19,12 @@ interface ExecutionTimelineProps {
   isRunning: boolean;
 }
 
-const agentMeta = {
-  planner: {
-    label: "Planner",
-    detail: "Build execution plan",
-    icon: Bot,
-    color: "violet",
-  },
-  research_agent: {
-    label: "Web research",
-    detail: "Search and rank sources",
-    icon: Search,
-    color: "cyan",
-  },
-  document_agent: {
-    label: "Document analysis",
-    detail: "Retrieve relevant chunks",
-    icon: FileText,
-    color: "emerald",
-  },
-  answer_agent: {
-    label: "Answer synthesis",
-    detail: "Connect evidence and cite",
-    icon: Database,
-    color: "orange",
-  },
-} as const;
+const agentDetails: Record<string, string> = {
+  planner: "Build execution plan",
+  research_agent: "Search and rank sources",
+  document_agent: "Retrieve relevant chunks",
+  answer_agent: "Connect evidence and cite",
+};
 
 const agentKeyToModelKey: Record<string, string> = {
   planner: "planner",
@@ -73,7 +50,7 @@ function ModelBadge({ name }: { name?: string }) {
 }
 
 interface AgentStepProps {
-  agentKey: keyof typeof agentMeta;
+  agentKey: string;
   log?: AgentLog;
   metrics?: AgentMetric;
   isRunning: boolean;
@@ -87,7 +64,7 @@ function AgentStep({
   isRunning,
   isLast,
 }: AgentStepProps) {
-  const meta = agentMeta[agentKey];
+  const meta = AGENT_MAP[agentKey] || AGENT_MAP.planner;
   const Icon = meta.icon;
   const status = log?.status || metrics?.status || (isRunning ? "pending" : "idle");
   const isActive = status === "running";
@@ -143,8 +120,8 @@ function AgentStep({
               </p>
               <ModelBadge name={metrics?.model} />
             </div>
-            <p className="mt-1 truncate text-[10px] text-[var(--text-muted)]">
-              {log?.details || meta.detail}
+              <p className="mt-1 truncate text-[10px] text-[var(--text-muted)]">
+                {log?.details || agentDetails[agentKey] || meta.thinking[0]}
             </p>
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5">
@@ -185,7 +162,7 @@ export default function ExecutionTimeline({
   agentMetrics,
   isRunning,
 }: ExecutionTimelineProps) {
-  const agentKeys = Object.keys(agentMeta) as Array<keyof typeof agentMeta>;
+  const agentKeys = ["planner", "research_agent", "document_agent", "answer_agent"];
   const latestLog = (agent: string) =>
     [...logs].reverse().find((log) => log.agent === agent);
   const completedCount = agentKeys.filter((agent) => {

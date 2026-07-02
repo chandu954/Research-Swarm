@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   PanelLeft,
   Sparkles,
 } from "lucide-react";
-import { motion } from "framer-motion";
+
 import AgentLogs from "@/components/AgentLogs";
 import Chat from "@/components/Chat";
 import CommandPalette from "@/components/CommandPalette";
@@ -20,7 +20,7 @@ import Topbar from "@/components/Topbar";
 import KnowledgeGraph from "@/components/KnowledgeGraph";
 import ReportGenerator from "@/components/ReportGenerator";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
-import { listDocuments, runResearch, subscribeResearchLogs } from "@/lib/api";
+import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
   AgentMetric,
@@ -223,13 +223,16 @@ export default function ResearchWorkspace() {
     [messages],
   );
 
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
   const openDocumentPicker = useCallback(() => {
-    document.getElementById("pdf-upload")?.click();
+    pdfInputRef.current?.click();
     setSidebarOpen(false);
   }, []);
 
   const focusComposer = useCallback(() => {
-    document.getElementById("research-composer")?.focus();
+    composerRef.current?.focus();
     setPaletteOpen(false);
   }, []);
 
@@ -243,10 +246,8 @@ export default function ResearchWorkspace() {
         />
       )}
 
-      <motion.aside
-        initial={false}
-        animate={{ x: sidebarOpen ? 0 : undefined }}
-        className={`fixed inset-y-0 left-0 z-40 w-[264px] border-r lg:static lg:block ${
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-[264px] border-r transition-transform duration-220 ease-out lg:static lg:block ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
         style={{
@@ -262,7 +263,7 @@ export default function ResearchWorkspace() {
           onOpenDocuments={openDocumentPicker}
           onOpenSettings={() => setSettingsOpen(true)}
         />
-      </motion.aside>
+      </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
         <Topbar
@@ -289,6 +290,25 @@ export default function ResearchWorkspace() {
               isRunning={isRunning}
               streamLogs={logs}
               elapsed={elapsed}
+              composerRef={composerRef}
+            />
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept=".pdf"
+              multiple
+              className="sr-only"
+              onChange={(e) => {
+                const files = e.target.files;
+                if (files) {
+                  for (const file of Array.from(files)) {
+                    uploadPDF(file).then((doc) => {
+                      setDocuments((prev) => [...prev, doc]);
+                    }).catch(console.error);
+                  }
+                }
+                e.target.value = "";
+              }}
             />
             <div className="mx-auto w-full max-w-4xl px-5 pb-2 sm:px-8">
               <ReportGenerator query={query} messages={messages} sources={sources} />

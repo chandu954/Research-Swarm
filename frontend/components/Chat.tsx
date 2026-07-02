@@ -37,6 +37,7 @@ interface ChatProps {
   isRunning: boolean;
   streamLogs?: AgentLog[];
   elapsed?: number;
+  composerRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 const suggestions = [
@@ -260,11 +261,12 @@ export default function Chat({
   isRunning,
   streamLogs = [],
   elapsed = 0,
+  composerRef,
 }: ChatProps) {
   const [input, setInput] = useState("");
   const [researchMode, setResearchMode] = useState<"fast" | "deep">("deep");
   const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = composerRef || useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -386,7 +388,12 @@ export default function Chat({
             )}
           </motion.section>
         ) : (
-          <section className="mx-auto w-full max-w-4xl px-5 py-8 sm:px-8">
+          <section
+            className="mx-auto w-full max-w-4xl px-5 py-8 sm:px-8"
+            role="log"
+            aria-live="polite"
+            aria-label="Research conversation"
+          >
             <AnimatePresence initial={false}>
               {messages.map((message, i) => (
                 <ChatMessage

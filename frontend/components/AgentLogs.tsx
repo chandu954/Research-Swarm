@@ -6,15 +6,22 @@ import {
   Check,
   Circle,
   Clock3,
-  FileText,
   ListChecks,
   Loader2,
-  Search,
-  Sparkles,
   X,
 } from "lucide-react";
 import type { AgentLog, ExecutionStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { AGENT_MAP } from "@/lib/agents";
+
+const COLOR_TEXT: Record<string, string> = {
+  violet: "text-violet-400",
+  cyan: "text-cyan-400",
+  emerald: "text-emerald-400",
+  orange: "text-orange-400",
+  rose: "text-rose-400",
+  amber: "text-amber-400",
+};
 
 interface AgentLogsProps {
   logs: AgentLog[];
@@ -27,25 +34,6 @@ const previewPlan = [
   { step_id: -2, agent: "document_agent", action: "Analyze documents" },
   { step_id: -3, agent: "answer_agent", action: "Synthesize answer" },
 ];
-
-const agentConfig = {
-  planner: { icon: Bot, color: "text-violet-400", label: "Planner" },
-  research_agent: {
-    icon: Search,
-    color: "text-cyan-400",
-    label: "Research",
-  },
-  document_agent: {
-    icon: FileText,
-    color: "text-emerald-400",
-    label: "Document",
-  },
-  answer_agent: {
-    icon: Sparkles,
-    color: "text-orange-400",
-    label: "Answer",
-  },
-} as const;
 
 function formatTimestamp(timestamp: number): string {
   const date = new Date(timestamp > 10_000_000_000 ? timestamp : timestamp * 1000);
@@ -162,9 +150,10 @@ export default function AgentLogs({
             <AnimatePresence initial={false}>
               {logs.map((log) => {
                 const config =
-                  agentConfig[log.agent as keyof typeof agentConfig] ||
-                  agentConfig.planner;
+                  AGENT_MAP[log.agent as keyof typeof AGENT_MAP] ||
+                  AGENT_MAP.planner;
                 const Icon = config.icon;
+                const agentColor = COLOR_TEXT[config.color] || "text-violet-400";
                 return (
                   <motion.div
                     key={`${log.timestamp}-${log.agent}-${log.action}`}
@@ -173,7 +162,7 @@ export default function AgentLogs({
                     className="flex gap-2.5 border-b border-white/[0.05] py-3 last:border-0"
                   >
                     <Icon
-                      className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", config.color)}
+                      className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", agentColor)}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">

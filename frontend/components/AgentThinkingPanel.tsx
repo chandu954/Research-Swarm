@@ -3,116 +3,23 @@
 import { useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  BrainCircuit,
   Check,
-  FileText,
-  Globe2,
   Loader2,
-  Search,
-  Sparkles,
   Clock,
   List,
   LayoutGrid,
   ChevronDown,
   ChevronRight,
+  BrainCircuit,
 } from "lucide-react";
 import type { AgentLog } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const agentMeta: Record<string, { label: string; icon: React.ElementType; color: string; thinking: string[] }> = {
-  planner: {
-    label: "Planner",
-    icon: BrainCircuit,
-    color: "violet",
-    thinking: [
-      "Analyzing your query...",
-      "Breaking down into subtasks...",
-      "Identifying relevant sources...",
-      "Building execution plan...",
-      "Prioritizing research directions...",
-    ],
-  },
-  research_agent: {
-    label: "Web Research",
-    icon: Globe2,
-    color: "cyan",
-    thinking: [
-      "Searching the web...",
-      "Extracting key information...",
-      "Ranking search results...",
-      "Summarizing findings...",
-      "Cross-referencing sources...",
-    ],
-  },
-  document_agent: {
-    label: "Document Analysis",
-    icon: FileText,
-    color: "emerald",
-    thinking: [
-      "Loading documents...",
-      "Chunking text content...",
-      "Computing embeddings...",
-      "Retrieving relevant passages...",
-      "Reranking by relevance...",
-    ],
-  },
-  answer_agent: {
-    label: "Answer Synthesis",
-    icon: Sparkles,
-    color: "orange",
-    thinking: [
-      "Gathering evidence...",
-      "Structuring the answer...",
-      "Citing sources...",
-      "Fact-checking claims...",
-      "Polishing final response...",
-    ],
-  },
-  verifier: {
-    label: "Verifier",
-    icon: Search,
-    color: "rose",
-    thinking: [
-      "Checking conflicting claims...",
-      "Validating source credibility...",
-      "Cross-referencing facts...",
-    ],
-  },
-  merge: {
-    label: "Merge",
-    icon: BrainCircuit,
-    color: "amber",
-    thinking: [
-      "Combining research results...",
-      "Reconciling differences...",
-    ],
-  },
-};
-
-const AGENT_ORDER = ["planner", "research_agent", "document_agent", "answer_agent"];
-
-const colorStyles: Record<string, { running: string; done: string }> = {
-  violet: { running: "border-violet-400/20 bg-violet-500/10 text-violet-300", done: "border-emerald-400/20 bg-emerald-500/10 text-emerald-300" },
-  cyan: { running: "border-cyan-400/20 bg-cyan-500/10 text-cyan-300", done: "border-emerald-400/20 bg-emerald-500/10 text-emerald-300" },
-  emerald: { running: "border-emerald-400/20 bg-emerald-500/10 text-emerald-300", done: "border-emerald-400/20 bg-emerald-500/10 text-emerald-300" },
-  orange: { running: "border-orange-400/20 bg-orange-500/10 text-orange-300", done: "border-emerald-400/20 bg-emerald-500/10 text-emerald-300" },
-  rose: { running: "border-rose-400/20 bg-rose-500/10 text-rose-300", done: "border-emerald-400/20 bg-emerald-500/10 text-emerald-300" },
-  amber: { running: "border-amber-400/20 bg-amber-500/10 text-amber-300", done: "border-emerald-400/20 bg-emerald-500/10 text-emerald-300" },
-};
-
-const bgStyles: Record<string, string> = {
-  violet: "bg-violet-500/[0.06]", cyan: "bg-cyan-500/[0.06]", emerald: "bg-emerald-500/[0.06]",
-  orange: "bg-orange-500/[0.06]", rose: "bg-rose-500/[0.06]", amber: "bg-amber-500/[0.06]",
-};
-
-const agentGradients: Record<string, string> = {
-  planner: "from-violet-600 to-purple-600",
-  research_agent: "from-cyan-600 to-teal-600",
-  document_agent: "from-emerald-600 to-green-600",
-  answer_agent: "from-orange-600 to-amber-600",
-  verifier: "from-rose-600 to-pink-600",
-  merge: "from-amber-600 to-yellow-600",
-};
+import {
+  AGENT_MAP,
+  AGENT_ORDER,
+  colorStyles,
+  bgStyles,
+} from "@/lib/agents";
 
 interface AgentThinkingPanelProps {
   logs: AgentLog[];
@@ -163,7 +70,7 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
   const getThinkingMessage = (key: string, status: string): string => {
     if (status === "completed") return "Complete";
     if (status === "failed") return "Failed";
-    const thoughts = agentMeta[key]?.thinking;
+    const thoughts = AGENT_MAP[key]?.thinking;
     if (!thoughts) return "Working...";
     const logCount = logs.filter((l) => l.agent === key).length;
     return thoughts[Math.min(logCount, thoughts.length - 1)];
@@ -262,14 +169,14 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
           <AnimatePresence mode="popLayout">
             {activeAgents.map((key) => {
               const status = getAgentStatus(key);
-              const Icon = agentMeta[key]?.icon || BrainCircuit;
-              const color = agentMeta[key]?.color || "violet";
+              const Icon = AGENT_MAP[key]?.icon || BrainCircuit;
+              const color = AGENT_MAP[key]?.color || "violet";
               const details = getAgentDetails(key);
               const thinkingMsg = getThinkingMessage(key, status);
               const cs = colorStyles[color] || colorStyles.violet;
               const bs = bgStyles[color] || bgStyles.violet;
               const stats = agentLogStats[key];
-              const gradient = agentGradients[key] || "from-gray-600 to-gray-600";
+              const gradient = AGENT_MAP[key]?.gradient || "from-gray-600 to-gray-600";
 
               return (
                 <motion.div
@@ -312,7 +219,7 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
                             status === "idle" && "text-[var(--text-muted)]",
                           )}
                         >
-                          {agentMeta[key]?.label || key}
+                          {AGENT_MAP[key]?.label || key}
                         </span>
                         {stats && (
                           <span className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[8px] tabular-nums text-[var(--text-muted)]">
@@ -384,7 +291,7 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="text-[10px] font-medium text-[var(--text-secondary)]">
-                      {agentMeta[log.agent]?.label || log.agent}
+                      {AGENT_MAP[log.agent]?.label || log.agent}
                     </span>
                     {log.timestamp && (
                       <span className="text-[8px] text-[var(--text-muted)]">

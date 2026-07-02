@@ -75,7 +75,7 @@ function estimateFreshness(title?: string): string {
   const yearMatch = title.match(/\b(20\d{2})\b/);
   if (yearMatch) {
     const year = parseInt(yearMatch[1]);
-    const currentYear = 2026;
+    const currentYear = new Date().getFullYear();
     if (year >= currentYear) return "Current";
     if (year >= currentYear - 1) return "Recent";
     if (year >= currentYear - 3) return "Moderate";
