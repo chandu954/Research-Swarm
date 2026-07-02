@@ -140,7 +140,7 @@ export default function ResearchWorkspace() {
           {
             id: `${Date.now()}-assistant`,
             role: "assistant",
-            content: result.answer,
+            content: result.answer || "",
             timestamp: Date.now(),
             sources: result.sources,
             logs: result.logs,
