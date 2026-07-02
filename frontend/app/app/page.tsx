@@ -45,6 +45,7 @@ export default function ResearchWorkspace() {
     Record<string, AgentMetric>
   >({});
   const [executionTime, setExecutionTime] = useState<number>();
+  const [elapsed, setElapsed] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -60,6 +61,18 @@ export default function ResearchWorkspace() {
         // The workspace remains usable if the document list is unavailable.
       });
   }, []);
+
+  useEffect(() => {
+    if (!isRunning) {
+      setElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setElapsed((Date.now() - start) / 1000);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isRunning]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -176,6 +189,7 @@ export default function ResearchWorkspace() {
     setSources([]);
     setAgentMetrics({});
     setExecutionTime(undefined);
+    setElapsed(0);
     setSidebarOpen(false);
   }, []);
 
@@ -188,6 +202,7 @@ export default function ResearchWorkspace() {
     setSelectedDocs([]);
     setAgentMetrics({});
     setExecutionTime(undefined);
+    setElapsed(0);
   }, []);
 
   const recentQueries = useMemo(
@@ -312,6 +327,7 @@ export default function ResearchWorkspace() {
               onAttach={openDocumentPicker}
               isRunning={isRunning}
               streamLogs={logs}
+              elapsed={elapsed}
             />
           </section>
 

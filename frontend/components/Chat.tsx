@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgentLog, Message, UploadedDocument } from "@/lib/types";
+import AgentThinkingPanel from "./AgentThinkingPanel";
+import StreamingText from "./StreamingText";
 
 interface ChatProps {
   messages: Message[];
@@ -33,6 +35,7 @@ interface ChatProps {
   onAttach: () => void;
   isRunning: boolean;
   streamLogs?: AgentLog[];
+  elapsed?: number;
 }
 
 const suggestions = [
@@ -116,7 +119,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function ChatMessage({ message }: { message: Message }) {
+function ChatMessage({ message, isLatest }: { message: Message; isLatest: boolean }) {
   const isUser = message.role === "user";
   const isThinking =
     message.content === "..." || message.content === "Thinking...";
@@ -167,6 +170,17 @@ function ChatMessage({ message }: { message: Message }) {
                 </span>
               </div>
             </div>
+          ) : isUser ? (
+            <div className="prose-custom prose-sm">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          ) : isLatest ? (
+            <StreamingText
+              content={message.content}
+              speed={12}
+            />
           ) : (
             <div className="prose-custom prose-sm">
               <ReactMarkdown
@@ -218,32 +232,22 @@ function ChatMessage({ message }: { message: Message }) {
   );
 }
 
-function StreamingLogIndicator({ logs }: { logs: AgentLog[] }) {
-  const latest = logs.at(-1);
-  if (!latest) return null;
+function ThinkingMessage({ content }: { content: string }) {
+  const [displayed, setDisplayed] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDisplayed(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!displayed) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mb-5 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.05] p-3 text-sm"
-    >
-      <div className="flex items-center gap-2">
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />
-        <span className="capitalize text-[var(--text-primary)]">
-          {latest.agent.replace(/_/g, " ")}
-        </span>
-        <span className="text-[var(--text-muted)]">·</span>
-        <span className="capitalize text-[var(--text-muted)]">
-          {latest.action.replace(/_/g, " ")}
-        </span>
-      </div>
-      {latest.details && (
-        <p className="ml-5 mt-1 truncate text-xs text-[var(--text-muted)]">
-          {latest.details}
-        </p>
-      )}
-    </motion.div>
+    <div className="prose-custom prose-sm">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 
@@ -254,6 +258,7 @@ export default function Chat({
   onAttach,
   isRunning,
   streamLogs = [],
+  elapsed = 0,
 }: ChatProps) {
   const [input, setInput] = useState("");
   const [researchMode, setResearchMode] = useState<"fast" | "deep">("deep");
@@ -382,11 +387,21 @@ export default function Chat({
         ) : (
           <section className="mx-auto w-full max-w-4xl px-5 py-8 sm:px-8">
             <AnimatePresence initial={false}>
-              {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
+              {messages.map((message, i) => (
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  isLatest={i === messages.length - 1 && !isRunning}
+                />
               ))}
             </AnimatePresence>
-            {isRunning && <StreamingLogIndicator logs={streamLogs} />}
+            {isRunning && streamLogs.length > 0 && (
+              <AgentThinkingPanel
+                logs={streamLogs}
+                isRunning={isRunning}
+                elapsed={elapsed}
+              />
+            )}
             <div ref={endRef} />
           </section>
         )}
