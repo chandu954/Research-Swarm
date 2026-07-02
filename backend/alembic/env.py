@@ -8,7 +8,18 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from backend.db.session import Base, DATABASE_URL
-from backend.db.models import User, Conversation, Message, Document, ResearchTask
+from backend.db.models import (
+    User, UserSession, UserDevice,
+    Organization, OrganizationMember,
+    Workspace, WorkspaceMember,
+    Project, Collection,
+    Conversation, Message,
+    Document, DocumentVersion, DocumentChunk,
+    ResearchTask,
+    KnowledgeGraphNode, KnowledgeGraphEdge,
+    Memory, Notification, AuditLog, APIKey, BillingRecord,
+    Tag, TagAssignment, Bookmark,
+)
 
 config = context.config
 if config.config_file_name is not None:

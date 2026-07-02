@@ -1,40 +1,59 @@
-"""FastAPI server for ResearchSwarm AI multi-agent system."""
+"""FastAPI server for ResearchSwarm AI — Multi-Tenant Platform."""
 from __future__ import annotations
-import os, time, uuid, asyncio
+import os, time, uuid, asyncio, json
+from datetime import datetime, timezone
 from typing import Optional
 from contextlib import asynccontextmanager
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
 from dotenv import load_dotenv
 from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Depends, FastAPI, UploadFile, File, HTTPException,
+    Query, Request, WebSocket, WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from loguru import logger
-from pydantic import BaseModel, Field
 
 from backend.agents.graph import create_research_graph
 from backend.agents.entity_extractor import extract_entities
 from backend.agents.memory import get_memory
 from backend.api.stream import get_stream_manager, make_log, event_stream
 from backend.api.auth import router as auth_router
+from backend.api.organizations import router as org_router
 from backend.api.websocket import get_workspace_manager, Connection
 from backend.tools.registry import get_registry
-from backend.db.session import init_db, close_db
+from backend.db.session import init_db, close_db, get_session
+from backend.db.models import (
+    User, Conversation, Message, Document, ResearchTask,
+    Organization, OrganizationMember,
+    Workspace, WorkspaceMember,
+    Project, AuditLog, APIKey, BillingRecord, Notification,
+)
+from backend.db.schemas import (
+    ResearchRequest, ResearchResponse,
+    ConversationCreate, ConversationResponse, ConversationDetail,
+    ConversationUpdate, MessageResponse,
+    DocumentResponse, DocumentVersionResponse,
+    PluginConfigRequest, PluginStatus,
+    NotificationResponse, APIKeyCreate, APIKeyResponse, APIKeyFullResponse,
+    AuditLogResponse, BillingUsageResponse,
+    SearchRequest, SearchResult,
+)
 from backend.auth.dependencies import get_current_user, get_optional_user
-from backend.db.models import User
-from backend.db.schemas import ResearchRequest, ResearchResponse, PluginConfigRequest, PluginStatus, WorkspaceCreate, WorkspaceResponse
+from backend.auth.tenant import resolve_tenant_dependencies, resolve_optional_tenant, TenantContext
 from backend.plugins.registry import get_plugin_registry
 from backend.plugins.github import GitHubPlugin
 from backend.plugins.notion import NotionPlugin
 from backend.plugins.slack import SlackPlugin
 
-UPLOAD_DIR = "./data/uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./data/uploads")
 for d in [UPLOAD_DIR, "./data/chroma_db", "./data/memory", "./data/logs"]:
     os.makedirs(d, exist_ok=True)
 
@@ -54,21 +73,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Tool listing failed: {e}")
 
-    # Register built-in plugins
     plugin_reg = get_plugin_registry()
     plugin_reg.register(GitHubPlugin(config={"token": os.getenv("GITHUB_TOKEN", "")}))
     plugin_reg.register(NotionPlugin(config={"token": os.getenv("NOTION_TOKEN", "")}))
     plugin_reg.register(SlackPlugin(config={"token": os.getenv("SLACK_TOKEN", "")}))
     logger.info("Built-in plugins registered")
-
     app.state.plugin_registry = plugin_reg
+
     yield
     await close_db()
     logger.info("ResearchSwarm AI shutting down")
 
 
 def _ensure_app_state() -> None:
-    """Lazy initialize app state for environments without lifespan startup."""
     if not hasattr(app.state, "start_time"):
         app.state.start_time = time.time()
     if not hasattr(app.state, "graph"):
@@ -85,8 +102,8 @@ def _ensure_app_state() -> None:
 
 app = FastAPI(
     title="ResearchSwarm AI",
-    description="Multi-Agent Research System powered by LangGraph + Ollama",
-    version="2.0.0",
+    description="Multi-Agent Research Operating System — Multi-Tenant Platform",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -99,12 +116,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID",
+                   "X-Organization-Id", "X-Organization-Slug",
+                   "X-Workspace-Id", "X-Project-Id"],
 )
 
 app.include_router(auth_router)
+app.include_router(org_router)
 
+
+# ── Health ──────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health_check():
@@ -112,11 +134,42 @@ async def health_check():
     registry = app.state.registry
     return {
         "status": "healthy",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "uptime": time.time() - app.state.start_time,
         "tools_available": len(registry.list_tools()),
     }
 
+
+# ── Audit Logging Helper ────────────────────────────────────────
+
+async def _log_audit(
+    session,
+    action: str,
+    resource_type: str,
+    resource_id: Optional[str] = None,
+    details: Optional[dict] = None,
+    ctx: Optional[TenantContext] = None,
+    request: Optional[Request] = None,
+):
+    if not ctx:
+        return
+    log = AuditLog(
+        organization_id=ctx.organization_id,
+        workspace_id=ctx.workspace_id,
+        user_id=ctx.user_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        details=details or {},
+        ip_address=request.client.host if request and request.client else None,
+        user_agent=request.headers.get("user-agent") if request else None,
+    )
+    session.add(log)
+
+
+# ═══════════════════════════════════════════════════════════════
+# RESEARCH
+# ═══════════════════════════════════════════════════════════════
 
 @limiter.limit("10/minute")
 @app.post("/research", response_model=ResearchResponse)
@@ -124,16 +177,13 @@ async def run_research(
     request: ResearchRequest,
     current_user: User = Depends(get_optional_user),
 ):
-    """Execute a multi-agent research task."""
     _ensure_app_state()
     task_id = request.stream_task_id or str(uuid.uuid4())
-    conversation_id = request.conversation_id or app.state.memory.create_conversation(
-        metadata={"query": request.query[:200], "user_id": current_user.id if current_user else "anonymous"}
-    )
+    conversation_id = request.conversation_id or str(uuid.uuid4())
     start_time = time.time()
-    logger.info(f"[{task_id}] Research by {current_user.id if current_user else 'anon'}: {request.query[:100]}...")
+    user_id = current_user.id if current_user else "anonymous"
+    logger.info(f"[{task_id}] Research by {user_id}: {request.query[:100]}...")
 
-    app.state.memory.add_turn(conversation_id, "user", request.query)
     pdf_paths = _resolve_pdf_paths(request.document_ids)
     graph = app.state.graph
     app.state.stream_manager.get_or_create_stream(task_id)
@@ -164,7 +214,6 @@ async def run_research(
         }
         result = await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
         execution_time = time.time() - start_time
-        app.state.memory.add_turn(conversation_id, "assistant", result.get("answer", "")[:500], metadata={"task_id": task_id})
         app.state.stream_manager.close_stream(task_id)
 
         return ResearchResponse(
@@ -180,6 +229,8 @@ async def run_research(
             execution_time=execution_time,
             plan_reasoning=result.get("plan_reasoning"),
             agent_metrics=result.get("agent_metrics", {}),
+            cost_estimate=result.get("cost_estimate"),
+            token_count=result.get("token_count"),
         )
     except Exception as e:
         logger.error(f"[{task_id}] Research failed: {e}")
@@ -196,7 +247,6 @@ async def run_research(
 
 @app.get("/research/stream/{task_id}")
 async def subscribe_research_stream(task_id: str):
-    """Subscribe to live agent logs for an in-progress research task."""
     _ensure_app_state()
     stream_mgr = app.state.stream_manager
     log_queue = stream_mgr.get_or_create_stream(task_id)
@@ -213,48 +263,33 @@ async def research_stream(
     conversation_id: Optional[str] = Query(None),
     document_ids: str = Query(default=""),
 ):
-    """Stream research execution logs via SSE."""
     _ensure_app_state()
     task_id = str(uuid.uuid4())
-    conv_id = conversation_id or app.state.memory.create_conversation(
-        metadata={"query": query[:200], "user_id": "anonymous"}
-    )
+    conv_id = conversation_id or str(uuid.uuid4())
     doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
     pdf_paths = _resolve_pdf_paths(doc_ids)
     stream_mgr = app.state.stream_manager
     log_queue = stream_mgr.create_stream(task_id)
-
     stream_mgr.push_log(task_id, make_log("planner", "analyze_query", "running", query[:100]))
 
     async def run_and_stream():
         try:
             initial_state = {
-                "query": query,
-                "conversation_id": conv_id,
-                "plan": [],
-                "plan_reasoning": None,
-                "web_results": [],
-                "document_chunks": [],
-                "answer": None,
-                "sources": [],
-                "errors": [],
-                "status": "running",
-                "logs": [],
-                "pdf_paths": pdf_paths,
-                "execution_start": time.time(),
-                "agent_metrics": {},
-                "llm_provider": None,
-                "planner_model": None,
-                "research_model": None,
-                "document_model": None,
-                "answer_model": None,
-                "openrouter_key": None,
+                "query": query, "conversation_id": conv_id,
+                "plan": [], "plan_reasoning": None,
+                "web_results": [], "document_chunks": [],
+                "answer": None, "sources": [], "errors": [],
+                "status": "running", "logs": [], "pdf_paths": pdf_paths,
+                "execution_start": time.time(), "agent_metrics": {},
+                "llm_provider": None, "planner_model": None,
+                "research_model": None, "document_model": None,
+                "answer_model": None, "openrouter_key": None,
             }
             graph = app.state.graph
             await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
             stream_mgr.push_log(task_id, make_log("system", "complete", "completed", "Execution finished"))
         except asyncio.CancelledError:
-            logger.info(f"Research stream {task_id} cancelled by client disconnect")
+            logger.info(f"Research stream {task_id} cancelled")
             stream_mgr.push_log(task_id, make_log("system", "cancelled", "failed", "Client disconnected"))
         except Exception as e:
             stream_mgr.push_log(task_id, make_log("system", "error", "failed", str(e)))
@@ -281,15 +316,8 @@ async def research_stream(
     )
 
 
-class ExtractEntitiesRequest(BaseModel):
-    text: str = Field(..., min_length=20, description="Research text to extract entities from")
-    llm_provider: Optional[str] = Field(None, description="Provider override (ollama, openrouter)")
-    model: Optional[str] = Field(None, description="Model override for extraction")
-
-
 @app.post("/research/extract-entities")
 async def research_extract_entities(request: ExtractEntitiesRequest):
-    """Extract entities and relationships from research text for knowledge graph enrichment."""
     _ensure_app_state()
     result = await extract_entities(
         text=request.text,
@@ -299,11 +327,203 @@ async def research_extract_entities(request: ExtractEntitiesRequest):
     return result
 
 
+# ═══════════════════════════════════════════════════════════════
+# CONVERSATIONS (tenant-aware)
+# ═══════════════════════════════════════════════════════════════
+
+def _conversation_query(base=None):
+    from sqlalchemy import select
+    q = select(Conversation) if base is None else base
+    return q.where(Conversation.is_deleted == False)
+
+
+@app.get("/conversations", response_model=list[ConversationResponse])
+async def list_conversations(
+    org_id: str = Query(..., alias="organization_id"),
+    ws_id: Optional[str] = Query(None, alias="workspace_id"),
+    proj_id: Optional[str] = Query(None, alias="project_id"),
+    archived: bool = Query(False),
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    q = select(Conversation).where(
+        Conversation.organization_id == org_id,
+        Conversation.is_archived == archived,
+    )
+    if ws_id:
+        q = q.where(Conversation.workspace_id == ws_id)
+    if proj_id:
+        q = q.where(Conversation.project_id == proj_id)
+    if search:
+        q = q.where(Conversation.title.ilike(f"%{search}%"))
+    q = q.order_by(Conversation.updated_at.desc()).offset(offset).limit(limit)
+
+    result = await session.execute(q)
+    conversations = result.scalars().all()
+
+    responses = []
+    for conv in conversations:
+        msg_count = await session.scalar(
+            select(func.count(Message.id)).where(Message.conversation_id == conv.id)
+        )
+        responses.append(ConversationResponse(
+            id=conv.id,
+            title=conv.title,
+            description=conv.description,
+            is_archived=conv.is_archived,
+            is_pinned=conv.is_pinned,
+            is_favorited=conv.is_favorited,
+            visibility=conv.visibility,
+            message_count=msg_count or 0,
+            created_at=conv.created_at,
+            updated_at=conv.updated_at,
+        ))
+    return responses
+
+
+@app.post("/conversations", response_model=ConversationResponse, status_code=201)
+async def create_conversation(
+    body: ConversationCreate,
+    org_id: str = Query(..., alias="organization_id"),
+    ws_id: Optional[str] = Query(None, alias="workspace_id"),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    conv = Conversation(
+        user_id=current_user.id,
+        organization_id=org_id,
+        workspace_id=ws_id or ctx.workspace_id,
+        project_id=body.project_id,
+        title=body.title or "New Conversation",
+    )
+    session.add(conv)
+    await session.flush()
+
+    await _log_audit(session, "conversation.created", "conversation", conv.id,
+                     {"title": conv.title}, ctx)
+
+    return ConversationResponse(
+        id=conv.id,
+        title=conv.title,
+        message_count=0,
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+    )
+
+
+@app.get("/conversations/{conv_id}", response_model=ConversationDetail)
+async def get_conversation(
+    conv_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Conversation).where(
+            Conversation.id == conv_id,
+            Conversation.organization_id == ctx.organization_id,
+        )
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    messages_result = await session.execute(
+        select(Message).where(
+            Message.conversation_id == conv.id,
+        ).order_by(Message.created_at)
+    )
+    messages = messages_result.scalars().all()
+
+    return ConversationDetail(
+        id=conv.id,
+        title=conv.title,
+        description=conv.description,
+        messages=[MessageResponse.model_validate(m) for m in messages],
+        is_archived=conv.is_archived,
+        is_pinned=conv.is_pinned,
+        is_favorited=conv.is_favorited,
+        created_at=conv.created_at,
+        updated_at=conv.updated_at,
+    )
+
+
+@app.patch("/conversations/{conv_id}", response_model=ConversationResponse)
+async def update_conversation(
+    conv_id: str,
+    body: ConversationUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Conversation).where(
+            Conversation.id == conv_id,
+            Conversation.organization_id == ctx.organization_id,
+        )
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if body.title is not None:
+        conv.title = body.title
+    if body.description is not None:
+        conv.description = body.description
+    if body.is_archived is not None:
+        conv.is_archived = body.is_archived
+    if body.is_pinned is not None:
+        conv.is_pinned = body.is_pinned
+    if body.is_favorited is not None:
+        conv.is_favorited = body.is_favorited
+    if body.visibility is not None:
+        conv.visibility = body.visibility
+    await session.flush()
+    return ConversationResponse.model_validate(conv)
+
+
+@app.delete("/conversations/{conv_id}")
+async def delete_conversation(
+    conv_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Conversation).where(
+            Conversation.id == conv_id,
+            Conversation.organization_id == ctx.organization_id,
+        )
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    conv.is_deleted = True
+    conv.deleted_at = datetime.now(timezone.utc)
+    await session.flush()
+    await _log_audit(session, "conversation.deleted", "conversation", conv_id, {}, ctx)
+    return {"status": "deleted"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# DOCUMENTS (tenant-aware)
+# ═══════════════════════════════════════════════════════════════
+
 @limiter.limit("30/minute")
 @app.post("/upload")
-async def upload_pdf(
+async def upload_document(
     file: UploadFile = File(...),
+    org_id: str = Query(..., alias="organization_id"),
+    ws_id: Optional[str] = Query(None, alias="workspace_id"),
+    proj_id: Optional[str] = Query(None, alias="project_id"),
     current_user: User = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files supported")
@@ -313,46 +533,417 @@ async def upload_pdf(
         content = await file.read()
         with open(file_path, "wb") as f:
             f.write(content)
-        logger.info(f"Uploaded: {file.filename} ({len(content)} bytes)")
-        return {"document_id": file_id, "filename": file.filename, "size": len(content), "status": "uploaded"}
+
+        doc = Document(
+            user_id=current_user.id,
+            organization_id=org_id,
+            workspace_id=ws_id or ctx.workspace_id,
+            project_id=proj_id or ctx.project_id,
+            filename=file_id,
+            original_filename=file.filename,
+            size_bytes=len(content),
+            mime_type="application/pdf",
+            storage_path=file_path,
+            storage_backend="local",
+        )
+        session.add(doc)
+        await session.flush()
+
+        await _log_audit(session, "document.uploaded", "document", doc.id,
+                         {"filename": file.filename, "size": len(content)}, ctx)
+
+        return {"document_id": doc.id, "filename": file.filename, "size": len(content), "status": "uploaded"}
     except Exception as e:
         logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/documents")
-async def list_documents():
-    if not os.path.exists(UPLOAD_DIR):
-        return {"documents": []}
-    docs = []
-    for fname in os.listdir(UPLOAD_DIR):
-        if not fname.lower().endswith(".pdf"):
-            continue
-        stat = os.stat(os.path.join(UPLOAD_DIR, fname))
-        docs.append({"document_id": fname, "filename": "_".join(fname.split("_")[1:]), "size": stat.st_size, "upload_date": stat.st_mtime})
-    return {"documents": docs}
+@app.get("/documents", response_model=list[DocumentResponse])
+async def list_documents(
+    org_id: str = Query(..., alias="organization_id"),
+    ws_id: Optional[str] = Query(None, alias="workspace_id"),
+    proj_id: Optional[str] = Query(None, alias="project_id"),
+    include_deleted: bool = Query(False),
+    search: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    q = select(Document).where(Document.organization_id == org_id)
+    if not include_deleted:
+        q = q.where(Document.is_deleted == False)
+    if ws_id:
+        q = q.where(Document.workspace_id == ws_id)
+    if proj_id:
+        q = q.where(Document.project_id == proj_id)
+    if search:
+        q = q.where(
+            or_(
+                Document.original_filename.ilike(f"%{search}%"),
+                Document.filename.ilike(f"%{search}%"),
+            )
+        )
+    q = q.order_by(Document.created_at.desc())
+
+    result = await session.execute(q)
+    return [DocumentResponse.model_validate(d) for d in result.scalars().all()]
 
 
-@app.get("/conversations")
-async def list_conversations():
-    _ensure_app_state()
-    return {"conversations": app.state.memory.list_conversations()}
+@app.get("/documents/{doc_id}", response_model=DocumentResponse)
+async def get_document(
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Document).where(
+            Document.id == doc_id,
+            Document.organization_id == ctx.organization_id,
+            Document.is_deleted == False,
+        )
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return DocumentResponse.model_validate(doc)
 
 
-@app.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
-    _ensure_app_state()
-    conv = app.state.memory.get_conversation(conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return {"conversation_id": conv.conversation_id, "turn_count": len(conv.turns), "created_at": conv.created_at, "updated_at": conv.updated_at}
+@app.get("/documents/{doc_id}/versions", response_model=list[DocumentVersionResponse])
+async def get_document_versions(
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    from backend.db.models import DocumentVersion
+    result = await session.execute(
+        select(DocumentVersion).where(
+            DocumentVersion.document_id == doc_id,
+        ).order_by(DocumentVersion.version_number.desc())
+    )
+    return [DocumentVersionResponse.model_validate(v) for v in result.scalars().all()]
 
+
+@app.delete("/documents/{doc_id}")
+async def soft_delete_document(
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Document).where(
+            Document.id == doc_id,
+            Document.organization_id == ctx.organization_id,
+        )
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc.is_deleted = True
+    doc.deleted_at = datetime.now(timezone.utc)
+    await session.flush()
+    await _log_audit(session, "document.deleted", "document", doc_id, {}, ctx)
+    return {"status": "deleted"}
+
+
+@app.post("/documents/{doc_id}/restore")
+async def restore_document(
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Document).where(
+            Document.id == doc_id,
+            Document.organization_id == ctx.organization_id,
+        )
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc.is_deleted = False
+    doc.deleted_at = None
+    await session.flush()
+    return {"status": "restored"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# NOTIFICATIONS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/notifications", response_model=list[NotificationResponse])
+async def list_notifications(
+    unread_only: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    q = select(Notification).where(Notification.user_id == current_user.id)
+    if unread_only:
+        q = q.where(Notification.is_read == False)
+    q = q.order_by(Notification.created_at.desc()).limit(limit)
+    result = await session.execute(q)
+    return [NotificationResponse.model_validate(n) for n in result.scalars().all()]
+
+
+@app.post("/notifications/{notif_id}/read")
+async def mark_notification_read(
+    notif_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(Notification).where(
+            Notification.id == notif_id,
+            Notification.user_id == current_user.id,
+        )
+    )
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notif.is_read = True
+    notif.read_at = datetime.now(timezone.utc)
+    await session.flush()
+    return {"status": "read"}
+
+
+@app.post("/notifications/read-all")
+async def mark_all_read(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await session.execute(
+        select(Notification).where(
+            Notification.user_id == current_user.id,
+            Notification.is_read == False,
+        )
+    )
+    await session.execute(
+        Notification.__table__.update().where(
+            Notification.user_id == current_user.id,
+            Notification.is_read == False,
+        ).values(is_read=True, read_at=datetime.now(timezone.utc))
+    )
+    await session.flush()
+    return {"status": "all_read"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# SEARCH (global, tenant-scoped)
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/search", response_model=list[SearchResult])
+async def global_search(
+    body: SearchRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    results = []
+    pattern = f"%{body.query}%"
+
+    if "conversations" in body.resource_types:
+        conv_q = select(Conversation).where(
+            Conversation.organization_id == ctx.organization_id,
+            Conversation.is_deleted == False,
+            Conversation.title.ilike(pattern),
+        ).limit(body.limit)
+        conv_result = await session.execute(conv_q)
+        for conv in conv_result.scalars().all():
+            results.append(SearchResult(
+                resource_type="conversation",
+                resource_id=conv.id,
+                title=conv.title or "Untitled",
+                snippet=conv.description or "",
+                score=0.9,
+                created_at=conv.created_at,
+            ))
+
+    if "documents" in body.resource_types:
+        doc_q = select(Document).where(
+            Document.organization_id == ctx.organization_id,
+            Document.is_deleted == False,
+            or_(
+                Document.original_filename.ilike(pattern),
+                Document.summary.ilike(pattern) if Document.summary else False,
+            ),
+        ).limit(body.limit)
+        doc_result = await session.execute(doc_q)
+        for doc in doc_result.scalars().all():
+            results.append(SearchResult(
+                resource_type="document",
+                resource_id=doc.id,
+                title=doc.original_filename,
+                snippet=doc.summary or "",
+                score=0.8,
+                created_at=doc.created_at,
+            ))
+
+    if "messages" in body.resource_types:
+        msg_q = select(Message).join(
+            Conversation, Message.conversation_id == Conversation.id,
+        ).where(
+            Conversation.organization_id == ctx.organization_id,
+            Conversation.is_deleted == False,
+            Message.content.ilike(pattern),
+        ).limit(body.limit)
+        msg_result = await session.execute(msg_q)
+        for msg in msg_result.scalars().all():
+            results.append(SearchResult(
+                resource_type="message",
+                resource_id=msg.id,
+                title=f"Message in {msg.conversation_id[:8]}...",
+                snippet=msg.content[:200],
+                score=0.7,
+                created_at=msg.created_at,
+            ))
+
+    results.sort(key=lambda r: r.score, reverse=True)
+    return results[:body.limit]
+
+
+# ═══════════════════════════════════════════════════════════════
+# BILLING
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/billing/usage", response_model=BillingUsageResponse)
+async def get_billing_usage(
+    org_id: str = Query(..., alias="organization_id"),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(
+            func.coalesce(func.sum(BillingRecord.tokens_in), 0),
+            func.coalesce(func.sum(BillingRecord.tokens_out), 0),
+            func.coalesce(func.sum(BillingRecord.storage_bytes), 0),
+            func.coalesce(func.sum(BillingRecord.api_calls), 0),
+            func.coalesce(func.sum(BillingRecord.compute_seconds), 0.0),
+            func.coalesce(func.sum(BillingRecord.estimated_cost), 0.0),
+        ).where(BillingRecord.organization_id == org_id)
+    )
+    row = result.one()
+    return BillingUsageResponse(
+        tokens_in=row[0],
+        tokens_out=row[1],
+        storage_bytes=row[2],
+        api_calls=row[3],
+        compute_seconds=float(row[4]),
+        estimated_cost=float(row[5]),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# API KEYS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/api-keys", response_model=list[APIKeyResponse])
+async def list_api_keys(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(APIKey).where(
+            APIKey.organization_id == ctx.organization_id,
+        )
+    )
+    return [APIKeyResponse.model_validate(k) for k in result.scalars().all()]
+
+
+@app.post("/api-keys", response_model=APIKeyFullResponse, status_code=201)
+async def create_api_key(
+    body: APIKeyCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    import secrets, hashlib
+    raw_key = f"rs_{secrets.token_urlsafe(32)}"
+    key_prefix = raw_key[:8]
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+
+    api_key = APIKey(
+        organization_id=ctx.organization_id,
+        user_id=current_user.id,
+        name=body.name,
+        key_prefix=key_prefix,
+        key_hash=key_hash,
+        permissions=body.permissions,
+    )
+    session.add(api_key)
+    await session.flush()
+
+    await _log_audit(session, "apikey.created", "api_key", api_key.id,
+                     {"name": body.name}, ctx)
+
+    resp = APIKeyFullResponse(
+        id=api_key.id,
+        name=api_key.name,
+        key_prefix=key_prefix,
+        is_active=api_key.is_active,
+        last_used_at=api_key.last_used_at,
+        expires_at=api_key.expires_at,
+        created_at=api_key.created_at,
+        raw_key=raw_key,
+    )
+    return resp
+
+
+@app.delete("/api-keys/{key_id}")
+async def delete_api_key(
+    key_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(APIKey).where(
+            APIKey.id == key_id,
+            APIKey.organization_id == ctx.organization_id,
+        )
+    )
+    api_key = result.scalar_one_or_none()
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    api_key.is_active = False
+    await session.flush()
+    await _log_audit(session, "apikey.deleted", "api_key", key_id, {}, ctx)
+    return {"status": "deleted"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# AUDIT LOGS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/audit-logs", response_model=list[AuditLogResponse])
+async def list_audit_logs(
+    org_id: str = Query(..., alias="organization_id"),
+    action: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    q = select(AuditLog).where(AuditLog.organization_id == org_id)
+    if action:
+        q = q.where(AuditLog.action == action)
+    q = q.order_by(AuditLog.created_at.desc()).limit(limit)
+    result = await session.execute(q)
+    return [AuditLogResponse.model_validate(log) for log in result.scalars().all()]
+
+
+# ═══════════════════════════════════════════════════════════════
+# MODELS
+# ═══════════════════════════════════════════════════════════════
 
 @app.get("/models")
 async def list_models():
-    """List available models from the active provider."""
     import json, urllib.request
-
     provider = os.getenv("LLM_PROVIDER", "ollama").lower()
     if provider == "openrouter":
         api_key = os.getenv("OPENROUTER_API_KEY")
@@ -393,7 +984,9 @@ def _resolve_pdf_paths(document_ids: list[str]) -> list[str]:
     return paths
 
 
-# ── WebSocket (Real-time Collaboration) ─────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# WEBSOCKET (Real-time Collaboration)
+# ═══════════════════════════════════════════════════════════════
 
 @app.websocket("/ws/workspace/{workspace_id}")
 async def workspace_ws(workspace_id: str, ws: WebSocket):
@@ -411,7 +1004,6 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
     try:
         while True:
             data = await ws.receive_text()
-            # Simple echo/ping-pong for now
             if data == "ping":
                 await ws.send_text('{"type":"pong"}')
     except WebSocketDisconnect:
@@ -420,7 +1012,9 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
         mgr.disconnect(workspace_id, user_id)
 
 
-# ── Plugin Endpoints ────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# PLUGINS
+# ═══════════════════════════════════════════════════════════════
 
 @app.get("/plugins", response_model=list[PluginStatus])
 async def list_plugins():
@@ -459,35 +1053,6 @@ async def execute_plugin(name: str, action: str = Query(...), request: Request =
         raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-# ── Workspace Endpoints ────────────────────────────────────────
-
-@app.post("/workspaces", response_model=WorkspaceResponse)
-async def create_workspace(req: WorkspaceCreate, current_user: User = Depends(get_current_user)):
-    _ensure_app_state()
-    from backend.db.session import get_session
-    from backend.db.models import Workspace as WorkspaceModel
-    async with get_session() as session:
-        ws = WorkspaceModel(name=req.name, owner_id=current_user.id)
-        session.add(ws)
-        await session.flush()
-        return WorkspaceResponse(id=ws.id, name=ws.name, owner_id=ws.owner_id, member_count=1, created_at=ws.created_at)
-
-
-@app.get("/workspaces", response_model=list[WorkspaceResponse])
-async def list_workspaces(current_user: User = Depends(get_current_user)):
-    _ensure_app_state()
-    from backend.db.session import get_session
-    from backend.db.models import Workspace as WorkspaceModel
-    async with get_session() as session:
-        stmt = select(WorkspaceModel).where(WorkspaceModel.owner_id == current_user.id)
-        result = await session.execute(stmt)
-        workspaces = result.scalars().all()
-        return [
-            WorkspaceResponse(id=w.id, name=w.name, owner_id=w.owner_id, member_count=len(w.members), created_at=w.created_at)
-            for w in workspaces
-        ]
 
 
 @app.exception_handler(Exception)

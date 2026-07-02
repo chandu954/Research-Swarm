@@ -2,6 +2,8 @@
 
 import { ThemeProvider } from "next-themes";
 import { useEffect, useState } from "react";
+import { AuthProvider } from "@/lib/auth";
+import { TenantProvider } from "@/lib/tenant";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -15,7 +17,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       storageKey="research-swarm-theme"
       disableTransitionOnChange
     >
-      {mounted ? children : <div style={{ visibility: "hidden" }}>{children}</div>}
+      <AuthProvider>
+        <TenantProvider>
+          {mounted ? children : <div style={{ visibility: "hidden" }}>{children}</div>}
+        </TenantProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

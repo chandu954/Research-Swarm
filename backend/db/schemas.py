@@ -2,16 +2,18 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
+from enum import Enum
 
 from pydantic import BaseModel, EmailStr, Field
 
 
-# ── Auth ───────────────────────────────────────────────────────
+# ── Auth ─────────────────────────────────────────────────────────
 
 class TokenPayload(BaseModel):
     sub: str
     exp: float
     type: str = "access"
+    org_id: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
@@ -37,67 +39,106 @@ class UserResponse(BaseModel):
     name: str
     avatar_url: Optional[str] = None
     is_active: bool = True
+    mfa_enabled: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-# ── Conversations ──────────────────────────────────────────────
+# ── Tenant Context ───────────────────────────────────────────────
 
-class ConversationCreate(BaseModel):
-    title: Optional[str] = None
+class TenantContext(BaseModel):
+    organization_id: str
+    workspace_id: Optional[str] = None
+    project_id: Optional[str] = None
+    user_id: str
+    role: str = "member"
+    permissions: dict[str, Any] = {}
 
 
-class ConversationResponse(BaseModel):
+# ── Organizations ────────────────────────────────────────────────
+
+class OrganizationCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(..., min_length=2, max_length=255, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = None
+
+
+class OrganizationResponse(BaseModel):
     id: str
-    title: Optional[str] = None
-    message_count: int = 0
+    name: str
+    slug: str
+    description: Optional[str] = None
+    avatar_url: Optional[str] = None
+    owner_id: str
+    member_count: int = 0
+    is_active: bool = True
     created_at: datetime
-    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class ConversationDetail(BaseModel):
+class OrganizationUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+# ── Organization Members ─────────────────────────────────────────
+
+class MemberRole(str, Enum):
+    OWNER = "owner"
+    ADMIN = "admin"
+    MANAGER = "manager"
+    RESEARCHER = "researcher"
+    VIEWER = "viewer"
+
+
+class MemberResponse(BaseModel):
     id: str
-    title: Optional[str] = None
-    messages: list["MessageResponse"] = []
-    created_at: datetime
-    updated_at: datetime
+    user_id: str
+    name: str = ""
+    email: str = ""
+    role: str = "member"
+    joined_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-# ── Messages ───────────────────────────────────────────────────
-
-class MessageResponse(BaseModel):
-    id: str
-    role: str
-    content: str
-    sources: list[dict[str, Any]] = []
-    metadata: dict[str, Any] = {}
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
+class AddMemberRequest(BaseModel):
+    email: EmailStr
+    role: MemberRole = MemberRole.RESEARCHER
 
 
-# ── Documents ──────────────────────────────────────────────────
-
-class DocumentResponse(BaseModel):
-    id: str
-    filename: str
-    original_filename: str
-    size_bytes: int
-    mime_type: str
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
+class UpdateMemberRoleRequest(BaseModel):
+    role: MemberRole
 
 
-# ── Workspace ──────────────────────────────────────────────────
+# ── Workspaces ───────────────────────────────────────────────────
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
+    slug: Optional[str] = Field(None, min_length=2, max_length=255, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = None
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    slug: str = ""
+    description: Optional[str] = None
+    organization_id: str
+    owner_id: str
+    member_count: int = 0
+    is_active: bool = True
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WorkspaceUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
 
 
 class WorkspaceMemberResponse(BaseModel):
@@ -110,36 +151,127 @@ class WorkspaceMemberResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class WorkspaceResponse(BaseModel):
+# ── Projects ─────────────────────────────────────────────────────
+
+class ProjectCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: Optional[str] = Field(None, min_length=2, max_length=255, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = None
+
+
+class ProjectResponse(BaseModel):
     id: str
     name: str
+    slug: str = ""
+    description: Optional[str] = None
+    organization_id: str
+    workspace_id: str
     owner_id: str
-    member_count: int = 0
+    is_active: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-# ── Plugin ─────────────────────────────────────────────────────
-
-class PluginConfigRequest(BaseModel):
-    name: str = Field(..., description="Plugin name")
-    config: dict[str, Any] = Field(default_factory=dict)
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
 
 
-class PluginStatus(BaseModel):
-    name: str
-    configured: bool
-    actions: list[str] = Field(default_factory=list)
-    error: Optional[str] = None
+# ── Conversations ────────────────────────────────────────────────
+
+class ConversationCreate(BaseModel):
+    title: Optional[str] = None
+    project_id: Optional[str] = None
 
 
-# ── Research ───────────────────────────────────────────────────
+class ConversationResponse(BaseModel):
+    id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    is_archived: bool = False
+    is_pinned: bool = False
+    is_favorited: bool = False
+    visibility: str = "workspace"
+    message_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationDetail(BaseModel):
+    id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    messages: list["MessageResponse"] = []
+    is_archived: bool = False
+    is_pinned: bool = False
+    is_favorited: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    is_archived: Optional[bool] = None
+    is_pinned: Optional[bool] = None
+    is_favorited: Optional[bool] = None
+    visibility: Optional[str] = None
+
+
+# ── Messages ─────────────────────────────────────────────────────
+
+class MessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    sources: list[dict[str, Any]] = []
+    metadata: dict[str, Any] = {}
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Documents ────────────────────────────────────────────────────
+
+class DocumentResponse(BaseModel):
+    id: str
+    filename: str
+    original_filename: str
+    size_bytes: int
+    mime_type: str
+    language: Optional[str] = None
+    page_count: Optional[int] = None
+    summary: Optional[str] = None
+    auto_tags: list[str] = []
+    is_deleted: bool = False
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DocumentVersionResponse(BaseModel):
+    id: str
+    version_number: int
+    size_bytes: int
+    change_summary: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Research ─────────────────────────────────────────────────────
 
 class ResearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     document_ids: list[str] = Field(default_factory=list)
     conversation_id: Optional[str] = None
+    project_id: Optional[str] = None
     llm_provider: Optional[str] = Field(default=None, description="ollama or openrouter")
     planner_model: Optional[str] = None
     research_model: Optional[str] = None
@@ -162,3 +294,117 @@ class ResearchResponse(BaseModel):
     execution_time: float = 0.0
     plan_reasoning: Optional[str] = None
     agent_metrics: dict[str, Any] = Field(default_factory=dict)
+    cost_estimate: Optional[float] = None
+    token_count: Optional[int] = None
+
+
+# ── Plugin ───────────────────────────────────────────────────────
+
+class PluginConfigRequest(BaseModel):
+    name: str = Field(..., description="Plugin name")
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class PluginStatus(BaseModel):
+    name: str
+    configured: bool
+    actions: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+# ── Notifications ────────────────────────────────────────────────
+
+class NotificationResponse(BaseModel):
+    id: str
+    type: str
+    title: str
+    body: Optional[str] = None
+    data: dict[str, Any] = {}
+    is_read: bool = False
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── API Keys ─────────────────────────────────────────────────────
+
+class APIKeyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    permissions: list[str] = Field(default_factory=list)
+
+
+class APIKeyResponse(BaseModel):
+    id: str
+    name: str
+    key_prefix: str
+    is_active: bool = True
+    last_used_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class APIKeyFullResponse(APIKeyResponse):
+    raw_key: str = ""
+
+
+# ── Audit Log ────────────────────────────────────────────────────
+
+class AuditLogResponse(BaseModel):
+    id: str
+    action: str
+    resource_type: str
+    resource_id: Optional[str] = None
+    details: dict[str, Any] = {}
+    user_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Billing ──────────────────────────────────────────────────────
+
+class BillingUsageResponse(BaseModel):
+    tokens_in: int = 0
+    tokens_out: int = 0
+    storage_bytes: int = 0
+    api_calls: int = 0
+    compute_seconds: float = 0.0
+    estimated_cost: float = 0.0
+    currency: str = "USD"
+
+
+# ── Tags ─────────────────────────────────────────────────────────
+
+class TagCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    color: str = "#6366f1"
+
+
+class TagResponse(BaseModel):
+    id: str
+    name: str
+    color: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Search ───────────────────────────────────────────────────────
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    resource_types: list[str] = Field(default_factory=lambda: ["conversations", "documents", "reports", "messages"])
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class SearchResult(BaseModel):
+    resource_type: str
+    resource_id: str
+    title: str
+    snippet: str
+    score: float
+    created_at: Optional[datetime] = None
+    url: Optional[str] = None
