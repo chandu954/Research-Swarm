@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { parseError, getErrorMessage } from "./errors";
 
 export interface AuthUser {
   id: string;
@@ -38,6 +39,61 @@ function getStoredRefresh(): string | null {
   return localStorage.getItem(REFRESH_KEY);
 }
 
+function setCookie(name: string, value: string, days: number = 7) {
+  if (typeof document === "undefined") return;
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; Secure; SameSite=Lax`;
+}
+
+function removeCookie(name: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; Secure; SameSite=Lax`;
+}
+
+async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(url, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...options.headers },
+  });
+  if (!res.ok) {
+    const parsed = await parseResponseError(res);
+    throw new ApiError(parsed.message, parsed.code, parsed.status);
+  }
+  return res.json();
+}
+
+async function parseResponseError(res: Response): Promise<{ message: string; code?: string; status: number }> {
+  try {
+    const body = await res.json();
+    const detail = body.detail;
+    if (Array.isArray(detail)) {
+      const msgs = detail.map((d: any) => d.msg || d.message || "").filter(Boolean);
+      return { message: msgs.join(". ") || "Please check your input.", status: res.status };
+    }
+    if (typeof detail === "string") {
+      return { message: detail, status: res.status };
+    }
+    if (body.message) return { message: body.message, status: res.status };
+    if (body.error) return { message: body.error, status: res.status };
+  } catch { /* not json */ }
+  try {
+    const text = await res.text();
+    if (text) return { message: text, status: res.status };
+  } catch { /* ignore */ }
+  return { message: `Request failed (${res.status})`, status: res.status };
+}
+
+class ApiError extends Error {
+  code?: string;
+  status?: number;
+  constructor(message: string, code?: string, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(getStoredToken);
@@ -45,8 +101,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setStoredToken = useCallback((t: string | null) => {
     setToken(t);
-    if (t) localStorage.setItem(TOKEN_KEY, t);
-    else localStorage.removeItem(TOKEN_KEY);
+    if (t) {
+      localStorage.setItem(TOKEN_KEY, t);
+      setCookie(TOKEN_KEY, t);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      removeCookie(TOKEN_KEY);
+    }
   }, []);
 
   const fetchUser = useCallback(async () => {
@@ -69,32 +130,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetchUser(); }, [fetchUser]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Login failed");
-    }
-    const data = await res.json();
+    const data = await apiFetch<{ access_token: string; refresh_token: string }>(
+      `${API_URL}/auth/login`,
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      }
+    );
     setStoredToken(data.access_token);
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
     await fetchUser();
   }, [setStoredToken, fetchUser]);
 
   const register = useCallback(async (email: string, password: string, name: string) => {
-    const res = await fetch(`${API_URL}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Registration failed");
-    }
-    const data = await res.json();
+    const data = await apiFetch<{ access_token: string; refresh_token: string }>(
+      `${API_URL}/auth/register`,
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password, name }),
+      }
+    );
     setStoredToken(data.access_token);
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
     await fetchUser();
@@ -138,16 +193,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const rt = getStoredRefresh();
     if (!rt) return;
     try {
-      const res = await fetch(`${API_URL}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: rt }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStoredToken(data.access_token);
-        localStorage.setItem(REFRESH_KEY, data.refresh_token);
-      }
+      const data = await apiFetch<{ access_token: string; refresh_token: string }>(
+        `${API_URL}/auth/refresh`,
+        {
+          method: "POST",
+          body: JSON.stringify({ refresh_token: rt }),
+        }
+      );
+      setStoredToken(data.access_token);
+      localStorage.setItem(REFRESH_KEY, data.refresh_token);
     } catch { /* ignore */ }
   }, [setStoredToken]);
 
@@ -163,3 +217,5 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+export { ApiError, getErrorMessage };
