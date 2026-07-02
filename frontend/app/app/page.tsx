@@ -3,13 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ChevronDown,
-  Command,
-  Menu,
-  Network,
   PanelLeft,
   Sparkles,
-  Wifi,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import AgentLogs from "@/components/AgentLogs";
@@ -18,10 +13,10 @@ import CommandPalette from "@/components/CommandPalette";
 import ExecutionTimeline from "@/components/ExecutionTimeline";
 import MetricsPanel from "@/components/MetricsPanel";
 import PDFUploader from "@/components/PDFUploader";
-import ProviderHealth from "@/components/ProviderHealth";
 import SettingsPanel from "@/components/Settings";
 import Sidebar from "@/components/Sidebar";
 import Sources from "@/components/Sources";
+import Topbar from "@/components/Topbar";
 import { listDocuments, runResearch, subscribeResearchLogs } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
@@ -257,68 +252,21 @@ export default function ResearchWorkspace() {
       </motion.aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="workspace-header">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="icon-button lg:hidden"
-              aria-label="Open navigation"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-            <Link href="/" className="brand-mark h-8 w-8 lg:hidden">
-              <Sparkles className="h-4 w-4" />
-            </Link>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                  Research workspace
-                </h1>
-                <span className="hidden rounded-md border border-violet-400/20 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-violet-300 sm:inline">
-                  BETA
-                </span>
-              </div>
-              <p className="hidden text-[10px] text-[var(--text-muted)] sm:block">
-                Multi-agent research platform
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-2 xl:flex">
-              <span className="tech-badge">
-                <Network className="h-3 w-3 text-violet-400" />
-                LangGraph
-              </span>
-              <ProviderHealth
-                provider={providerSettings.provider}
-                openrouterKey={providerSettings.openrouterKey}
-              />
-            </div>
-            <button
-              onClick={() => setPaletteOpen(true)}
-              className="command-trigger"
-              aria-label="Open command palette"
-            >
-              <Command className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Search</span>
-              <kbd>⌘K</kbd>
-            </button>
-            <button className="profile-button" aria-label="Open profile menu">
-              <span>AS</span>
-              <ChevronDown className="hidden h-3 w-3 text-[var(--text-muted)] sm:block" />
-            </button>
-            <button
-              onClick={() => setWorkflowOpen((open) => !open)}
-              className="icon-button xl:hidden"
-              aria-label="Toggle AI workflow"
-            >
-              <PanelLeft className="h-4 w-4 rotate-180" />
-            </button>
-          </div>
-        </header>
+        <Topbar
+          onToggleSidebar={() => setSidebarOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenPalette={() => setPaletteOpen(true)}
+          provider={providerSettings.provider}
+        />
 
         <div className="relative flex min-h-0 flex-1">
+          <button
+            onClick={() => setWorkflowOpen((open) => !open)}
+            className="fixed bottom-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-[var(--surface)] shadow-lg backdrop-blur-xl xl:hidden"
+            aria-label="Toggle workflow panel"
+          >
+            <PanelLeft className="h-4 w-4 rotate-180 text-[var(--text-secondary)]" />
+          </button>
           <section className="min-w-0 flex-1">
             <Chat
               messages={messages}

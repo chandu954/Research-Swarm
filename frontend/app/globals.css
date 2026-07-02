@@ -585,6 +585,11 @@ html.light {
   color: var(--text-secondary);
 }
 
+.sidebar-nav-item.active {
+  background: rgb(124 58 237 / 0.1);
+  color: var(--text-primary);
+}
+
 .sidebar-count {
   margin-left: auto;
   min-width: 18px;

@@ -1,50 +1,34 @@
 "use client";
 
+import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function ThemeToggle() {
-  const [dark, setDark] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  useEffect(() => {
-    const savedTheme = window.localStorage.getItem("research-swarm-theme");
-    if (savedTheme === "light") setDark(false);
-    setHydrated(true);
-  }, []);
+  if (!mounted) return <div className="h-8 w-8" />;
 
-  useEffect(() => {
-    if (!hydrated) return;
-    const root = document.documentElement;
-    if (dark) {
-      root.classList.add("dark");
-      root.classList.remove("light");
-    } else {
-      root.classList.add("light");
-      root.classList.remove("dark");
-    }
-    window.localStorage.setItem("research-swarm-theme", dark ? "dark" : "light");
-  }, [dark, hydrated]);
+  const isDark = theme === "dark";
 
   return (
     <button
-      onClick={() => setDark(!dark)}
-      className="relative w-9 h-9 rounded-xl flex items-center justify-center
-                 text-text-muted hover:text-text-primary hover:bg-surface-hover
-                 transition-all duration-200"
-      aria-label="Toggle theme"
-      aria-pressed={!dark}
+      type="button"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      className="icon-button h-8 w-8"
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
     >
-      <motion.div
-        key={dark ? "moon" : "sun"}
-        initial={{ rotate: -90, opacity: 0 }}
-        animate={{ rotate: 0, opacity: 1 }}
-        exit={{ rotate: 90, opacity: 0 }}
+      <motion.span
+        key={isDark ? "dark" : "light"}
+        initial={{ opacity: 0, rotate: -90, scale: 0.5 }}
+        animate={{ opacity: 1, rotate: 0, scale: 1 }}
         transition={{ duration: 0.2 }}
       >
-        {dark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-      </motion.div>
+        {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+      </motion.span>
     </button>
   );
 }
