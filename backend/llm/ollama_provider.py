@@ -20,16 +20,12 @@ class OllamaProvider(LLMProvider):
         system_prompt: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> str:
-        raw = ""
-        for chunk in self.client.generate(
+        return self.client.generate(
             model=model,
             prompt=prompt,
             system_prompt=system_prompt,
             options=options,
-        ):
-            if "response" in chunk:
-                raw += chunk["response"]
-        return raw.strip()
+        )
 
     def create_embedding(self, model: str, text: str) -> list[float]:
         return self.client.create_embedding(model=model, text=text)

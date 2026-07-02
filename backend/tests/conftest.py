@@ -75,7 +75,7 @@ def event_loop():
 def mock_ollama_generate():
     """Mock Ollama generate to return controlled responses."""
     with patch("backend.models.ollama.OllamaClient.generate") as mock:
-        mock.return_value = [{"response": '{"test": "response"}'}]
+        mock.return_value = '{"test": "response"}'
         yield mock
 
 

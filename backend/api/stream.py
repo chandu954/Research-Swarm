@@ -65,13 +65,18 @@ class StreamManager:
         return self._queues[task_id]
 
     def push_log(self, task_id: str, log: Dict[str, Any]) -> None:
-        """Push a log entry to a task's stream."""
+        """Push a log entry to a task's stream. Thread-safe."""
         queue = self._queues.get(task_id)
-        if queue:
-            try:
+        if not queue:
+            return
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(queue.put_nowait, log)
+            else:
                 queue.put_nowait(log)
-            except asyncio.QueueFull:
-                logger.warning(f"Stream queue full for {task_id}, dropping log")
+        except asyncio.QueueFull:
+            logger.warning(f"Stream queue full for {task_id}, dropping log")
 
     def close_stream(self, task_id: str) -> None:
         """Close and remove a stream."""

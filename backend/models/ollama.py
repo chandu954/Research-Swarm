@@ -1,7 +1,6 @@
 """Ollama client for connecting to local models."""
-import asyncio
 import json
-from typing import Dict, Any, Optional, Iterator
+from typing import Dict, Any, Optional
 import httpx
 from loguru import logger
 
@@ -20,20 +19,24 @@ class OllamaClient:
 
     def __init__(self, config: Optional[OllamaConfig] = None):
         self.config = config or OllamaConfig()
-        self.client = httpx.Client(base_url=self.config.base_url, timeout=self.config.timeout)
+        self._client: httpx.Client | None = None
         self.models_cache: Optional[list] = None
 
-    def __enter__(self):
-        return self
+    @property
+    def client(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(base_url=self.config.base_url, timeout=self.config.timeout)
+        return self._client
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.client.close()
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
 
-    async def list_models(self) -> list[Dict[str, Any]]:
+    def list_models(self) -> list[Dict[str, Any]]:
         """List available models from Ollama."""
         if self.models_cache:
             return self.models_cache
-
         try:
             response = self.client.get("/api/tags")
             response.raise_for_status()
@@ -44,26 +47,7 @@ class OllamaClient:
             logger.error(f"Failed to list Ollama models: {e}")
             return []
 
-    async def pull_model(self, model_name: str) -> Iterator[Dict[str, Any]]:
-        """Pull a model from Ollama."""
-        try:
-            response = self.client.post(
-                "/api/pull", 
-                json={"name": model_name}, 
-                stream=True
-            )
-            response.raise_for_status()
-
-            for line in response.iter_lines():
-                if line.strip():
-                    try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError:
-                        pass
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to pull model {model_name}: {e}")
-
-    async def generate(
+    def generate(
         self,
         model: str,
         prompt: str,
@@ -71,9 +55,9 @@ class OllamaClient:
         stream: bool = False,
         options: Optional[Dict[str, Any]] = None,
         context: Optional[list] = None,
-    ) -> Iterator[Dict[str, Any]]:
-        """Generate text using a model."""
-        payload = {"model": model, "prompt": prompt, "stream": stream}
+    ) -> str:
+        """Generate text using a model. Returns the full response string."""
+        payload: dict = {"model": model, "prompt": prompt, "stream": False}
         if system_prompt:
             payload["system"] = system_prompt
         if options:
@@ -82,19 +66,15 @@ class OllamaClient:
             payload["context"] = context
 
         try:
-            response = self.client.post("/api/generate", json=payload, stream=True)
+            response = self.client.post("/api/generate", json=payload)
             response.raise_for_status()
-
-            for line in response.iter_lines():
-                if line.strip():
-                    try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError:
-                        pass
+            data = response.json()
+            return data.get("response", "").strip()
         except httpx.HTTPError as e:
             logger.error(f"Failed to generate with model {model}: {e}")
+            return ""
 
-    async def create_embedding(
+    def create_embedding(
         self, model: str, text: str, truncate: bool = True
     ) -> list[float]:
         """Create embeddings for text."""

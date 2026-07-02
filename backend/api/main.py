@@ -236,14 +236,29 @@ async def research_stream(
             graph = app.state.graph
             await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
             stream_mgr.push_log(task_id, make_log("system", "complete", "completed", "Execution finished"))
+        except asyncio.CancelledError:
+            logger.info(f"Research stream {task_id} cancelled by client disconnect")
+            stream_mgr.push_log(task_id, make_log("system", "cancelled", "failed", "Client disconnected"))
         except Exception as e:
             stream_mgr.push_log(task_id, make_log("system", "error", "failed", str(e)))
         finally:
             stream_mgr.close_stream(task_id)
 
-    asyncio.ensure_future(run_and_stream())
+    async def stream_with_cleanup():
+        task = asyncio.create_task(run_and_stream())
+        try:
+            async for event in event_stream(task_id, log_queue):
+                yield event
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.sleep(0)
+
     return StreamingResponse(
-        event_stream(task_id, log_queue),
+        stream_with_cleanup(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
