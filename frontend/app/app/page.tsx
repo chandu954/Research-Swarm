@@ -18,6 +18,7 @@ import Sidebar from "@/components/Sidebar";
 import Sources from "@/components/Sources";
 import Topbar from "@/components/Topbar";
 import KnowledgeGraph from "@/components/KnowledgeGraph";
+import ReportGenerator from "@/components/ReportGenerator";
 import { listDocuments, runResearch, subscribeResearchLogs } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
@@ -211,6 +212,11 @@ export default function ResearchWorkspace() {
     [messages],
   );
 
+  const query = useMemo(
+    () => messages.find((m) => m.role === "user")?.content || "",
+    [messages],
+  );
+
   const lastAnswer = useMemo(
     () => [...messages].reverse().find((m) => m.role === "assistant" && m.content !== "Thinking..." && m.content !== "...")?.content || "",
     [messages],
@@ -283,6 +289,9 @@ export default function ResearchWorkspace() {
               streamLogs={logs}
               elapsed={elapsed}
             />
+            <div className="mx-auto w-full max-w-4xl px-5 pb-2 sm:px-8">
+              <ReportGenerator query={query} messages={messages} sources={sources} />
+            </div>
           </section>
 
           {workflowOpen && (
