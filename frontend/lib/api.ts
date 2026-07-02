@@ -190,6 +190,13 @@ export async function listConversations() {
   return request<{ conversations: any[] }>("/conversations");
 }
 
+export async function extractEntities(text: string) {
+  return request<{ entities: any[]; relationships: any[] }>("/research/extract-entities", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
 export async function healthCheck() {
   return request<{ status: string; version: string; uptime: number }>("/health");
 }

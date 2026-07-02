@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Clock3,
   FileText,
   FolderOpen,
   History,
   Plus,
+  Search,
   Settings2,
   Sparkles,
   Star,
@@ -13,8 +15,10 @@ import {
   Bookmark,
   LayoutTemplate,
   Layers,
+  MessageSquare,
 } from "lucide-react";
 import type { UploadedDocument } from "@/lib/types";
+import { listConversations } from "@/lib/api";
 import ThemeToggle from "./ThemeToggle";
 import Link from "next/link";
 
@@ -26,6 +30,13 @@ interface SidebarProps {
   onNewChat: () => void;
   onOpenDocuments?: () => void;
   onOpenSettings?: () => void;
+}
+
+interface Conversation {
+  id: string;
+  query?: string;
+  timestamp?: string;
+  turn_count?: number;
 }
 
 const navItems = [
@@ -44,7 +55,43 @@ export default function Sidebar({
   onOpenDocuments,
   onOpenSettings,
 }: SidebarProps) {
-  const conversations = recentQueries.length > 0 ? recentQueries : [];
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    listConversations()
+      .then((data) => {
+        const convs = (data.conversations || []).map((c: any) => ({
+          id: c.id || c.conversation_id || "",
+          query: c.query || c.metadata?.query || "",
+          timestamp: c.timestamp || c.created_at || "",
+          turn_count: c.turn_count || 0,
+        }));
+        setConversations(convs);
+      })
+      .catch(() => {
+        /* fall back to local queries */
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const displayConversations =
+    conversations.length > 0
+      ? conversations
+      : recentQueries.map((q, i) => ({
+          id: `local-${i}`,
+          query: q,
+          timestamp: "",
+          turn_count: 0,
+        }));
+
+  const filtered = searchQuery
+    ? displayConversations.filter((c) =>
+        (c.query || "").toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : displayConversations;
 
   return (
     <div className="flex h-full flex-col p-3">
@@ -125,38 +172,61 @@ export default function Sidebar({
       <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-1">
         <div className="mb-2 flex items-center justify-between px-2">
           <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-            Recent conversations
+            Memory browser
           </p>
-          <Clock3 className="h-3 w-3 text-[var(--text-muted)]" />
+          <MessageSquare className="h-3 w-3 text-[var(--text-muted)]" />
+        </div>
+
+        <div className="relative mb-2 px-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-muted)]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search conversations..."
+            className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-1.5 pl-7 pr-2 text-[10px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-violet-400/30"
+          />
         </div>
 
         <div className="space-y-0.5">
-          {conversations.length === 0 ? (
+          {loading ? (
             <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">
-              No conversations yet. Start a new research.
+              Loading conversations...
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">
+              {searchQuery
+                ? "No matching conversations"
+                : "No conversations yet. Start a new research."}
             </p>
           ) : (
-            conversations.map((query, index) => (
+            filtered.map((conv) => (
               <button
                 type="button"
-                key={`${query}-${index}`}
-                className="conversation-item group"
-                title={query}
+                key={conv.id}
+                className="conversation-item group w-full text-left"
+                title={conv.query}
               >
-                <span
-                  className={`conversation-dot ${
-                    index === 0 ? "bg-violet-400" : "bg-white/15"
-                  }`}
-                />
-                <span className="truncate">{query}</span>
+                <span className="conversation-dot bg-white/15" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+                    {conv.query || "Untitled"}
+                  </span>
+                  {conv.timestamp && (
+                    <span className="block text-[8px] text-[var(--text-muted)]">
+                      {new Date(conv.timestamp).toLocaleDateString()}
+                      {conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
+                    </span>
+                  )}
+                </span>
               </button>
             ))
           )}
         </div>
 
         {documents.length > 0 && (
-          <>
-            <div className="mb-2 mt-7 px-2">
+          <div className="mt-6">
+            <div className="mb-2 px-2">
               <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
                 Recent documents
               </p>
@@ -173,7 +243,7 @@ export default function Sidebar({
                 </button>
               ))}
             </div>
-          </>
+          </div>
         )}
       </div>
 

@@ -15,6 +15,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from backend.agents.graph import create_research_graph
+from backend.agents.entity_extractor import extract_entities
 from backend.agents.memory import get_memory
 from backend.api.stream import get_stream_manager, make_log, event_stream
 from backend.api.auth import router as auth_router
@@ -237,6 +238,24 @@ async def research_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+
+class ExtractEntitiesRequest(BaseModel):
+    text: str = Field(..., min_length=20, description="Research text to extract entities from")
+    llm_provider: Optional[str] = Field(None, description="Provider override (ollama, openrouter)")
+    model: Optional[str] = Field(None, description="Model override for extraction")
+
+
+@app.post("/research/extract-entities")
+async def research_extract_entities(request: ExtractEntitiesRequest):
+    """Extract entities and relationships from research text for knowledge graph enrichment."""
+    _ensure_app_state()
+    result = await extract_entities(
+        text=request.text,
+        llm_provider=request.llm_provider,
+        model=request.model,
+    )
+    return result
 
 
 @app.post("/upload")

@@ -19,6 +19,7 @@ import Sources from "@/components/Sources";
 import Topbar from "@/components/Topbar";
 import KnowledgeGraph from "@/components/KnowledgeGraph";
 import ReportGenerator from "@/components/ReportGenerator";
+import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import { listDocuments, runResearch, subscribeResearchLogs } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
@@ -318,6 +319,13 @@ export default function ResearchWorkspace() {
                 executionTime={executionTime}
                 sourceCount={sources.length}
                 documentCount={selectedDocs.length}
+              />
+              <AnalyticsDashboard
+                agentMetrics={agentMetrics}
+                logs={logs}
+                executionTime={executionTime}
+                sourceCount={sources.length}
+                isRunning={isRunning}
               />
               <PDFUploader
                 documents={documents}

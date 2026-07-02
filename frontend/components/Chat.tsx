@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import type { AgentLog, Message, UploadedDocument } from "@/lib/types";
 import AgentThinkingPanel from "./AgentThinkingPanel";
 import StreamingText from "./StreamingText";
+import FollowUpSuggestions from "./FollowUpSuggestions";
 
 interface ChatProps {
   messages: Message[];
@@ -402,6 +403,17 @@ export default function Chat({
                 elapsed={elapsed}
               />
             )}
+            {!isRunning && (() => {
+              const lastMsg = [...messages].reverse().find(
+                (m) => m.role === "assistant" && m.content !== "Thinking..." && m.content !== "..."
+              );
+              return lastMsg ? (
+                <FollowUpSuggestions
+                  answer={lastMsg.content}
+                  onSelect={onSend}
+                />
+              ) : null;
+            })()}
             <div ref={endRef} />
           </section>
         )}
