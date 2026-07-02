@@ -19,8 +19,10 @@ import ThemeToggle from "./ThemeToggle";
 
 interface SidebarProps {
   documents: UploadedDocument[];
+  recentQueries?: string[];
   onClearAll: () => void;
   onNewChat: () => void;
+  onOpenDocuments?: () => void;
   onOpenSettings?: () => void;
 }
 

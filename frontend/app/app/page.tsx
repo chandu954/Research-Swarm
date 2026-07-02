@@ -233,8 +233,10 @@ export default function ResearchWorkspace() {
       >
         <Sidebar
           documents={documents}
+          recentQueries={recentQueries}
           onClearAll={handleClearAll}
           onNewChat={handleNewChat}
+          onOpenDocuments={openDocumentPicker}
           onOpenSettings={() => setSettingsOpen(true)}
         />
       </motion.aside>
