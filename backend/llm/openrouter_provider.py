@@ -1,5 +1,4 @@
 from __future__ import annotations
-import os
 import json
 from typing import Dict, Any, Optional
 from urllib.request import Request, urlopen
@@ -7,6 +6,7 @@ from urllib.error import URLError
 from loguru import logger
 
 from backend.llm.base import LLMProvider
+from backend.llm.context import get_openrouter_key
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -14,9 +14,9 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 class OpenRouterProvider(LLMProvider):
     def __init__(self):
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.api_key = get_openrouter_key()
         if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY environment variable not set")
+            raise ValueError("OPENROUTER_API_KEY not set")
 
     def generate(
         self,

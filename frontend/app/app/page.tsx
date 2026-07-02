@@ -20,6 +20,7 @@ import Topbar from "@/components/Topbar";
 import KnowledgeGraph from "@/components/KnowledgeGraph";
 import ReportGenerator from "@/components/ReportGenerator";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
+import SourceInspector from "@/components/SourceInspector";
 import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
@@ -48,6 +49,7 @@ export default function ResearchWorkspace() {
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [inspectedSource, setInspectedSource] = useState<SourceCitation | null>(null);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
 
   useEffect(() => {
@@ -354,7 +356,7 @@ export default function ResearchWorkspace() {
                 onSelectionChange={setSelectedDocs}
               />
               <AgentLogs logs={logs} plan={plan} isRunning={isRunning} />
-              <Sources sources={sources} />
+              <Sources sources={sources} onInspect={setInspectedSource} />
               {lastAnswer && (
                 <KnowledgeGraph answer={lastAnswer} sources={sources} />
               )}
@@ -369,6 +371,8 @@ export default function ResearchWorkspace() {
         settings={providerSettings}
         onSettingsChange={(s) => setProviderSettings(s)}
       />
+
+      <SourceInspector source={inspectedSource} onClose={() => setInspectedSource(null)} />
 
       <CommandPalette
         open={paletteOpen}

@@ -11,6 +11,8 @@ import {
   ChevronDown,
   ChevronRight,
   BrainCircuit,
+  ExternalLink,
+  GitBranch,
 } from "lucide-react";
 import type { AgentLog } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -20,6 +22,8 @@ import {
   colorStyles,
   bgStyles,
 } from "@/lib/agents";
+import AgentInspector from "./AgentInspector";
+import AgentDAG from "./AgentDAG";
 
 interface AgentThinkingPanelProps {
   logs: AgentLog[];
@@ -43,8 +47,9 @@ function ThinkingDots() {
 }
 
 export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentThinkingPanelProps) {
-  const [viewMode, setViewMode] = useState<"cards" | "timeline">("cards");
+  const [viewMode, setViewMode] = useState<"cards" | "timeline" | "graph">("cards");
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [inspectedAgent, setInspectedAgent] = useState<string | null>(null);
 
   const activeAgents = AGENT_ORDER.filter((key) => {
     const agentLogs = logs.filter((l) => l.agent === key);
@@ -104,6 +109,7 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
   if (!isRunning && completedCount === 0) return null;
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -147,6 +153,12 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
                 className={cn("rounded p-0.5 transition-colors", viewMode === "timeline" ? "text-[var(--text-secondary)] bg-white/[0.06]" : "hover:text-[var(--text-secondary)]")}
               >
                 <List className="h-3 w-3" />
+              </button>
+              <button
+                onClick={() => setViewMode("graph")}
+                className={cn("rounded p-0.5 transition-colors", viewMode === "graph" ? "text-[var(--text-secondary)] bg-white/[0.06]" : "hover:text-[var(--text-secondary)]")}
+              >
+                <GitBranch className="h-3 w-3" />
               </button>
             </span>
           </span>
@@ -234,6 +246,14 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
                     </div>
 
                     <button
+                      type="button"
+                      onClick={() => setInspectedAgent(key)}
+                      className="flex-shrink-0 rounded p-0.5 text-[var(--text-muted)] opacity-0 transition-all hover:bg-white/[0.06] hover:text-[var(--text-secondary)] group-hover:opacity-100"
+                      aria-label={`Inspect ${AGENT_MAP[key]?.label || key}`}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
+                    <button
                       onClick={() => setExpandedAgent(expandedAgent === key ? null : key)}
                       className="flex-shrink-0 rounded p-0.5 text-[var(--text-muted)] hover:bg-white/[0.06] hover:text-[var(--text-secondary)]"
                     >
@@ -269,7 +289,7 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
             })}
           </AnimatePresence>
         </div>
-      ) : (
+      ) : viewMode === "timeline" ? (
         <div className="px-3 pb-3">
           <div className="relative ml-1 space-y-0 border-l border-white/[0.06] pl-4">
             {logs.slice(-20).map((log, i) => (
@@ -307,7 +327,18 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
             ))}
           </div>
         </div>
+      ) : (
+        <div className="px-3 pb-3">
+          <AgentDAG logs={logs} isRunning={isRunning} onInspect={setInspectedAgent} />
+        </div>
       )}
     </motion.div>
+      <AgentInspector
+        agentKey={inspectedAgent}
+        logs={logs}
+        metrics={undefined}
+        onClose={() => setInspectedAgent(null)}
+      />
+    </>
   );
 }

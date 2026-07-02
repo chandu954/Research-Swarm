@@ -8,9 +8,12 @@ from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -70,12 +73,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+cors_origins = os.getenv("CORS_ORIGINS", "https://research-swarm-omega.vercel.app").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
 app.include_router(auth_router)
@@ -93,6 +101,7 @@ async def health_check():
     }
 
 
+@limiter.limit("10/minute")
 @app.post("/research", response_model=ResearchResponse)
 async def run_research(
     request: ResearchRequest,
@@ -258,6 +267,7 @@ async def research_extract_entities(request: ExtractEntitiesRequest):
     return result
 
 
+@limiter.limit("30/minute")
 @app.post("/upload")
 async def upload_pdf(
     file: UploadFile = File(...),

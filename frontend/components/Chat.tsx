@@ -28,6 +28,7 @@ import type { AgentLog, Message, UploadedDocument } from "@/lib/types";
 import AgentThinkingPanel from "./AgentThinkingPanel";
 import StreamingText from "./StreamingText";
 import FollowUpSuggestions from "./FollowUpSuggestions";
+import ConfidenceRenderer from "./ConfidenceRenderer";
 
 interface ChatProps {
   messages: Message[];
@@ -185,30 +186,7 @@ function ChatMessage({ message, isLatest }: { message: Message; isLatest: boolea
             />
           ) : (
             <div className="prose-custom prose-sm">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  pre: ({ children }) => (
-                    <div className="relative">
-                      <pre className="overflow-x-auto">{children}</pre>
-                    </div>
-                  ),
-                  code: ({ className, children, ...props }) => {
-                    const isInline = !className;
-                    return isInline ? (
-                      <code className="rounded bg-white/[0.06] px-1 py-0.5 text-sm text-cyan-300">
-                        {children}
-                      </code>
-                    ) : (
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    );
-                  },
-                }}
-              >
-                {message.content}
-              </ReactMarkdown>
+              <ConfidenceRenderer content={message.content} />
             </div>
           )}
         </div>

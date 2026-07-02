@@ -14,8 +14,8 @@ from backend.agents.planner import Planner
 from backend.agents.research_agent import WebResearchAgent
 from backend.agents.document_agent import DocumentAgent
 from backend.agents.answer_agent import AnswerAgent, AnswerRequest
-from backend.tools.registry import get_registry
 from backend.llm.factory import resolve_model, apply_provider_overrides, restore_provider_overrides
+from backend.llm.context import ProviderOverrides
 from backend.api.stream import get_stream_manager
 
 
@@ -45,7 +45,7 @@ class AgentState(TypedDict):
     stream_task_id: Optional[str]
 
 
-def _apply_state_overrides(state: AgentState) -> dict:
+def _apply_state_overrides(state: AgentState) -> ProviderOverrides:
     return apply_provider_overrides(
         llm_provider=state.get("llm_provider"),
         planner_model=state.get("planner_model"),

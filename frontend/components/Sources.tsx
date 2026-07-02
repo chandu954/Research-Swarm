@@ -17,6 +17,7 @@ import { getTrustScore, authorityStars, getConfidence, getHallucinationRisk } fr
 
 interface SourcesProps {
   sources: SourceCitation[];
+  onInspect?: (source: SourceCitation) => void;
 }
 
 function TrustBadge({ score }: { score: ReturnType<typeof getTrustScore> }) {
@@ -53,7 +54,7 @@ function TrustBadge({ score }: { score: ReturnType<typeof getTrustScore> }) {
   );
 }
 
-export default function Sources({ sources }: SourcesProps) {
+export default function Sources({ sources, onInspect }: SourcesProps) {
   const webSources = sources.filter((source) => source.source_type === "web");
   const documentSources = sources.filter(
     (source) => source.source_type === "document",
@@ -107,14 +108,12 @@ export default function Sources({ sources }: SourcesProps) {
             {webSources.map((source) => {
               const score = getTrustScore(source.url, source.title);
               return (
-                <motion.a
+                <motion.div
                   key={`web-${source.url || source.title}`}
-                  href={source.url}
-                  target="_blank"
-                  rel="noreferrer"
                   initial={{ opacity: 0, x: -6 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="group flex items-start gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--surface-hover)]"
+                  className="group flex cursor-pointer items-start gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--surface-hover)]"
+                  onClick={() => onInspect?.(source)}
                 >
                   <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
                     <Globe2 className="h-3.5 w-3.5" />
@@ -134,7 +133,7 @@ export default function Sources({ sources }: SourcesProps) {
                     <TrustBadge score={score} />
                   </span>
                   <ExternalLink className="mt-1 h-3 w-3 flex-shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
-                </motion.a>
+                </motion.div>
               );
             })}
 
@@ -145,7 +144,8 @@ export default function Sources({ sources }: SourcesProps) {
                   key={`document-${source.title}-${source.relevance || ""}`}
                   initial={{ opacity: 0, x: -6 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="flex items-start gap-2.5 rounded-lg p-2"
+                  className="flex cursor-pointer items-start gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--surface-hover)]"
+                  onClick={() => onInspect?.(source)}
                 >
                   <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
                     <FileText className="h-3.5 w-3.5" />

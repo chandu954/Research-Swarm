@@ -42,6 +42,7 @@ PyMuPDF==1.25.2
 duckduckgo_search==8.1.1
 
 # HTTP Client
+slowapi==0.1.9
 httpx==0.28.1
 
 # Logging
