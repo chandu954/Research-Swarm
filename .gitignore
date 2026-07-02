@@ -1,0 +1,35 @@
+# Secrets
+backend/.env
+frontend/.env.local
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+env311/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+
+# Data
+data/
+backend/data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/

@@ -1,0 +1,46 @@
+[build]
+  builder = "DOCKERFILE"
+  dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+  restartPolicyType = "ON_FAILURE"
+  restartPolicyMaxRetries = 3
+
+[service]
+  port = 8000
+
+[[env]]
+  name = "LLM_PROVIDER"
+  value = "openrouter"
+
+[[env]]
+  name = "PLANNER_MODEL"
+  value = "qwen/qwen3-32b"
+
+[[env]]
+  name = "RESEARCH_MODEL"
+  value = "google/gemini-2.5-flash"
+
+[[env]]
+  name = "DOCUMENT_MODEL"
+  value = "qwen/qwen3-32b"
+
+[[env]]
+  name = "ANSWER_MODEL"
+  value = "mistralai/mistral-small-3.2-24b-instruct"
+
+[[env]]
+  name = "CORS_ORIGINS"
+  value = "https://research-swarm-frontend.vercel.app"
+
+[[env]]
+  name = "LOG_LEVEL"
+  value = "INFO"
+
+[[env]]
+  name = "JWT_SECRET_KEY"
+  value = "change-me-in-production"
+
+[[volumes]]
+  name = "backend_data"
+  mount = "/data"

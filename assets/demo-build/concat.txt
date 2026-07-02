@@ -1,0 +1,8 @@
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-problem.mp4'
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-hook.mp4'
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-architecture.mp4'
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-live-research.mp4'
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-settings.mp4'
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-code.mp4'
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-highlights.mp4'
+file '/Users/apple/Desktop/ai swam/research-swarm/assets/demo-build/seg-cta.mp4'

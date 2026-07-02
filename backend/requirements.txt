@@ -1,0 +1,59 @@
+# ResearchSwarm AI - Python Dependencies
+# Core
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-multipart==0.0.20
+python-dotenv==1.0.1
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Auth
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+authlib==1.4.1
+email-validator==2.2.0
+
+# LangChain & LangGraph
+langchain==0.3.16
+langchain-community==0.3.16
+langgraph==0.2.66
+langchain-core==0.3.33
+
+# AI Models (Ollama + OpenRouter)
+ollama==0.4.7
+openai>=1.0.0
+
+# SQLite async DB support
+aiosqlite==0.18.0
+
+# Embeddings
+ 
+# Vector Database
+chromadb==0.5.20
+
+PyMuPDF==1.25.2
+
+# Web Search
+duckduckgo_search==8.1.1
+
+# HTTP Client
+httpx==0.28.1
+
+# Logging
+loguru==0.7.3
+transformers==4.48.0
+
+# Development
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-cov==6.0.0
+httpx-ws==0.5.0
+black==24.10.0
+ruff==0.8.6
+mypy==1.14.1
+pre-commit==4.1.0

@@ -1,0 +1,60 @@
+{
+  "title": "ResearchSwarm AI — Product Demo v2",
+  "voice": "Daniel",
+  "rate": 182,
+  "scenes": [
+    {
+      "id": "problem",
+      "type": "slide",
+      "slide": "problem",
+      "maxDuration": 15,
+      "narration": "Traditional chatbots answer one question at a time. ResearchSwarm is different. It plans your research, searches the web, analyzes documents, and synthesizes cited answers — using multiple specialized AI agents working together."
+    },
+    {
+      "id": "hook",
+      "type": "ui",
+      "maxDuration": 13,
+      "narration": "I'm Ashish. This is ResearchSwarm AI — a production-style multi-agent research platform built with LangGraph, FastAPI, PostgreSQL, and OpenRouter."
+    },
+    {
+      "id": "architecture",
+      "type": "slide",
+      "slide": "architecture",
+      "maxDuration": 20,
+      "narration": "Here's how it works. Your query hits a Planner agent. Research and Document agents run in parallel — one searches the web, the other retrieves PDF evidence. Their results merge, and an Answer agent produces a cited response. All orchestrated by LangGraph."
+    },
+    {
+      "id": "live-research",
+      "type": "ui",
+      "maxDuration": 58,
+      "narration": "Let's research LangGraph — its architecture, StateGraph design, advantages, and how it compares to LangChain. Watch the workflow panel. The Planner creates an execution plan. Web Research searches live sources. You see each agent update in real time — status, latency, and model routing. Finally, the Answer agent synthesizes a structured report with citations."
+    },
+    {
+      "id": "settings",
+      "type": "ui",
+      "maxDuration": 18,
+      "narration": "The platform supports multiple LLM providers through a common interface. Switch from Ollama for local inference, to OpenRouter for cloud models. Each agent can use a different model — Planner on Qwen, Research on Gemini, Answer on DeepSeek."
+    },
+    {
+      "id": "code",
+      "type": "slide",
+      "slide": "code",
+      "maxDuration": 14,
+      "narration": "Under the hood — agents, LLM providers, LangGraph workflow, tools, comprehensive tests, and Docker deployment. This is a real engineering project, not just a polished interface."
+    },
+    {
+      "id": "highlights",
+      "type": "slide",
+      "slide": "highlights",
+      "maxDuration": 18,
+      "narration": "LangGraph orchestration. Multi-agent architecture. RAG with ChromaDB. OpenRouter and Ollama. JWT authentication. PostgreSQL. Docker. CI/CD. Over sixty unit tests. FastAPI and Next.js."
+    },
+    {
+      "id": "cta",
+      "type": "slide",
+      "slide": "cta",
+      "maxDuration": 14,
+      "narration": "ResearchSwarm AI — production-style multi-agent research with provider-agnostic LLM support. Explore the GitHub repo, live demo, and documentation. Thank you for watching."
+    }
+  ]
+}

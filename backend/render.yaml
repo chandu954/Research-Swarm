@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: researchswarm-api
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: researchswarm-db
+          property: connectionString
+      - key: OLLAMA_BASE_URL
+        value: http://ollama:11434
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://researchswarm.vercel.app
+      - key: LOG_LEVEL
+        value: INFO
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: "8000"
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 5
+
+databases:
+  - name: researchswarm-db
+    plan: starter
+    databaseName: research_swarm
+    user: swarm
