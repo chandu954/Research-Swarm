@@ -10,7 +10,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { AgentLog, AgentMetric } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, formatMs } from "@/lib/utils";
 import { AGENT_MAP } from "@/lib/agents";
 
 interface ExecutionTimelineProps {
@@ -25,18 +25,6 @@ const agentDetails: Record<string, string> = {
   document_agent: "Retrieve relevant chunks",
   answer_agent: "Connect evidence and cite",
 };
-
-const agentKeyToModelKey: Record<string, string> = {
-  planner: "planner",
-  research_agent: "research_agent",
-  document_agent: "document_agent",
-  answer_agent: "answer_agent",
-};
-
-function formatDuration(milliseconds: number): string {
-  if (milliseconds < 1000) return `${Math.round(milliseconds)}ms`;
-  return `${(milliseconds / 1000).toFixed(1)}s`;
-}
 
 function ModelBadge({ name }: { name?: string }) {
   if (!name) return null;
@@ -127,7 +115,7 @@ function AgentStep({
           <div className="flex flex-shrink-0 items-center gap-1.5">
             {metrics?.latency_ms !== undefined && (
               <span className="latency-badge">
-                {formatDuration(metrics.latency_ms)}
+                {formatMs(metrics.latency_ms)}
               </span>
             )}
             <span

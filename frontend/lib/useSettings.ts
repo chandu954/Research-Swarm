@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 
 export interface ProviderSettings {
   provider: "ollama" | "openrouter";
@@ -50,10 +50,6 @@ function saveToStorage(settings: ProviderSettings): void {
 
 export function useProviderSettings() {
   const [settings, setSettings] = useState<ProviderSettings>(loadFromStorage);
-
-  useEffect(() => {
-    saveToStorage(settings);
-  }, [settings]);
 
   const update = useCallback((partial: Partial<ProviderSettings>) => {
     setSettings((prev) => {

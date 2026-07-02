@@ -242,7 +242,6 @@ export default function Chat({
   composerRef,
 }: ChatProps) {
   const [input, setInput] = useState("");
-  const [researchMode, setResearchMode] = useState<"fast" | "deep">("deep");
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = composerRef || useRef<HTMLTextAreaElement>(null);
 
@@ -435,25 +434,6 @@ export default function Chat({
                 <Globe2 className="h-3.5 w-3.5 text-cyan-400" />
                 Web
               </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setResearchMode((mode) => (mode === "deep" ? "fast" : "deep"))
-                }
-                className="composer-tool"
-                aria-label={`Switch to ${
-                  researchMode === "deep" ? "fast" : "deep"
-                } research`}
-              >
-                {researchMode === "deep" ? (
-                  <BrainCircuit className="h-3.5 w-3.5 text-violet-400" />
-                ) : (
-                  <Zap className="h-3.5 w-3.5 text-amber-400" />
-                )}
-                <span className="hidden sm:inline">
-                  {researchMode === "deep" ? "Deep research" : "Fast"}
-                </span>
-              </button>
             </div>
 
             <div className="flex items-center gap-2">

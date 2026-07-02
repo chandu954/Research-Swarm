@@ -72,7 +72,8 @@ export default function AnalyticsDashboard({
 
     const agentBreakdown = Object.entries(agentMetrics).map(([name, m]) => ({
       name,
-      latency: m.latency_ms ? `${(m.latency_ms / 1000).toFixed(1)}s` : "-",
+      displayLatency: m.latency_ms ? `${(m.latency_ms / 1000).toFixed(1)}s` : "-",
+      latencyMs: m.latency_ms ?? 0,
       model: m.model || "unknown",
       sourceCount: m.source_count ?? m.result_count ?? 0,
       status: m.status || "unknown",
@@ -124,14 +125,12 @@ export default function AnalyticsDashboard({
             stats.agentBreakdown.length > 0
               ? (() => {
                   const valid = stats.agentBreakdown.filter(
-                    (a) => a.latency !== "-",
+                    (a) => a.latencyMs > 0,
                   );
                   if (valid.length === 0) return "-";
                   const avg =
-                    valid.reduce((sum, a) => {
-                      return sum + parseFloat(a.latency);
-                    }, 0) / valid.length;
-                  return `${avg.toFixed(1)}s`;
+                    valid.reduce((sum, a) => sum + a.latencyMs, 0) / valid.length;
+                  return `${(avg / 1000).toFixed(1)}s`;
                 })()
               : "-"
           }
@@ -159,8 +158,8 @@ export default function AnalyticsDashboard({
                       initial={{ width: 0 }}
                       animate={{
                         width: `${Math.min(
-                          (parseFloat(agent.latency) /
-                            (executionTime || 1)) *
+                          (agent.latencyMs /
+                            ((executionTime || 1) * 1000)) *
                             100,
                           100,
                         )}%`,
@@ -171,7 +170,7 @@ export default function AnalyticsDashboard({
                   </div>
                 </div>
                 <span className="w-12 text-right tabular-nums text-[var(--text-muted)]">
-                  {agent.latency}
+                  {agent.displayLatency}
                 </span>
                 <span className="w-10 text-right text-[var(--text-muted)]">
                   {agent.sourceCount}s

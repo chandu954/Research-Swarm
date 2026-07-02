@@ -111,63 +111,6 @@ export function subscribeResearchLogs(
   return controller;
 }
 
-export function streamResearch(
-  query: string,
-  documentIds: string[],
-  callbacks: {
-    onLog?: (log: AgentLog) => void;
-    onDone?: () => void;
-    onError?: (err: Error) => void;
-  }
-): AbortController {
-  const controller = new AbortController();
-  const docParam = documentIds.join(",");
-  const url = `${API_URL}/research/stream?query=${encodeURIComponent(query)}&document_ids=${encodeURIComponent(docParam)}`;
-
-  fetch(url, { signal: controller.signal })
-    .then(async (response) => {
-      if (!response.ok || !response.body) {
-        throw new Error(`Stream error (${response.status})`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.agent && data.action) {
-                callbacks.onLog?.(data as AgentLog);
-              }
-            } catch {
-              /* skip non-JSON data */
-            }
-          }
-          if (line.startsWith("event: done")) {
-            callbacks.onDone?.();
-          }
-        }
-      }
-    })
-    .catch((err) => {
-      if (err.name !== "AbortError") {
-        callbacks.onError?.(err);
-      }
-    });
-
-  return controller;
-}
-
 export async function uploadPDF(file: File) {
   const formData = new FormData();
   formData.append("file", file);
@@ -188,13 +131,6 @@ export async function listDocuments() {
 
 export async function listConversations() {
   return request<{ conversations: any[] }>("/conversations");
-}
-
-export async function extractEntities(text: string) {
-  return request<{ entities: any[]; relationships: any[] }>("/research/extract-entities", {
-    method: "POST",
-    body: JSON.stringify({ text }),
-  });
 }
 
 export async function healthCheck() {

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { AgentLog, AgentMetric } from "@/lib/types";
 import { AGENT_MAP, colorStyles } from "@/lib/agents";
-import { cn } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 
 interface AgentInspectorProps {
   agentKey: string | null;
@@ -27,13 +27,7 @@ interface AgentInspectorProps {
   onClose: () => void;
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}m ${s}s`;
-}
+
 
 export default function AgentInspector({ agentKey, logs, metrics, onClose }: AgentInspectorProps) {
   const config = agentKey ? AGENT_MAP[agentKey] : null;

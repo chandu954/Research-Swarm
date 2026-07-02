@@ -102,7 +102,10 @@ export function getConfidence(authority: number, relevance: number): number {
 }
 
 export function getHallucinationRisk(authority: number): number {
-  if (authority >= 80) return Math.round(Math.random() * 5 + 2);
-  if (authority >= 60) return Math.round(Math.random() * 10 + 5);
-  return Math.round(Math.random() * 15 + 10);
+  if (authority >= 90) return 3;
+  if (authority >= 80) return 5;
+  if (authority >= 70) return 8;
+  if (authority >= 60) return 12;
+  if (authority >= 40) return 18;
+  return 25;
 }

@@ -1,22 +1,3 @@
-export interface SearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-  source: string;
-}
-
-export interface DocumentChunk {
-  content: string;
-  metadata: {
-    page_number?: number;
-    chunk_index?: number;
-    source_file?: string;
-    doc_id?: string;
-  };
-  distance?: number;
-  score?: number;
-}
-
 export interface SourceCitation {
   source_type: string;
   title: string;

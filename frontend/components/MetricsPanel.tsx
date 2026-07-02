@@ -2,17 +2,13 @@
 
 import { BarChart3, Database, FileText, Timer } from "lucide-react";
 import type { AgentMetric } from "@/lib/types";
+import { formatExecutionTime } from "@/lib/utils";
 
 interface MetricsPanelProps {
   agentMetrics: Record<string, AgentMetric>;
   executionTime?: number;
   sourceCount: number;
   documentCount: number;
-}
-
-function formatExecutionTime(seconds?: number): string {
-  if (seconds === undefined) return "—";
-  return seconds < 1 ? `${Math.round(seconds * 1000)}ms` : `${seconds.toFixed(1)}s`;
 }
 
 export default function MetricsPanel({
