@@ -17,7 +17,7 @@ services:
       - key: ANSWER_MODEL
         value: mistralai/mistral-small-3.2-24b-instruct
       - key: CORS_ORIGINS
-        value: https://research-swarm-frontend.vercel.app
+        value: https://research-swarm-omega.vercel.app
       - key: LOG_LEVEL
         value: INFO
       - key: JWT_SECRET_KEY
