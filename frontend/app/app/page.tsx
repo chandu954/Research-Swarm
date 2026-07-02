@@ -17,6 +17,7 @@ import SettingsPanel from "@/components/Settings";
 import Sidebar from "@/components/Sidebar";
 import Sources from "@/components/Sources";
 import Topbar from "@/components/Topbar";
+import KnowledgeGraph from "@/components/KnowledgeGraph";
 import { listDocuments, runResearch, subscribeResearchLogs } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
@@ -210,6 +211,11 @@ export default function ResearchWorkspace() {
     [messages],
   );
 
+  const lastAnswer = useMemo(
+    () => [...messages].reverse().find((m) => m.role === "assistant" && m.content !== "Thinking..." && m.content !== "...")?.content || "",
+    [messages],
+  );
+
   const openDocumentPicker = useCallback(() => {
     document.getElementById("pdf-upload")?.click();
     setSidebarOpen(false);
@@ -312,6 +318,9 @@ export default function ResearchWorkspace() {
               />
               <AgentLogs logs={logs} plan={plan} isRunning={isRunning} />
               <Sources sources={sources} />
+              {lastAnswer && (
+                <KnowledgeGraph answer={lastAnswer} sources={sources} />
+              )}
             </div>
           </aside>
         </div>
