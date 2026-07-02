@@ -1,34 +1,36 @@
 services:
   - type: web
-    name: researchswarm-api
+    name: research-swarm-api
     env: docker
     dockerfilePath: ./backend/Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: researchswarm-db
-          property: connectionString
-      - key: OLLAMA_BASE_URL
-        value: http://ollama:11434
-      - key: JWT_SECRET_KEY
-        generateValue: true
+      - key: LLM_PROVIDER
+        value: openrouter
+      - key: PLANNER_MODEL
+        value: qwen/qwen3-32b
+      - key: RESEARCH_MODEL
+        value: google/gemini-2.5-flash
+      - key: DOCUMENT_MODEL
+        value: qwen/qwen3-32b
+      - key: ANSWER_MODEL
+        value: mistralai/mistral-small-3.2-24b-instruct
       - key: CORS_ORIGINS
-        value: https://researchswarm.vercel.app
+        value: https://research-swarm-frontend.vercel.app
       - key: LOG_LEVEL
         value: INFO
-      - key: API_HOST
-        value: 0.0.0.0
-      - key: API_PORT
-        value: "8000"
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 5
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: research-swarm-db
+          property: connectionString
 
 databases:
-  - name: researchswarm-db
-    plan: starter
+  - name: research-swarm-db
+    plan: free
     databaseName: research_swarm
     user: swarm
