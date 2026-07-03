@@ -21,6 +21,7 @@ const friendlyMessages: Record<string, string> = {
   "timeout": "The request timed out. Please try again.",
   "internal server error": "Something went wrong on our end. Please try again.",
   "validation error": "Please check your input and try again.",
+  "organization_required": "We need to set up your workspace before you can start researching.",
 };
 
 function findFriendlyMessage(raw: string): string {
@@ -113,8 +114,9 @@ function parseDetail(detail: unknown, status?: number): ParsedError {
     return { message: findFriendlyMessage(joined), status: status || 422 };
   }
   if (typeof detail === "object" && detail !== null) {
-    const msg = (detail as any).msg || (detail as any).message || JSON.stringify(detail);
-    return { message: findFriendlyMessage(msg), status };
+    const d = detail as Record<string, any>;
+    const msg = d.msg || d.message || JSON.stringify(detail);
+    return { message: findFriendlyMessage(msg), status, code: d.code };
   }
   return { message: "Validation error. Please check your input.", status: 422 };
 }

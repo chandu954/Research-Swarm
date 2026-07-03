@@ -151,9 +151,10 @@ async def resolve_tenant_dependencies(
                 resolved_org_slug = org.slug
 
     if not resolved_org_id:
+        from fastapi.responses import JSONResponse
         raise HTTPException(
             status_code=403,
-            detail="No organization found. Create or join an organization first.",
+            detail={"code": "organization_required", "message": "We need to set up your workspace before you can start researching."},
         )
 
     resolved_ws_id: Optional[str] = None

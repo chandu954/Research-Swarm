@@ -184,6 +184,18 @@ async def get_me(current_user: User = Depends(get_current_user)) -> UserResponse
     return UserResponse.model_validate(current_user)
 
 
+@router.get("/org-status")
+async def get_org_status(
+    current_user: User = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_session),
+):
+    result = await db_session.execute(
+        select(OrganizationMember).where(OrganizationMember.user_id == current_user.id).limit(1)
+    )
+    member = result.scalar_one_or_none()
+    return {"has_organization": member is not None}
+
+
 # ── Google OAuth ────────────────────────────────────────────────
 
 @router.get("/google")
