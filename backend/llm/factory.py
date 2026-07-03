@@ -7,6 +7,7 @@ from backend.llm.base import LLMProvider
 from backend.llm.ollama_provider import OllamaProvider
 from backend.llm.openrouter_provider import OpenRouterProvider
 from backend.llm.context import get_llm_provider, get_planner_model, get_research_model, get_document_model, get_answer_model, ProviderOverrides
+from backend.providers.registry import get_provider_registry
 
 
 _providers: dict[str, LLMProvider] = {}
@@ -58,7 +59,14 @@ def get_llm_provider_instance(provider_name: Optional[str] = None) -> LLMProvide
             logger.info("Using OpenRouter provider (cloud models)")
             _providers[cache_key] = primary
     else:
-        raise ValueError(f"Unknown LLM provider: {name}")
+        # Try registry for custom LLM plugins
+        registry = get_provider_registry()
+        wrapper = registry.get_llm(name)
+        if wrapper is not None:
+            logger.info(f"Using LLM provider from registry: {name}")
+            _providers[cache_key] = wrapper.inner
+        else:
+            raise ValueError(f"Unknown LLM provider: {name}. Available: {list(registry.list_llms().keys())}")
 
     return _providers[cache_key]
 

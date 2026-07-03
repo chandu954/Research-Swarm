@@ -370,6 +370,40 @@ class AuditLogResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Provider ────────────────────────────────────────────────────
+
+class ProviderCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    provider_type: str = Field(..., pattern=r"^(llm|search|embedding)$")
+    provider_key: str = Field(..., min_length=1, max_length=100)
+    config: dict[str, Any] = {}
+
+
+class ProviderUpdate(BaseModel):
+    name: Optional[str] = None
+    config: Optional[dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+
+class ProviderResponse(BaseModel):
+    id: str
+    name: str
+    provider_type: str
+    provider_key: str
+    config: dict[str, Any]
+    is_active: bool
+    organization_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ProviderListResponse(BaseModel):
+    builtin: dict[str, dict[str, Any]]
+    custom: list[ProviderResponse]
+
+
 # ── Billing ──────────────────────────────────────────────────────
 
 class BillingUsageResponse(BaseModel):

@@ -47,6 +47,7 @@ from backend.db.schemas import (
     AuditLogResponse, BillingUsageResponse,
     SearchRequest, SearchResult,
     ExtractEntitiesRequest,
+    ProviderCreate, ProviderUpdate, ProviderResponse, ProviderListResponse,
 )
 from backend.auth.dependencies import get_current_user, get_optional_user
 from backend.auth.tenant import resolve_tenant_dependencies, resolve_optional_tenant, TenantContext
@@ -54,6 +55,7 @@ from backend.plugins.registry import get_plugin_registry
 from backend.plugins.github import GitHubPlugin
 from backend.plugins.notion import NotionPlugin
 from backend.plugins.slack import SlackPlugin
+from backend.providers.registry import get_provider_registry
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./data/uploads")
 for d in [UPLOAD_DIR, "./data/chroma_db", "./data/memory", "./data/logs"]:
@@ -81,6 +83,10 @@ async def lifespan(app: FastAPI):
     plugin_reg.register(SlackPlugin(config={"token": os.getenv("SLACK_TOKEN", "")}))
     logger.info("Built-in plugins registered")
     app.state.plugin_registry = plugin_reg
+
+    prov_reg = get_provider_registry()
+    prov_reg.initialize_builtins()
+    app.state.provider_registry = prov_reg
 
     yield
     await close_db()
@@ -185,28 +191,31 @@ async def health_check():
     except Exception as e:
         db_ok = str(e)
 
-    # Check Ollama connectivity (optional, only when provider is ollama)
-    ollama_ok = None
-    llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    # Check LLM provider connectivity
+    llm_provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+    provider_checks: dict[str, str] = {
+        "database": "ok" if db_ok is True else f"error: {db_ok}",
+    }
+
     if llm_provider == "ollama":
         try:
             import httpx
             ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             async with httpx.AsyncClient(timeout=3) as client:
                 r = await client.get(f"{ollama_url}/api/tags")
-                ollama_ok = r.status_code == 200
+                provider_checks["ollama"] = "ok" if r.status_code == 200 else "error"
         except Exception:
-            ollama_ok = False
+            provider_checks["ollama"] = "error"
+    else:
+        provider_checks["openrouter"] = "ok" if os.getenv("OPENROUTER_API_KEY") else "unconfigured"
 
     return {
         "status": "healthy" if db_ok is True else "degraded",
         "version": "3.0.0",
         "uptime": time.time() - app.state.start_time,
         "tools_available": len(registry.list_tools()),
-        "checks": {
-            "database": "ok" if db_ok is True else f"error: {db_ok}",
-            "ollama": "ok" if ollama_ok is True else "unavailable" if ollama_ok is None else "error",
-        },
+        "providers": list(get_provider_registry().list_all().keys()),
+        "checks": provider_checks,
     }
 
 
@@ -1048,7 +1057,9 @@ async def get_audit_logs(
 @app.get("/models")
 async def list_models():
     import httpx
-    provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
+    registry = get_provider_registry()
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         if provider == "openrouter":
             api_key = os.getenv("OPENROUTER_API_KEY")
@@ -1066,7 +1077,7 @@ async def list_models():
             except Exception as e:
                 logger.error(f"Failed to fetch OpenRouter models: {e}")
                 return {"provider": "openrouter", "models": [], "error": str(e)}
-        else:
+        elif provider == "ollama":
             ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             try:
                 resp = await client.get(f"{ollama_url}/api/tags")
@@ -1077,6 +1088,10 @@ async def list_models():
             except Exception as e:
                 logger.error(f"Failed to fetch Ollama models: {e}")
                 return {"provider": "ollama", "models": [], "error": str(e)}
+        else:
+            # Check registry for custom LLM providers
+            all_providers = registry.list_llms()
+            return {"provider": provider, "models": [], "available_providers": list(all_providers.keys())}
 
 
 async def _resolve_pdf_paths(session: AsyncSession, document_ids: list[str]) -> list[str]:
@@ -1218,6 +1233,124 @@ async def execute_plugin(name: str, action: str = Query(...), current_user: User
         raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# PROVIDERS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/providers", response_model=ProviderListResponse)
+async def list_providers():
+    registry = get_provider_registry()
+    return ProviderListResponse(
+        builtin=registry.list_all(),
+        custom=[],
+    )
+
+
+@app.get("/providers/types")
+async def list_provider_types():
+    """Return available built-in providers grouped by type."""
+    registry = get_provider_registry()
+    return registry.list_all()
+
+
+@app.post("/providers", response_model=ProviderResponse)
+async def create_provider(
+    req: ProviderCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    existing = await session.execute(
+        select(Provider).where(
+            Provider.organization_id == ctx.organization_id,
+            Provider.name == req.name,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Provider '{req.name}' already exists")
+
+    provider = Provider(
+        name=req.name,
+        provider_type=req.provider_type,
+        provider_key=req.provider_key,
+        config=req.config,
+        organization_id=ctx.organization_id,
+        created_by=current_user.id,
+    )
+    session.add(provider)
+    await session.commit()
+    await session.refresh(provider)
+    return provider
+
+
+@app.get("/providers/{provider_id}", response_model=ProviderResponse)
+async def get_provider(
+    provider_id: str,
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Provider).where(
+            Provider.id == provider_id,
+            Provider.organization_id == ctx.organization_id,
+        )
+    )
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return provider
+
+
+@app.patch("/providers/{provider_id}", response_model=ProviderResponse)
+async def update_provider(
+    provider_id: str,
+    req: ProviderUpdate,
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Provider).where(
+            Provider.id == provider_id,
+            Provider.organization_id == ctx.organization_id,
+        )
+    )
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    if req.name is not None:
+        provider.name = req.name
+    if req.config is not None:
+        provider.config = req.config
+    if req.is_active is not None:
+        provider.is_active = req.is_active
+
+    await session.commit()
+    await session.refresh(provider)
+    return provider
+
+
+@app.delete("/providers/{provider_id}")
+async def delete_provider(
+    provider_id: str,
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    result = await session.execute(
+        select(Provider).where(
+            Provider.id == provider_id,
+            Provider.organization_id == ctx.organization_id,
+        )
+    )
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    await session.delete(provider)
+    await session.commit()
+    return {"status": "deleted"}
 
 
 
