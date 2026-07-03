@@ -6,5 +6,7 @@ assets/
 *.webm
 *.m4a
 venv/
+.venv/
+env311/
 data/
 .git

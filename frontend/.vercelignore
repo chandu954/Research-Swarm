@@ -1,10 +1,10 @@
-node_modules/
-.next/
+.venv/
+venv/
+env311/
 backend/
+data/
 assets/
 *.mp4
 *.webm
 *.m4a
-venv/
-data/
 .git
