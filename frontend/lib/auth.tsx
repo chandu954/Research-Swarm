@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import { parseError, getErrorMessage, parseResponseError } from "./errors";
+import { api, ApiClientError } from "./api-client";
 
 export interface AuthUser {
   id: string;
@@ -20,7 +20,7 @@ interface AuthContextType {
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
   oauthLogin: (provider: "google" | "github" | "microsoft") => void;
-  refreshToken: () => Promise<void>;
+  refreshToken: () => Promise<boolean>;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -52,27 +52,10 @@ function removeCookie(name: string) {
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;${secure} SameSite=Lax`;
 }
 
-async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
-  });
-  if (!res.ok) {
-    const parsed = await parseResponseError(res);
-    throw new ApiError(parsed.message, parsed.code, parsed.status);
-  }
-  return res.json();
-}
-
-class ApiError extends Error {
-  code?: string;
-  status?: number;
-  constructor(message: string, code?: string, status?: number) {
-    super(message);
-    this.name = "ApiError";
-    this.code = code;
-    this.status = status;
-  }
+function clearAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+  removeCookie(TOKEN_KEY);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -86,8 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(TOKEN_KEY, t);
       setCookie(TOKEN_KEY, t);
     } else {
-      localStorage.removeItem(TOKEN_KEY);
-      removeCookie(TOKEN_KEY);
+      clearAuth();
     }
   }, []);
 
@@ -95,28 +77,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const t = getStoredToken();
     if (!t) { setIsLoading(false); return; }
     try {
-      const res = await fetch(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${t}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
-      } else {
-        setStoredToken(null);
+      const data = await api.get<AuthUser>("/auth/me");
+      setUser(data);
+    } catch (e) {
+      if (e instanceof ApiClientError && e.status === 401) {
+        clearAuth();
+        setUser(null);
+        setToken(null);
       }
-    } catch { /* offline */ }
+    }
     setIsLoading(false);
-  }, [setStoredToken]);
+  }, []);
 
   useEffect(() => { fetchUser(); }, [fetchUser]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const data = await apiFetch<{ access_token: string; refresh_token: string }>(
-      `${API_URL}/auth/login`,
-      {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      }
+    const data = await api.post<{ access_token: string; refresh_token: string }>(
+      "/auth/login",
+      { email, password },
+      { retryable: false },
     );
     setStoredToken(data.access_token);
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
@@ -124,12 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setStoredToken, fetchUser]);
 
   const register = useCallback(async (email: string, password: string, name: string) => {
-    const data = await apiFetch<{ access_token: string; refresh_token: string }>(
-      `${API_URL}/auth/register`,
-      {
-        method: "POST",
-        body: JSON.stringify({ email, password, name }),
-      }
+    const data = await api.post<{ access_token: string; refresh_token: string }>(
+      "/auth/register",
+      { email, password, name },
+      { retryable: false },
     );
     setStoredToken(data.access_token);
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
@@ -137,10 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setStoredToken, fetchUser]);
 
   const logout = useCallback(() => {
-    setStoredToken(null);
-    localStorage.removeItem(REFRESH_KEY);
+    clearAuth();
+    setToken(null);
     setUser(null);
-  }, [setStoredToken]);
+  }, []);
 
   const oauthLogin = useCallback((provider: "google" | "github" | "microsoft") => {
     if (!window) return;
@@ -151,15 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const popup = window.open(
       `${API_URL}/auth/${provider}`,
       `${provider}OAuth`,
-      `width=${width},height=${height},left=${left},top=${top}`
+      `width=${width},height=${height},left=${left},top=${top}`,
     );
     if (!popup) {
       window.location.href = `${API_URL}/auth/${provider}`;
       return;
     }
-    const ALLOWED_ORIGINS = new Set([API_URL, window.location.origin]);
     const handler = (e: MessageEvent) => {
-      if (!ALLOWED_ORIGINS.has(e.origin)) return;
+      if (e.origin !== API_URL && e.origin !== window.location.origin) return;
       if (e.data?.access_token) {
         setStoredToken(e.data.access_token);
         localStorage.setItem(REFRESH_KEY, e.data.refresh_token);
@@ -176,20 +152,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 500);
   }, [setStoredToken, fetchUser]);
 
-  const refreshToken = useCallback(async () => {
+  const refreshToken = useCallback(async (): Promise<boolean> => {
     const rt = getStoredRefresh();
-    if (!rt) return;
+    if (!rt) return false;
     try {
-      const data = await apiFetch<{ access_token: string; refresh_token: string }>(
-        `${API_URL}/auth/refresh`,
-        {
-          method: "POST",
-          body: JSON.stringify({ refresh_token: rt }),
-        }
+      const data = await api.post<{ access_token: string; refresh_token: string }>(
+        "/auth/refresh",
+        { refresh_token: rt },
+        { retryable: false },
       );
       setStoredToken(data.access_token);
-      localStorage.setItem(REFRESH_KEY, data.refresh_token);
-    } catch { /* ignore */ }
+      if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+      return true;
+    } catch {
+      clearAuth();
+      setToken(null);
+      setUser(null);
+      return false;
+    }
   }, [setStoredToken]);
 
   return (
@@ -204,5 +184,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-
-export { ApiError, getErrorMessage };

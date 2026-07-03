@@ -22,7 +22,7 @@ import KnowledgeGraph from "@/components/KnowledgeGraph";
 import ReportGenerator from "@/components/ReportGenerator";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import SourceInspector from "@/components/SourceInspector";
-import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConversation } from "@/lib/api";
+import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConversation, ApiClientError } from "@/lib/api";
 import { useProviderSettings } from "@/lib/useSettings";
 import type {
   AgentMetric,
@@ -41,9 +41,7 @@ export default function ResearchWorkspace() {
   const [logs, setLogs] = useState<AgentLog[]>([]);
   const [plan, setPlan] = useState<ExecutionStep[]>([]);
   const [sources, setSources] = useState<SourceCitation[]>([]);
-  const [agentMetrics, setAgentMetrics] = useState<
-    Record<string, AgentMetric>
-  >({});
+  const [agentMetrics, setAgentMetrics] = useState<Record<string, AgentMetric>>({});
   const [executionTime, setExecutionTime] = useState<number>();
   const [elapsed, setElapsed] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -53,6 +51,7 @@ export default function ResearchWorkspace() {
   const [inspectedSource, setInspectedSource] = useState<SourceCitation | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [debateMode, setDebateMode] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
 
   useEffect(() => {
@@ -166,16 +165,17 @@ export default function ResearchWorkspace() {
           },
         ]);
       } catch (error) {
+        const msg = error instanceof ApiClientError
+          ? `**${error.message}**\n\n> ${error.code === "OFFLINE" ? "The backend may be offline. Check your connection." : error.code === "TIMEOUT" ? "The research took too long. Try a simpler query." : error.code === "UNAUTHORIZED" ? "Your session expired. Please sign in again." : ""}`
+          : error instanceof Error
+            ? `**Error**: ${error.message}`
+            : "**Error**: An unexpected error occurred. Please try again.";
         setMessages((current) => [
           ...current.filter((message) => message.id !== thinkingMessage.id),
           {
             id: `${Date.now()}-error`,
             role: "assistant",
-            content: `**Error**: ${
-              error instanceof Error
-                ? error.message
-                : "An unexpected error occurred. Please try again."
-            }`,
+            content: msg,
             timestamp: Date.now(),
           },
         ]);

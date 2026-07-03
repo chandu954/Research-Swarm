@@ -113,16 +113,58 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-cors_origins = os.getenv("CORS_ORIGINS", "https://research-swarm-omega.vercel.app").split(",")
+cors_origins = os.getenv("CORS_ORIGINS", "https://research-swarm-omega.vercel.app,http://localhost:3000,http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID",
-                   "X-Organization-Id", "X-Organization-Slug",
-                   "X-Workspace-Id", "X-Project-Id"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID")
+    if not request_id:
+        import uuid
+        request_id = str(uuid.uuid4())
+    start = time.time()
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        duration_ms = round((time.time() - start) * 1000, 2)
+        response.headers["X-Response-Time-Ms"] = str(duration_ms)
+        logger.debug(f"[{request_id}] {request.method} {request.url.path} → {response.status_code} ({duration_ms}ms)")
+        return response
+    except Exception as exc:
+        logger.error(f"[{request_id}] {request.method} {request.url.path} → error: {exc}")
+        duration_ms = round((time.time() - start) * 1000, 2)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "code": "INTERNAL_ERROR",
+                "message": "Something went wrong while processing your request.",
+                "request_id": request_id,
+            },
+            headers={"X-Request-ID": request_id, "X-Response-Time-Ms": str(duration_ms)},
+        )
+
+
+@app.exception_handler(Exception)
+async def global_fallback(request: Request, exc):
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    logger.error(f"[{request_id}] Global fallback: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": "INTERNAL_ERROR",
+            "message": "Something went wrong while processing your request.",
+            "request_id": request_id,
+        },
+        headers={"X-Request-ID": request_id},
+    )
 
 app.include_router(auth_router)
 app.include_router(org_router)
@@ -134,11 +176,35 @@ app.include_router(org_router)
 async def health_check():
     _ensure_app_state()
     registry = app.state.registry
+    db_ok = True
+    try:
+        from backend.db.session import get_session
+        async for session in get_session():
+            await session.execute(select(func.now()))
+            break
+    except Exception as e:
+        db_ok = str(e)
+
+    # Check Ollama connectivity (optional)
+    ollama_ok = None
+    try:
+        import httpx
+        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(f"{ollama_url}/api/tags")
+            ollama_ok = r.status_code == 200
+    except Exception:
+        ollama_ok = False
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_ok is True else "degraded",
         "version": "3.0.0",
         "uptime": time.time() - app.state.start_time,
         "tools_available": len(registry.list_tools()),
+        "checks": {
+            "database": "ok" if db_ok is True else f"error: {db_ok}",
+            "ollama": "ok" if ollama_ok is True else "unavailable" if ollama_ok is None else "error",
+        },
     }
 
 
@@ -1107,7 +1173,4 @@ async def execute_plugin(name: str, action: str = Query(...), request: Request =
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.exception_handler(Exception)
-async def global_handler(request, exc):
-    logger.error(f"Unhandled: {exc}")
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
