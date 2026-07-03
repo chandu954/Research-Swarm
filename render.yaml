@@ -25,12 +25,4 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: research-swarm-db
-          property: connectionString
-
-databases:
-  - name: research-swarm-db
-    plan: free
-    databaseName: research_swarm
-    user: swarm
+        sync: false
