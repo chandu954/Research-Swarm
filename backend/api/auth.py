@@ -6,6 +6,7 @@ Supports: email/password, Google OAuth, GitHub OAuth, Microsoft OAuth,
 from __future__ import annotations
 import os
 import secrets
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -17,7 +18,7 @@ from sqlalchemy import select
 from loguru import logger
 
 from backend.db.session import get_session
-from backend.db.models import User, UserSession, UserDevice
+from backend.db.models import User, UserSession, UserDevice, Organization, Workspace, Project, OrganizationMember, WorkspaceMember
 from backend.db.schemas import (
     RegisterRequest, LoginRequest, TokenResponse, UserResponse,
 )
@@ -58,6 +59,23 @@ async def _create_session(user: User, request: Request, session: AsyncSession) -
     session.add(user_session)
 
 
+async def _create_default_organization(db_session: AsyncSession, user: User) -> None:
+    org = Organization(
+        name=f"{user.name}'s Organization",
+        slug=f"{user.email.split('@')[0].lower()}-{uuid.uuid4().hex[:8]}",
+        owner_id=user.id,
+    )
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="owner"))
+    ws = Workspace(name="General", slug="general", organization_id=org.id, owner_id=user.id)
+    db_session.add(ws)
+    await db_session.flush()
+    db_session.add(WorkspaceMember(workspace_id=ws.id, user_id=user.id, role="owner"))
+    db_session.add(Project(name="Default Project", slug="default", organization_id=org.id, workspace_id=ws.id, owner_id=user.id))
+    await db_session.flush()
+
+
 async def _find_or_create_user(email: str, name: str, provider_data: dict, provider: str, db_session: AsyncSession) -> User:
     filters = [User.email == email]
     provider_id_field = f"{provider}_id"
@@ -89,6 +107,8 @@ async def _find_or_create_user(email: str, name: str, provider_data: dict, provi
         if provider_id:
             setattr(user, f"{provider}_id", provider_id)
         db_session.add(user)
+        await db_session.flush()
+        await _create_default_organization(db_session, user)
 
     await db_session.flush()
     return user
@@ -112,6 +132,7 @@ async def register(
     )
     session.add(user)
     await session.flush()
+    await _create_default_organization(session, user)
 
     return _build_tokens(user)
 
