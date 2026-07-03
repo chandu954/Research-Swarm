@@ -33,6 +33,16 @@ import type {
   UploadedDocument,
 } from "@/lib/types";
 
+interface ConversationMessageResponse {
+  id?: string;
+  message_id?: string;
+  role: string;
+  content?: string;
+  created_at?: number;
+  timestamp?: number;
+  sources?: SourceCitation[];
+}
+
 export default function ResearchWorkspace() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -59,7 +69,7 @@ export default function ResearchWorkspace() {
       .then((existingDocuments) => {
         setDocuments(existingDocuments || []);
       })
-      .catch(() => {});
+      .catch((err) => console.warn("Failed to load documents:", err));
   }, []);
 
   useEffect(() => {
@@ -221,15 +231,15 @@ export default function ResearchWorkspace() {
       const data = await loadConversation(id);
       setConversationId(id);
       const msgs = Array.isArray(data.messages) ? data.messages : [];
-      setMessages(msgs.map((m: any) => ({
+      setMessages(msgs.map((m: ConversationMessageResponse) => ({
         id: m.id || m.message_id,
-        role: m.role,
+        role: m.role as Message["role"],
         content: m.content || "",
         timestamp: m.created_at || m.timestamp || Date.now(),
         sources: m.sources || [],
       })));
-    } catch {
-      // conversation load failed silently
+    } catch (err) {
+      console.warn("Failed to load conversation:", err);
     }
   }, []);
 

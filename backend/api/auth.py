@@ -174,6 +174,7 @@ class RefreshRequest(BaseModel):
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(
     body: RefreshRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
     user_id = get_token_subject(body.refresh_token, expected_type="refresh")
@@ -414,6 +415,7 @@ class ResetPasswordRequest(BaseModel):
 @router.post("/forgot-password")
 async def forgot_password(
     body: ForgotPasswordRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(select(User).where(User.email == body.email))

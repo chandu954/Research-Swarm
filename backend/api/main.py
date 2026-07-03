@@ -185,16 +185,18 @@ async def health_check():
     except Exception as e:
         db_ok = str(e)
 
-    # Check Ollama connectivity (optional)
+    # Check Ollama connectivity (optional, only when provider is ollama)
     ollama_ok = None
-    try:
-        import httpx
-        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-        async with httpx.AsyncClient(timeout=3) as client:
-            r = await client.get(f"{ollama_url}/api/tags")
-            ollama_ok = r.status_code == 200
-    except Exception:
-        ollama_ok = False
+    llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    if llm_provider == "ollama":
+        try:
+            import httpx
+            ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            async with httpx.AsyncClient(timeout=3) as client:
+                r = await client.get(f"{ollama_url}/api/tags")
+                ollama_ok = r.status_code == 200
+        except Exception:
+            ollama_ok = False
 
     return {
         "status": "healthy" if db_ok is True else "degraded",
@@ -612,10 +614,19 @@ async def upload_document(
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files supported")
+
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB")
+
     file_id = f"{uuid.uuid4()}_{file.filename}"
     file_path = os.path.join(UPLOAD_DIR, file_id)
     try:
         content = await file.read()
+
+        if not content[:4] == b"%PDF":
+            raise HTTPException(status_code=400, detail="Invalid file format. Only PDF files are accepted")
+
         with open(file_path, "wb") as f:
             f.write(content)
 
@@ -638,9 +649,11 @@ async def upload_document(
                          {"filename": file.filename, "size": len(content)}, ctx)
 
         return {"document_id": doc.id, "filename": file.filename, "size": len(content), "status": "uploaded"}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Upload failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Upload failed")
+        raise HTTPException(status_code=500, detail="Failed to upload document")
 
 
 @app.get("/documents", response_model=list[DocumentResponse])
@@ -1054,9 +1067,9 @@ async def list_models():
                 logger.error(f"Failed to fetch OpenRouter models: {e}")
                 return {"provider": "openrouter", "models": [], "error": str(e)}
         else:
-            ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             try:
-                resp = await client.get(f"{ollama_host}/api/tags")
+                resp = await client.get(f"{ollama_url}/api/tags")
                 resp.raise_for_status()
                 data = resp.json()
                 models = sorted(set(m["name"] for m in data.get("models", [])))

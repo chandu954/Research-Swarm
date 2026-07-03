@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { useAuth } from "./auth";
+import { api } from "./api-client";
 
 export interface Organization {
   id: string;
@@ -51,15 +52,7 @@ interface TenantContextType {
   isLoading: boolean;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 const TenantContext = createContext<TenantContextType | null>(null);
-
-function getHeaders(token: string | null) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  return headers;
-}
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth();
@@ -74,21 +67,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const refreshOrganizations = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch(`${API_URL}/organizations`, {
-        headers: getHeaders(token),
+      const orgs: Organization[] = await api.get("/organizations");
+      setOrganizations(orgs);
+      // Only auto-select an org if none is selected yet
+      setCurrentOrgState(prev => {
+        if (prev) return prev;
+        const storedId = localStorage.getItem("research-swarm-org-id");
+        const found = storedId ? orgs.find(o => o.id === storedId) : orgs[0];
+        return found || orgs[0] || null;
       });
-      if (res.ok) {
-        const orgs: Organization[] = await res.json();
-        setOrganizations(orgs);
-        // Only auto-select an org if none is selected yet
-        setCurrentOrgState(prev => {
-          if (prev) return prev;
-          const storedId = localStorage.getItem("research-swarm-org-id");
-          const found = storedId ? orgs.find(o => o.id === storedId) : orgs[0];
-          return found || orgs[0] || null;
-        });
-      }
-    } catch { /* offline */ }
+    } catch (err) { console.warn("Failed to load organizations:", err); }
     setIsLoading(false);
   // Intentionally exclude currentOrg — including it would cause an
   // infinite loop (org change triggers refresh which changes org state).
@@ -98,21 +86,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const refreshWorkspaces = useCallback(async () => {
     if (!token || !currentOrg) return;
     try {
-      const res = await fetch(`${API_URL}/organizations/${currentOrg.id}/workspaces`, {
-        headers: getHeaders(token),
+      const wsList: Workspace[] = await api.get(`/organizations/${currentOrg.id}/workspaces`);
+      setWorkspaces(wsList);
+      // Auto-select workspace only if none selected, or if selected one not in new list
+      setCurrentWorkspaceState(prev => {
+        if (prev && wsList.find(w => w.id === prev.id)) return prev;
+        const storedId = localStorage.getItem("research-swarm-ws-id");
+        const found = storedId ? wsList.find(w => w.id === storedId) : wsList[0];
+        return found || wsList[0] || null;
       });
-      if (res.ok) {
-        const wsList: Workspace[] = await res.json();
-        setWorkspaces(wsList);
-        // Auto-select workspace only if none selected, or if selected one not in new list
-        setCurrentWorkspaceState(prev => {
-          if (prev && wsList.find(w => w.id === prev.id)) return prev;
-          const storedId = localStorage.getItem("research-swarm-ws-id");
-          const found = storedId ? wsList.find(w => w.id === storedId) : wsList[0];
-          return found || wsList[0] || null;
-        });
-      }
-    } catch { /* offline */ }
+    } catch (err) { console.warn("Failed to load workspaces:", err); }
   // Exclude currentWorkspace to avoid loop — workspace selection
   // should not trigger a full workspace list refresh.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,16 +104,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const refreshProjects = useCallback(async () => {
     if (!token || !currentOrg || !currentWorkspace) return;
     try {
-      const res = await fetch(
-        `${API_URL}/organizations/${currentOrg.id}/workspaces/${currentWorkspace.id}/projects`,
-        { headers: getHeaders(token) }
-      );
-      if (res.ok) {
-        const projList: Project[] = await res.json();
-        setProjects(projList);
-        if (projList.length === 0) setCurrentProjectState(null);
-      }
-    } catch { /* offline */ }
+      const projList: Project[] = await api.get(`/organizations/${currentOrg.id}/workspaces/${currentWorkspace.id}/projects`);
+      setProjects(projList);
+      if (projList.length === 0) setCurrentProjectState(null);
+    } catch (err) { console.warn("Failed to load projects:", err); }
   }, [token, currentOrg, currentWorkspace]);
 
   useEffect(() => { refreshOrganizations(); }, [refreshOrganizations]);

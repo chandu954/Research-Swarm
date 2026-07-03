@@ -36,6 +36,15 @@ interface SidebarProps {
   activeConversationId?: string | null;
 }
 
+interface ConversationResponse {
+  id?: string;
+  conversation_id?: string;
+  title?: string;
+  query?: string;
+  created_at?: string;
+  message_count?: number;
+}
+
 interface Conversation {
   id: string;
   query?: string;
@@ -69,8 +78,8 @@ export default function Sidebar({
   useEffect(() => {
     setLoading(true);
     listConversations()
-      .then((data: any) => {
-        const convs = (Array.isArray(data) ? data : []).map((c: any) => ({
+      .then((data: ConversationResponse[]) => {
+        const convs = (Array.isArray(data) ? data : []).map((c: ConversationResponse) => ({
           id: c.id || c.conversation_id || "",
           query: c.title || c.query || "",
           timestamp: c.created_at || "",
@@ -78,8 +87,8 @@ export default function Sidebar({
         }));
         setConversations(convs);
       })
-      .catch(() => {
-        /* fall back to local queries */
+      .catch((err) => {
+        console.warn("Failed to load conversations:", err);
       })
       .finally(() => setLoading(false));
   }, []);

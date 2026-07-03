@@ -123,7 +123,7 @@ export default function LoginPage() {
           setSuccess(false);
         }, 2000);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(getErrorMessage(err));
       if (submitBtnRef.current) submitBtnRef.current.focus();
     } finally {
@@ -136,7 +136,7 @@ export default function LoginPage() {
     setError("");
     try {
       oauthLogin(provider);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
       setSocialLoading(null);
