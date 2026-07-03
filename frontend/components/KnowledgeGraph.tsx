@@ -81,7 +81,7 @@ export default function KnowledgeGraph({ answer, sources }: KnowledgeGraphProps)
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  const { allEntities, allRelations } = useMemo(
+  const { entities: allEntities, relations: allRelations } = useMemo(
     () => buildGraph(answer, sources.map((s) => ({ title: s.title, url: s.url }))),
     [answer, sources],
   );
