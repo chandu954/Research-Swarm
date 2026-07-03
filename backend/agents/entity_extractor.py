@@ -91,7 +91,7 @@ async def extract_entities(
         llm = get_llm_provider(llm_provider)
         resolved_model = model or ("qwen/qwen3-32b" if llm_provider == "openrouter" else "qwen3:14b")
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         raw = await loop.run_in_executor(
             None,
             lambda: llm.generate(

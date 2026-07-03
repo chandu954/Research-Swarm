@@ -90,7 +90,17 @@ class ToolRegistry:
         name: str,
         **kwargs: Any,
     ) -> Any:
-        """Execute a tool synchronously and record the call."""
+        """Execute a tool synchronously and record the call.
+
+        Architecture:
+          - Sync tools are called directly.
+          - Async tools are launched with asyncio.run() when there's no
+            running loop (e.g., from a ThreadPoolExecutor worker), or
+            via run_coroutine_threadsafe when a loop is running (e.g.,
+            from the event-loop thread).  The latter case cannot use
+            asyncio.run() because it would raise "cannot be called from
+            a running event loop".
+        """
         tool = self.get(name)
         spec = self.get_spec(name)
         if _is_async(tool):
@@ -152,7 +162,7 @@ class ToolRegistry:
         logger.debug(f"Executing tool (async): {name}")
 
         try:
-            result = await asyncio.get_event_loop().run_in_executor(None, lambda: tool(**kwargs))
+            result = await asyncio.get_running_loop().run_in_executor(None, lambda: tool(**kwargs))
             call.output = result
             call.end_time = time.time()
             call.duration_ms = round((call.end_time - call.start_time) * 1000, 2)
