@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 from typing import AsyncGenerator
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -17,10 +17,16 @@ _raw_db_url: str = os.getenv(
     "DATABASE_URL",
     "sqlite+aiosqlite:///./data/research_swarm.db",
 )
-# Auto-fix Railway/Neon PostgreSQL URLs missing the +asyncpg driver
+# Strip sslmode query param (asyncpg uses `ssl=` not `sslmode=`) and fix scheme
 parsed = urlparse(_raw_db_url)
-if parsed.scheme == "postgresql":
-    _raw_db_url = urlunparse(parsed._replace(scheme="postgresql+asyncpg"))
+if parsed.scheme in ("postgresql", "postgresql+asyncpg"):
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    qs.pop("sslmode", None)
+    query = urlencode(qs, doseq=True) if qs else ""
+    _raw_db_url = urlunparse(parsed._replace(
+        scheme="postgresql+asyncpg",
+        query=query,
+    ))
 DATABASE_URL = _raw_db_url
 
 if DATABASE_URL.startswith("sqlite"):
