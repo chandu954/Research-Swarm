@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import { parseError, getErrorMessage } from "./errors";
+import { parseError, getErrorMessage, parseResponseError } from "./errors";
 
 export interface AuthUser {
   id: string;
@@ -42,12 +42,14 @@ function getStoredRefresh(): string | null {
 function setCookie(name: string, value: string, days: number = 7) {
   if (typeof document === "undefined") return;
   const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; Secure; SameSite=Lax`;
+  const secure = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/;${secure} SameSite=Lax`;
 }
 
 function removeCookie(name: string) {
   if (typeof document === "undefined") return;
-  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; Secure; SameSite=Lax`;
+  const secure = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;${secure} SameSite=Lax`;
 }
 
 async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -60,27 +62,6 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(parsed.message, parsed.code, parsed.status);
   }
   return res.json();
-}
-
-async function parseResponseError(res: Response): Promise<{ message: string; code?: string; status: number }> {
-  try {
-    const body = await res.json();
-    const detail = body.detail;
-    if (Array.isArray(detail)) {
-      const msgs = detail.map((d: any) => d.msg || d.message || "").filter(Boolean);
-      return { message: msgs.join(". ") || "Please check your input.", status: res.status };
-    }
-    if (typeof detail === "string") {
-      return { message: detail, status: res.status };
-    }
-    if (body.message) return { message: body.message, status: res.status };
-    if (body.error) return { message: body.error, status: res.status };
-  } catch { /* not json */ }
-  try {
-    const text = await res.text();
-    if (text) return { message: text, status: res.status };
-  } catch { /* ignore */ }
-  return { message: `Request failed (${res.status})`, status: res.status };
 }
 
 class ApiError extends Error {
@@ -162,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setStoredToken]);
 
   const oauthLogin = useCallback((provider: "google" | "github" | "microsoft") => {
+    if (!window) return;
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.innerWidth - width) / 2;
@@ -171,8 +153,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       `${provider}OAuth`,
       `width=${width},height=${height},left=${left},top=${top}`
     );
+    if (!popup) {
+      window.location.href = `${API_URL}/auth/${provider}`;
+      return;
+    }
+    const ALLOWED_ORIGINS = new Set([API_URL, window.location.origin]);
     const handler = (e: MessageEvent) => {
-      if (e.origin !== API_URL && e.origin !== window.location.origin) return;
+      if (!ALLOWED_ORIGINS.has(e.origin)) return;
       if (e.data?.access_token) {
         setStoredToken(e.data.access_token);
         localStorage.setItem(REFRESH_KEY, e.data.refresh_token);
@@ -182,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("message", handler);
     const checkClosed = setInterval(() => {
-      if (popup?.closed) {
+      if (popup.closed) {
         clearInterval(checkClosed);
         window.removeEventListener("message", handler);
       }

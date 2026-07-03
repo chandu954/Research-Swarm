@@ -37,10 +37,6 @@
   name = "LOG_LEVEL"
   value = "INFO"
 
-[[env]]
-  name = "JWT_SECRET_KEY"
-  value = "change-me-in-production"
-
 [[volumes]]
   name = "backend_data"
   mount = "/data"

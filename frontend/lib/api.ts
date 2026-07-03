@@ -3,30 +3,32 @@ import type { AgentLog, ResearchResult } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-function getTenantHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const headers: Record<string, string> = {};
-  const orgId = localStorage.getItem("research-swarm-org-id");
-  const wsId = localStorage.getItem("research-swarm-ws-id");
-  if (orgId) headers["X-Organization-Id"] = orgId;
-  if (wsId) headers["X-Workspace-Id"] = wsId;
-  return headers;
+export function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("research-swarm-token");
 }
 
-function getAuthHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("research-swarm-token");
-  if (token) return { Authorization: `Bearer ${token}` };
-  return {};
+export function getTenantIds(): { orgId: string | null; wsId: string | null; projectId: string | null } {
+  if (typeof window === "undefined") return { orgId: null, wsId: null, projectId: null };
+  return {
+    orgId: localStorage.getItem("research-swarm-org-id"),
+    wsId: localStorage.getItem("research-swarm-ws-id"),
+    projectId: localStorage.getItem("research-swarm-project-id"),
+  };
 }
 
 function buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...getAuthHeaders(),
-    ...getTenantHeaders(),
     ...extra,
   };
+  const token = getAuthToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const { orgId, wsId, projectId } = getTenantIds();
+  if (orgId) headers["X-Organization-Id"] = orgId;
+  if (wsId) headers["X-Workspace-Id"] = wsId;
+  if (projectId) headers["X-Project-Id"] = projectId;
+  return headers;
 }
 
 async function request<T>(
@@ -49,10 +51,12 @@ function researchBody(
   providerSettings?: ProviderSettings,
   streamTaskId?: string,
   conversationId?: string,
+  debateMode?: boolean,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = { query, document_ids: documentIds };
   if (streamTaskId) body.stream_task_id = streamTaskId;
   if (conversationId) body.conversation_id = conversationId;
+  if (debateMode) body.debate_mode = true;
   if (providerSettings) {
     body.llm_provider = providerSettings.provider;
     body.planner_model = providerSettings.plannerModel;
@@ -72,12 +76,11 @@ export async function runResearch(
   providerSettings?: ProviderSettings,
   streamTaskId?: string,
   conversationId?: string,
+  debateMode?: boolean,
 ) {
-  const orgId = localStorage.getItem("research-swarm-org-id");
-  const params = orgId ? `?organization_id=${orgId}` : "";
-  return request<ResearchResult>(`/research${params}`, {
+  return request<ResearchResult>("/research", {
     method: "POST",
-    body: JSON.stringify(researchBody(query, documentIds, providerSettings, streamTaskId, conversationId)),
+    body: JSON.stringify(researchBody(query, documentIds, providerSettings, streamTaskId, conversationId, debateMode)),
   });
 }
 
@@ -124,14 +127,13 @@ export function subscribeResearchLogs(
 export async function uploadPDF(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  const orgId = localStorage.getItem("research-swarm-org-id");
-  const wsId = localStorage.getItem("research-swarm-ws-id");
-  const params = new URLSearchParams();
-  if (orgId) params.set("organization_id", orgId);
-  if (wsId) params.set("workspace_id", wsId);
-  const url = `${API_URL}/upload${params.toString() ? "?" + params.toString() : ""}`;
-  const headers = getAuthHeaders();
-  const response = await fetch(url, { method: "POST", body: formData, headers });
+  const headers: Record<string, string> = {};
+  const token = getAuthToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const { orgId, wsId } = getTenantIds();
+  if (orgId) headers["X-Organization-Id"] = orgId;
+  if (wsId) headers["X-Workspace-Id"] = wsId;
+  const response = await fetch(`${API_URL}/upload`, { method: "POST", body: formData, headers });
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Upload failed: ${error}`);
@@ -140,23 +142,11 @@ export async function uploadPDF(file: File) {
 }
 
 export async function listDocuments() {
-  const orgId = localStorage.getItem("research-swarm-org-id");
-  const wsId = localStorage.getItem("research-swarm-ws-id");
-  const params = new URLSearchParams();
-  if (orgId) params.set("organization_id", orgId);
-  if (wsId) params.set("workspace_id", wsId);
-  const qs = params.toString() ? "?" + params.toString() : "";
-  return request<{ documents: any[] }>(`/documents${qs}`);
+  return request<any[]>("/documents");
 }
 
 export async function listConversations() {
-  const orgId = localStorage.getItem("research-swarm-org-id");
-  const wsId = localStorage.getItem("research-swarm-ws-id");
-  const params = new URLSearchParams();
-  if (orgId) params.set("organization_id", orgId);
-  if (wsId) params.set("workspace_id", wsId);
-  const qs = params.toString() ? "?" + params.toString() : "";
-  return request<{ conversations: any[] }>(`/conversations${qs}`);
+  return request<{ conversations: any[] }>("/conversations");
 }
 
 export async function loadConversation(id: string) {
@@ -166,8 +156,6 @@ export async function loadConversation(id: string) {
 export async function healthCheck() {
   return request<{ status: string; version: string; uptime: number }>("/health");
 }
-
-// ── Tenant API ──────────────────────────────────────────────────
 
 export async function listOrganizations() {
   return request<any[]>("/organizations");
@@ -195,16 +183,14 @@ export async function createWorkspace(orgId: string, name: string) {
   });
 }
 
-export async function createConversation(orgId: string, title?: string, wsId?: string) {
-  const params = new URLSearchParams({ organization_id: orgId });
-  if (wsId) params.set("workspace_id", wsId);
-  return request<any>(`/conversations?${params.toString()}`, {
+export async function createConversation(title?: string) {
+  return request<any>("/conversations", {
     method: "POST",
     body: JSON.stringify({ title: title || "New Conversation" }),
   });
 }
 
-export async function apiKeys() {
+export async function getApiKeys() {
   return request<any[]>("/api-keys");
 }
 
@@ -215,7 +201,6 @@ export async function createApiKey(name: string) {
   });
 }
 
-export async function auditLogs() {
-  const orgId = localStorage.getItem("research-swarm-org-id");
-  return request<any[]>(`/audit-logs?organization_id=${orgId}`);
+export async function getAuditLogs() {
+  return request<any[]>("/audit-logs");
 }

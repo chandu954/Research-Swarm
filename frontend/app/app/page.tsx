@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   PanelLeft,
+  Scale,
   Sparkles,
 } from "lucide-react";
 
@@ -51,16 +52,15 @@ export default function ResearchWorkspace() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inspectedSource, setInspectedSource] = useState<SourceCitation | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [debateMode, setDebateMode] = useState(false);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
 
   useEffect(() => {
     listDocuments()
-      .then(({ documents: existingDocuments }) => {
-        setDocuments(existingDocuments);
+      .then((existingDocuments) => {
+        setDocuments(existingDocuments || []);
       })
-      .catch(() => {
-        // The workspace remains usable if the document list is unavailable.
-      });
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function ResearchWorkspace() {
     const start = Date.now();
     const interval = setInterval(() => {
       setElapsed((Date.now() - start) / 1000);
-    }, 100);
+    }, 250);
     return () => clearInterval(interval);
   }, [isRunning]);
 
@@ -135,6 +135,7 @@ export default function ResearchWorkspace() {
           providerSettings,
           taskId,
           conversationId || undefined,
+          debateMode,
         );
 
         setPlan(result.plan || []);
@@ -161,6 +162,7 @@ export default function ResearchWorkspace() {
             sources: result.sources,
             logs: result.logs,
             status: result.status,
+            debate: result.debate,
           },
         ]);
       } catch (error) {
@@ -182,7 +184,7 @@ export default function ResearchWorkspace() {
         setIsRunning(false);
       }
     },
-    [selectedDocs, providerSettings],
+    [selectedDocs, providerSettings, debateMode],
   );
 
   const handleNewChat = useCallback(() => {
@@ -318,6 +320,8 @@ export default function ResearchWorkspace() {
               streamLogs={logs}
               elapsed={elapsed}
               composerRef={composerRef}
+              debateMode={debateMode}
+              onDebateToggle={() => setDebateMode((prev) => !prev)}
             />
             <input
               ref={pdfInputRef}

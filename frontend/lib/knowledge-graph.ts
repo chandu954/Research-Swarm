@@ -11,17 +11,11 @@ export interface GraphRelation {
   label: string;
 }
 
-const ENTITY_TYPES: { keywords: string[]; type: GraphEntity["type"]; color: string }[] = [
+export const ENTITY_TYPE_CONFIG: { keywords: string[]; type: GraphEntity["type"]; color: string }[] = [
   { keywords: ["gpt", "claude", "gemini", "llama", "mistral", "qwen", "deepseek"], type: "technology", color: "#06b6d4" },
   { keywords: ["openai", "anthropic", "google", "meta", "microsoft", "apple", "amazon"], type: "company", color: "#8b5cf6" },
   { keywords: ["rag", "llm", "ai", "ml", "nlp", "transformer", "attention", "embedding", "token"], type: "concept", color: "#10b981" },
   { keywords: ["paper", "research", "study", "survey", "benchmark"], type: "paper", color: "#f59e0b" },
-];
-
-const DEFAULT_TOPICS = [
-  "Retrieval Augmented Generation", "Large Language Models", "Vector Search",
-  "Semantic Search", "Prompt Engineering", "Fine Tuning", "Model Architecture",
-  "Natural Language Processing", "Knowledge Base", "Information Retrieval",
 ];
 
 export function parseEntities(text: string): GraphEntity[] {
@@ -33,7 +27,7 @@ export function parseEntities(text: string): GraphEntity[] {
     if (word.length < 3) continue;
 
     const lower = word.toLowerCase();
-    for (const { keywords, type, color } of ENTITY_TYPES) {
+    for (const { keywords, type, color } of ENTITY_TYPE_CONFIG) {
       if (keywords.some((k) => lower.includes(k) || k.includes(lower))) {
         const id = word.toLowerCase();
         if (!entities.has(id)) {
@@ -51,21 +45,13 @@ export function parseEntities(text: string): GraphEntity[] {
     }
   }
 
-  for (const topic of DEFAULT_TOPICS) {
-    if (text.toLowerCase().includes(topic.toLowerCase())) {
-      const id = topic.toLowerCase().replace(/\s+/g, "-");
-      if (!entities.has(id)) {
-        entities.set(id, { id, label: topic, type: "topic", color: "#f59e0b" });
-      }
-    }
-  }
-
   return Array.from(entities.values()).slice(0, 30);
 }
 
 export function buildGraph(text: string, sources: { title?: string; url?: string }[]): { entities: GraphEntity[]; relations: GraphRelation[] } {
   const entities = parseEntities(text);
   const relations: GraphRelation[] = [];
+  const seen = new Set<string>();
 
   for (const source of sources) {
     if (!source.title) continue;
@@ -73,7 +59,7 @@ export function buildGraph(text: string, sources: { title?: string; url?: string
       source.title!.toLowerCase().includes(e.id)
     );
     if (related) {
-      const sourceId = source.title.toLowerCase().replace(/\s+/g, "-");
+      const sourceId = "src-" + source.title.toLowerCase().replace(/\s+/g, "-").slice(0, 40);
       if (!entities.find((e) => e.id === sourceId)) {
         entities.push({
           id: sourceId,
@@ -82,22 +68,12 @@ export function buildGraph(text: string, sources: { title?: string; url?: string
           color: "#f59e0b",
         });
       }
-      relations.push({ source: sourceId, target: related.id, label: "cites" });
+      const relKey = `${sourceId}-${related.id}`;
+      if (!seen.has(relKey)) {
+        seen.add(relKey);
+        relations.push({ source: sourceId, target: related.id, label: "cites" });
+      }
     }
-  }
-
-  const relTypes = ["relates to", "connected to", "associated with", "references"];
-  for (let i = 0; i < entities.length; i++) {
-    for (let j = i + 1; j < entities.length; j++) {
-      if (entities[i].type === entities[j].type) continue;
-      relations.push({
-        source: entities[i].id,
-        target: entities[j].id,
-        label: relTypes[(i + j) % relTypes.length],
-      });
-      if (relations.length >= 10) break;
-    }
-    if (relations.length >= 10) break;
   }
 
   return { entities, relations };

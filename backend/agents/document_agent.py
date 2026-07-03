@@ -211,9 +211,10 @@ class DocumentAgent:
                 f"Query: {query[:500]}\n\n"
                 f"Chunk: {chunk[:1500]}"
             )
+            relevance_model = os.getenv("RELEVANCE_MODEL", os.getenv("ANSWER_MODEL", "qwen3:14b"))
             raw = self.llm.generate(
                 prompt=prompt,
-                model="gemma3:12b",
+                model=relevance_model,
                 system_prompt="You are a relevance scorer. Output only a float between 0.0 and 1.0.",
                 options={"temperature": 0.1, "num_predict": 10},
             )

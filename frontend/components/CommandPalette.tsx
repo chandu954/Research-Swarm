@@ -15,6 +15,7 @@ import {
   CornerDownLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 interface Action {
   id: string;
@@ -47,6 +48,7 @@ export default function CommandPalette({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const paletteRef = useFocusTrap(open);
 
   const actions: Action[] = [
     { id: "new", label: "New Research", description: "Start a fresh research session", icon: MessageSquarePlus, shortcut: "⌘N", action: () => { onNewChat(); onClose(); } },
@@ -90,10 +92,11 @@ export default function CommandPalette({
   );
 
   useEffect(() => {
+    if (!open) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        if (open) onClose();
+        onClose();
       }
     };
     window.addEventListener("keydown", handler);
@@ -112,6 +115,7 @@ export default function CommandPalette({
             onClick={onClose}
           />
           <motion.div
+            ref={paletteRef}
             initial={{ opacity: 0, scale: 0.96, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -8 }}

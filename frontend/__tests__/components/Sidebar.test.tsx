@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import Sidebar from "@/components/Sidebar";
+import { AuthProvider } from "@/lib/auth";
 
 beforeAll(() => {
   global.fetch = vi.fn().mockResolvedValue({
@@ -19,18 +20,21 @@ describe("Sidebar", () => {
     onOpenSettings: vi.fn(),
   };
 
+  const renderWithAuth = (ui: React.ReactElement) =>
+    render(<AuthProvider>{ui}</AuthProvider>);
+
   it("renders sidebar with brand name", () => {
-    render(<Sidebar {...baseProps} />);
+    renderWithAuth(<Sidebar {...baseProps} />);
     expect(screen.getByText("ResearchSwarm")).toBeInTheDocument();
   });
 
   it("shows new research button", () => {
-    render(<Sidebar {...baseProps} />);
+    renderWithAuth(<Sidebar {...baseProps} />);
     expect(screen.getByText("New research")).toBeInTheDocument();
   });
 
   it("has navigation", () => {
-    render(<Sidebar {...baseProps} />);
+    renderWithAuth(<Sidebar {...baseProps} />);
     expect(screen.getByRole("navigation")).toBeInTheDocument();
   });
 });

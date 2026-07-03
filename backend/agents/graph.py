@@ -17,6 +17,7 @@ from backend.agents.answer_agent import AnswerAgent, AnswerRequest
 from backend.llm.factory import resolve_model, apply_provider_overrides, restore_provider_overrides
 from backend.llm.context import ProviderOverrides
 from backend.api.stream import get_stream_manager
+from backend.tools.registry import get_registry
 
 
 class AgentState(TypedDict):
@@ -43,6 +44,9 @@ class AgentState(TypedDict):
     answer_model: Optional[str]
     openrouter_key: Optional[str]
     stream_task_id: Optional[str]
+    debate_mode: bool = False
+    debate_perspectives: Optional[List[str]] = None
+    debate_result: Optional[Dict[str, Any]] = None
 
 
 def _apply_state_overrides(state: AgentState) -> ProviderOverrides:
@@ -273,13 +277,18 @@ def _route_after_merge(state: AgentState) -> str:
 
 
 def _run_answer_node(state: AgentState) -> Dict[str, Any]:
-    """Node: Answer agent — synthesizes final answer from all sources."""
+    """Node: Answer agent — synthesizes final answer from all sources.
+
+    If debate_mode is enabled, also runs multi-perspective debate after the
+    standard answer is generated.
+    """
     backup = _apply_state_overrides(state)
     start = time.time()
     _add_log(state, "answer_agent", "generate_answer", "running", "Synthesizing answer")
 
     registry = get_registry()
     agent = AnswerAgent(registry=registry)
+    extra_updates: Dict[str, Any] = {}
 
     try:
         request = AnswerRequest(
@@ -296,6 +305,50 @@ def _run_answer_node(state: AgentState) -> Dict[str, Any]:
         _add_log(state, "answer_agent", "generate_answer", "completed",
                  f"Generated answer in {latency_ms}ms with {len(response.sources)} sources")
 
+        # Debate mode: run multi-perspective analysis after answer generation
+        if state.get("debate_mode"):
+            _add_log(state, "answer_agent", "start_debate", "running",
+                     "Launching multi-perspective debate...")
+            try:
+                from backend.agents.debate_agent import run_debate
+                debate_result = run_debate(
+                    query=state["query"],
+                    web_results=state.get("web_results", []),
+                    document_chunks=state.get("document_chunks", []),
+                    stream_task_id=state.get("stream_task_id"),
+                    perspective_ids=state.get("debate_perspectives"),
+                )
+                extra_updates["debate_result"] = {
+                    "query": debate_result.query,
+                    "perspectives": [
+                        {
+                            "perspective_id": p.perspective_id,
+                            "label": p.label,
+                            "emoji": p.emoji,
+                            "color": p.color,
+                            "argument": p.argument,
+                            "latency_ms": p.latency_ms,
+                            "status": p.status,
+                        }
+                        for p in debate_result.perspectives
+                    ],
+                    "judge_verdict": debate_result.judge_verdict,
+                    "judge_latency_ms": debate_result.judge_latency_ms,
+                    "status": debate_result.status,
+                    "errors": debate_result.errors,
+                }
+                _add_log(state, "answer_agent", "debate_complete", "completed",
+                         f"Debate concluded with {len(debate_result.perspectives)} perspectives")
+            except Exception as e:
+                logger.error(f"Debate mode failed: {e}")
+                _add_log(state, "answer_agent", "debate_error", "failed", str(e))
+                extra_updates["debate_result"] = {
+                    "status": "failed",
+                    "errors": [str(e)],
+                    "perspectives": [],
+                    "judge_verdict": None,
+                }
+
         restore_provider_overrides(backup)
         return {
             "answer": response.answer,
@@ -310,6 +363,7 @@ def _run_answer_node(state: AgentState) -> Dict[str, Any]:
                 },
                 "total": {"latency_ms": round(total_time * 1000, 2)},
             },
+            **extra_updates,
         }
     except Exception as e:
         latency_ms = round((time.time() - start) * 1000, 2)
@@ -321,6 +375,7 @@ def _run_answer_node(state: AgentState) -> Dict[str, Any]:
             "status": "failed",
             "errors": state.get("errors", []) + [f"Answer error: {e}"],
             "agent_metrics": {"answer_agent": {"latency_ms": latency_ms, "model": MODEL_ROUTING["answer_agent"], "status": "error", "error": str(e)}},
+            **extra_updates,
         }
 
 

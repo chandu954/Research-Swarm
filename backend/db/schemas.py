@@ -272,6 +272,8 @@ class ResearchRequest(BaseModel):
     document_ids: list[str] = Field(default_factory=list)
     conversation_id: Optional[str] = None
     project_id: Optional[str] = None
+    debate_mode: bool = Field(default=False, description="Enable AI Debate Mode with multiple perspective agents")
+    debate_perspectives: Optional[list[str]] = Field(default=None, description="Specific perspective IDs to include")
     llm_provider: Optional[str] = Field(default=None, description="ollama or openrouter")
     planner_model: Optional[str] = None
     research_model: Optional[str] = None
@@ -296,6 +298,7 @@ class ResearchResponse(BaseModel):
     agent_metrics: dict[str, Any] = Field(default_factory=dict)
     cost_estimate: Optional[float] = None
     token_count: Optional[int] = None
+    debate: Optional[dict[str, Any]] = Field(default=None, description="Debate mode result with perspectives and judge verdict")
 
 
 # ── Plugin ───────────────────────────────────────────────────────
@@ -390,6 +393,23 @@ class TagResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Entity Extraction ─────────────────────────────────────────────
+
+class ExtractEntitiesRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=10000)
+    llm_provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+# ── Pagination ────────────────────────────────────────────────────
+
+class PaginatedResponse(BaseModel):
+    items: list[Any]
+    total: int
+    offset: int = 0
+    limit: int = 50
 
 
 # ── Search ───────────────────────────────────────────────────────

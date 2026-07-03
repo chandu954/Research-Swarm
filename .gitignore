@@ -11,6 +11,8 @@ __pycache__/
 env311/
 dist/
 build/
+.pytest_cache/
+backend/.coverage
 
 # Node
 node_modules/

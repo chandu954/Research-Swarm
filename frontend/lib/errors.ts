@@ -83,7 +83,7 @@ export function parseError(error: unknown): ParsedError {
   return { message: "Something went wrong. Please try again." };
 }
 
-async function parseResponseError(res: Response): Promise<ParsedError> {
+export async function parseResponseError(res: Response): Promise<ParsedError> {
   try {
     const body = await res.json();
     if (body.detail) return parseDetail(body.detail, res.status);

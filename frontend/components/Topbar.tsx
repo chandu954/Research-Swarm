@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Command, Search, Sparkles, Menu, Settings2,
   UserRound, ChevronDown, LogOut, Network, Globe2,
@@ -24,6 +25,7 @@ export default function Topbar({
   provider,
 }: TopbarProps) {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
 
   const initials = user?.name
@@ -121,7 +123,7 @@ export default function Topbar({
                   Settings
                 </button>
                 <button
-                  onClick={() => { logout(); window.location.href = "/login"; }}
+                  onClick={() => { logout(); router.push("/login"); }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-[11px] text-rose-400 transition-colors hover:bg-white/[0.04]"
                 >
                   <LogOut className="h-3.5 w-3.5" />

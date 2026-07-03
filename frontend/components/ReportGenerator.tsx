@@ -40,8 +40,29 @@ const TEMPLATES: TemplateConfig[] = [
 ];
 
 function findAnswer(messages: Message[]): string {
-  const answer = messages.find((m) => m.role === "assistant" && m.content !== "Thinking..." && m.content !== "...");
-  return answer?.content || "";
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "assistant" && m.content !== "Thinking..." && m.content !== "...") {
+      return m.content || "";
+    }
+  }
+  return "";
+}
+
+async function htmlToPdf(html: string, filename: string): Promise<void> {
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (win) {
+    win.focus();
+    setTimeout(() => win.print(), 500);
+  } else {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${filename}.html`;
+    a.click();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function extractSections(text: string): { heading: string; content: string }[] {
@@ -246,9 +267,19 @@ function generateSWOTMD(query: string, answer: string, sources: SourceCitation[]
   return parts.join("\n");
 }
 
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function generateHTML(md: string, query: string, includeCover: boolean, includeTOC: boolean): string {
   const sections = extractSections(md);
   const bodyParts: string[] = [];
+  const esc = escapeHtml;
 
   if (includeCover) {
     bodyParts.push(generateCoverPage(query));
@@ -261,19 +292,20 @@ function generateHTML(md: string, query: string, includeCover: boolean, includeT
   bodyParts.push(
     `<div style="max-width:800px;margin:0 auto;padding:20px;">${
       md.split("\n").map((line) => {
-        if (line.startsWith("# ")) return `<h1 id="${line.slice(2).toLowerCase().replace(/\s+/g, "-")}">${line.slice(2)}</h1>`;
-        if (line.startsWith("## ")) return `<h2 id="${line.slice(3).toLowerCase().replace(/\s+/g, "-")}">${line.slice(3)}</h2>`;
-        if (line.startsWith("### ")) return `<h3>${line.slice(4)}</h3>`;
-        if (line.startsWith("> **")) return `<blockquote style="border-left:3px solid #8b5cf6;padding-left:12px;margin:8px 0;color:#64748b;">${line.slice(2)}</blockquote>`;
-        if (line.startsWith("> ")) return `<blockquote style="border-left:3px solid #8b5cf6;padding-left:12px;margin:8px 0;color:#64748b;">${line.slice(2)}</blockquote>`;
-        if (line.startsWith("- **") && line.includes("** —")) return `<li style="margin:4px 0;"><strong>${line.slice(4).split("** —")[0]}</strong> — ${line.split("** —")[1]}</li>`;
-        if (line.startsWith("- ")) return `<li style="margin:4px 0;">${line.slice(2)}</li>`;
-        if (line.startsWith("1. ")) return `<li style="margin:4px 0;">${line.slice(3)}</li>`;
-        if (line.startsWith(`${sections.length + 1}. `)) return `<li style="margin:4px 0;">${line.slice(3)}</li>`;
-        if (line.startsWith("*")) return `<em>${line.slice(1, -1)}</em>`;
+        const trimmed = line;
+        if (line.startsWith("# ")) return `<h1 id="${esc(line.slice(2).toLowerCase().replace(/\s+/g, "-"))}">${esc(line.slice(2))}</h1>`;
+        if (line.startsWith("## ")) return `<h2 id="${esc(line.slice(3).toLowerCase().replace(/\s+/g, "-"))}">${esc(line.slice(3))}</h2>`;
+        if (line.startsWith("### ")) return `<h3>${esc(line.slice(4))}</h3>`;
+        if (line.startsWith("> **")) return `<blockquote style="border-left:3px solid #8b5cf6;padding-left:12px;margin:8px 0;color:#64748b;">${esc(line.slice(2))}</blockquote>`;
+        if (line.startsWith("> ")) return `<blockquote style="border-left:3px solid #8b5cf6;padding-left:12px;margin:8px 0;color:#64748b;">${esc(line.slice(2))}</blockquote>`;
+        if (line.startsWith("- **") && line.includes("** —")) return `<li style="margin:4px 0;"><strong>${esc(line.slice(4).split("** —")[0])}</strong> — ${esc(line.split("** —")[1])}</li>`;
+        if (line.startsWith("- ")) return `<li style="margin:4px 0;">${esc(line.slice(2))}</li>`;
+        if (line.startsWith("1. ")) return `<li style="margin:4px 0;">${esc(line.slice(3))}</li>`;
+        if (line.startsWith(`${sections.length + 1}. `)) return `<li style="margin:4px 0;">${esc(line.slice(3))}</li>`;
+        if (line.startsWith("*")) return `<em>${esc(line.slice(1, -1))}</em>`;
         if (line.startsWith("---")) return `<hr style="margin:24px 0;border:none;border-top:1px solid #e2e8f0;" />`;
         if (line === "") return `<br/>`;
-        return `<p style="line-height:1.7;margin:8px 0;">${line}</p>`;
+        return `<p style="line-height:1.7;margin:8px 0;">${esc(line)}</p>`;
       }).join("\n")
     }</div>`
   );
@@ -297,6 +329,8 @@ function generateHTML(md: string, query: string, includeCover: boolean, includeT
 <body>${bodyParts.join("\n")}</body>
 </html>`;
 }
+
+export { htmlToPdf };
 
 export default function ReportGenerator({ query, messages, sources }: ReportGeneratorProps) {
   const [copied, setCopied] = useState(false);
@@ -347,13 +381,8 @@ export default function ReportGenerator({ query, messages, sources }: ReportGene
 
   const handlePrint = useCallback(() => {
     const html = generateHTML(md, query, includeCover, includeToc);
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 500);
-  }, [md, query, includeCover, includeToc]);
+    htmlToPdf(html, filename);
+  }, [md, query, includeCover, includeToc, filename]);
 
   if (!hasAnswer) return null;
 
@@ -404,7 +433,7 @@ export default function ReportGenerator({ query, messages, sources }: ReportGene
             <FileDown className="h-3 w-3" /> .html
           </button>
           <button onClick={handlePrint} className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] px-2.5 py-1.5 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-white/[0.06] hover:text-[var(--text-primary)]">
-            <Printer className="h-3 w-3" /> Print
+            <Printer className="h-3 w-3" /> Print/PDF
           </button>
         </div>
       </div>

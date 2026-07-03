@@ -1,5 +1,6 @@
 """Tool registry for agent dependency injection."""
 from __future__ import annotations
+import asyncio
 import time
 from typing import Dict, Any, Callable, Optional, List
 from enum import Enum
@@ -89,15 +90,69 @@ class ToolRegistry:
         name: str,
         **kwargs: Any,
     ) -> Any:
-        """Execute a tool and record the call."""
+        """Execute a tool synchronously and record the call."""
         tool = self.get(name)
         spec = self.get_spec(name)
+        if _is_async(tool):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                return asyncio.run_coroutine_threadsafe(tool(**kwargs), loop).result()
+            return asyncio.run(tool(**kwargs))
 
         call = ToolCall(tool_name=name, input=kwargs)
         logger.debug(f"Executing tool: {name}")
 
         try:
             result = tool(**kwargs)
+            call.output = result
+            call.end_time = time.time()
+            call.duration_ms = round((call.end_time - call.start_time) * 1000, 2)
+            logger.debug(f"Tool {name} completed in {call.duration_ms}ms")
+            self._calls.append(call)
+            return result
+        except Exception as e:
+            call.error = str(e)
+            call.end_time = time.time()
+            call.duration_ms = round((call.end_time - call.start_time) * 1000, 2)
+            self._calls.append(call)
+            logger.error(f"Tool {name} failed after {call.duration_ms}ms: {e}")
+            raise
+
+    async def execute_async(
+        self,
+        name: str,
+        **kwargs: Any,
+    ) -> Any:
+        """Execute a tool asynchronously and record the call."""
+        tool = self.get(name)
+        spec = self.get_spec(name)
+        if _is_async(tool):
+            call = ToolCall(tool_name=name, input=kwargs)
+            logger.debug(f"Executing tool (async): {name}")
+            try:
+                result = await tool(**kwargs)
+                call.output = result
+                call.end_time = time.time()
+                call.duration_ms = round((call.end_time - call.start_time) * 1000, 2)
+                logger.debug(f"Tool {name} completed in {call.duration_ms}ms")
+                self._calls.append(call)
+                return result
+            except Exception as e:
+                call.error = str(e)
+                call.end_time = time.time()
+                call.duration_ms = round((call.end_time - call.start_time) * 1000, 2)
+                self._calls.append(call)
+                logger.error(f"Tool {name} failed after {call.duration_ms}ms: {e}")
+                raise
+
+        call = ToolCall(tool_name=name, input=kwargs)
+        logger.debug(f"Executing tool (async): {name}")
+
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(None, lambda: tool(**kwargs))
             call.output = result
             call.end_time = time.time()
             call.duration_ms = round((call.end_time - call.start_time) * 1000, 2)

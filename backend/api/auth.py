@@ -4,12 +4,14 @@ Supports: email/password, Google OAuth, GitHub OAuth, Microsoft OAuth,
           magic links, MFA, session management, trusted devices.
 """
 from __future__ import annotations
+import os
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
-from pydantic import BaseModel, EmailStr
+from datetime import timedelta
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
@@ -43,6 +45,7 @@ def _build_tokens(user: User) -> TokenResponse:
 
 
 async def _create_session(user: User, request: Request, session: AsyncSession) -> None:
+    from backend.auth.jwt import REFRESH_TOKEN_EXPIRE_DAYS
     refresh_token = create_refresh_token(user.id)
     token_hash = secrets.token_hex(32)
     user_session = UserSession(
@@ -50,7 +53,7 @@ async def _create_session(user: User, request: Request, session: AsyncSession) -
         refresh_token_hash=token_hash,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        expires_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
     session.add(user_session)
 
@@ -253,6 +256,52 @@ async def microsoft_callback(
     return _build_tokens(user)
 
 
+# ── Forgot Password ─────────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+    if user:
+        reset_token = create_access_token(user.id, {"type": "password_reset"})
+        logger.info(f"Password reset for {body.email}: token={reset_token[:20]}...")
+    return {"message": "If the email exists, a password reset link has been sent"}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    from backend.auth.jwt import decode_token as _decode_reset
+    payload = _decode_reset(body.token)
+    if not payload or payload.get("type") != "password_reset":
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    from backend.auth.password import hash_password
+    user.hashed_password = hash_password(body.password)
+    await session.flush()
+    return {"status": "password_reset"}
+
+
 # ── Magic Link ─────────────────────────────────────────────────
 
 class MagicLinkRequest(RegisterRequest):
@@ -269,8 +318,10 @@ async def request_magic_link(
     session: AsyncSession = Depends(get_session),
 ):
     url, token, expires = create_magic_link(body.email)
-    logger.info(f"Magic link for {body.email}: {url}")
-    return {"message": "If the email exists, a magic link has been sent", "url": url}
+    if os.getenv("ENVIRONMENT", "development") != "production":
+        logger.info(f"Magic link for {body.email}: {url}")
+        return {"message": "If the email exists, a magic link has been sent", "url": url}
+    return {"message": "If the email exists, a magic link has been sent"}
 
 
 @router.post("/magic-link/verify", response_model=TokenResponse)

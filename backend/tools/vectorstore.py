@@ -85,7 +85,7 @@ class VectorStore:
                 ids=ids,
                 documents=documents,
                 embeddings=embeddings,
-                metadatas=metadatas or [{}] * len(ids),
+                metadatas=metadatas or [{} for _ in ids],
             )
             logger.info(f"Added {len(ids)} chunks to vector store")
             return True

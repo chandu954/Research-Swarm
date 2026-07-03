@@ -17,17 +17,28 @@ export class CollaborationClient {
   private ws: WebSocket | null = null;
   private callbacks: WSCallback = {};
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private currentWorkspaceId: string | null = null;
+  private currentToken: string | null = null;
+  private isDisconnecting = false;
 
   connect(workspaceId: string, token: string, callbacks: WSCallback) {
+    this.disconnect();
+    this.currentWorkspaceId = workspaceId;
+    this.currentToken = token;
     this.callbacks = callbacks;
+    this.isDisconnecting = false;
+    this._connect();
+  }
+
+  private _connect() {
+    if (!this.currentWorkspaceId || !this.currentToken) return;
     const protocol = API_URL.startsWith("https") ? "wss" : "ws";
     const base = API_URL.replace(/^https?:\/\//, "");
-    const url = `${protocol}://${base}/ws/workspace/${workspaceId}?token=${token}`;
+    const url = `${protocol}://${base}/ws/workspace/${this.currentWorkspaceId}?token=${this.currentToken}`;
 
     try {
       this.ws = new WebSocket(url);
       this.ws.onopen = () => {
-        console.log("[WS] Connected to workspace", workspaceId);
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = null;
@@ -45,16 +56,25 @@ export class CollaborationClient {
       };
       this.ws.onerror = (err) => this.callbacks.onError?.(err);
       this.ws.onclose = () => {
-        console.log("[WS] Disconnected, reconnecting in 5s");
-        this.reconnectTimer = setTimeout(() => this.connect(workspaceId, token, callbacks), 5000);
+        if (!this.isDisconnecting) {
+          this.reconnectTimer = setTimeout(() => this._connect(), 5000);
+        }
       };
     } catch (err) {
-      console.error("[WS] Connection failed", err);
+      if (!this.isDisconnecting) {
+        this.reconnectTimer = setTimeout(() => this._connect(), 5000);
+      }
     }
   }
 
   disconnect() {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.isDisconnecting = true;
+    this.currentWorkspaceId = null;
+    this.currentToken = null;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
     this.ws = null;
   }

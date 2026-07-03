@@ -1,5 +1,6 @@
 """Entity extraction service for knowledge graph enrichment."""
 from __future__ import annotations
+import asyncio
 import json, re
 from typing import Optional
 from pydantic import BaseModel
@@ -88,13 +89,17 @@ async def extract_entities(
 
     try:
         llm = get_llm_provider(llm_provider)
-        resolved_model = model or "qwen/qwen3-32b" if llm_provider == "openrouter" else "qwen3:14b"
+        resolved_model = model or ("qwen/qwen3-32b" if llm_provider == "openrouter" else "qwen3:14b")
 
-        raw = llm.generate(
-            prompt=f"Extract entities and relationships from this research text:\n\n{text[:6000]}",
-            model=resolved_model,
-            system_prompt=EXTRACT_SYSTEM_PROMPT,
-            options={"temperature": 0.1, "num_predict": 2048},
+        loop = asyncio.get_event_loop()
+        raw = await loop.run_in_executor(
+            None,
+            lambda: llm.generate(
+                prompt=f"Extract entities and relationships from this research text:\n\n{text[:6000]}",
+                model=resolved_model,
+                system_prompt=EXTRACT_SYSTEM_PROMPT,
+                options={"temperature": 0.1, "num_predict": 2048},
+            ),
         )
 
         json_match = re.search(r"\{[\s\S]*\}", raw)

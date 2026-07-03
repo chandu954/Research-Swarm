@@ -13,6 +13,25 @@ export interface AgentLog {
   details?: string;
 }
 
+export interface DebatePerspective {
+  perspective_id: string;
+  label: string;
+  emoji: string;
+  color: string;
+  argument: string;
+  latency_ms: number;
+  status: string;
+}
+
+export interface DebateData {
+  query: string;
+  perspectives: DebatePerspective[];
+  judge_verdict: string | null;
+  judge_latency_ms: number;
+  status: string;
+  errors: string[];
+}
+
 export interface ResearchResult {
   task_id: string;
   conversation_id?: string;
@@ -26,6 +45,7 @@ export interface ResearchResult {
   execution_time: number;
   plan_reasoning?: string;
   agent_metrics?: Record<string, AgentMetric>;
+  debate?: DebateData;
 }
 
 export interface AgentMetric {
@@ -55,6 +75,7 @@ export interface Message {
   sources?: SourceCitation[];
   logs?: AgentLog[];
   status?: string;
+  debate?: DebateData;
 }
 
 export interface UploadedDocument {

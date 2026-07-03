@@ -120,7 +120,7 @@ class Organization(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     name = Column(String(255), nullable=False)
-    slug = Column(String(255), unique=True, nullable=False, index=True)
+    slug = Column(String(255), unique=True, nullable=False)
     description = Column(Text, nullable=True)
     avatar_url = Column(Text, nullable=True)
     owner_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -135,7 +135,7 @@ class Organization(Base):
     api_keys = relationship("APIKey", back_populates="organization", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index("ix_organizations_slug", "slug"),
+        Index("ix_organizations_slug", "slug", unique=True),
     )
 
 

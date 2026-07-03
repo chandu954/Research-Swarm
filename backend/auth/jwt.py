@@ -1,4 +1,4 @@
-"""JWT token creation and verification."""
+"""JWT token creation and verification. No fallback secret — production must set JWT_SECRET_KEY."""
 from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
@@ -8,17 +8,24 @@ from jose import JWTError, jwt
 from loguru import logger
 
 
-SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
+def _get_secret() -> str:
+    secret = os.getenv("JWT_SECRET_KEY")
+    if not secret:
+        if os.getenv("ENVIRONMENT", "development") == "production":
+            raise RuntimeError("JWT_SECRET_KEY must be set in production")
+        secret = "dev-insecure-key-do-not-use-in-production"
+        logger.warning("JWT_SECRET_KEY not set — using insecure dev key. Set JWT_SECRET_KEY in production.")
+    return secret
+
+
 ALGORITHM: str = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_EXPIRE", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("JWT_REFRESH_EXPIRE", "7"))
 
-if SECRET_KEY == "change-me-in-production":
-    logger.warning("JWT_SECRET_KEY is set to default 'change-me-in-production'. Set a strong random secret in production.")
-
 
 def create_access_token(subject: str, extra_claims: Optional[dict[str, Any]] = None) -> str:
     """Create a short-lived JWT access token."""
+    secret = _get_secret()
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
@@ -28,11 +35,12 @@ def create_access_token(subject: str, extra_claims: Optional[dict[str, Any]] = N
     }
     if extra_claims:
         payload.update(extra_claims)
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, secret, algorithm=ALGORITHM)
 
 
 def create_refresh_token(subject: str) -> str:
     """Create a long-lived JWT refresh token."""
+    secret = _get_secret()
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
@@ -40,13 +48,14 @@ def create_refresh_token(subject: str) -> str:
         "iat": now,
         "type": "refresh",
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, secret, algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> Optional[dict[str, Any]]:
     """Decode and verify a JWT token. Returns the payload or None."""
+    secret = _get_secret()
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
         return payload
     except JWTError as e:
         logger.warning(f"JWT decode failed: {e}")

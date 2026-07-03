@@ -20,6 +20,7 @@ import {
 import type { UploadedDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { listConversations } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
 import Link from "next/link";
 
@@ -60,6 +61,7 @@ export default function Sidebar({
   onSelectConversation,
   activeConversationId,
 }: SidebarProps) {
+  const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,12 +69,12 @@ export default function Sidebar({
   useEffect(() => {
     setLoading(true);
     listConversations()
-      .then((data) => {
-        const convs = (data.conversations || []).map((c: any) => ({
+      .then((data: any) => {
+        const convs = (Array.isArray(data) ? data : []).map((c: any) => ({
           id: c.id || c.conversation_id || "",
-          query: c.query || c.metadata?.query || "",
-          timestamp: c.timestamp || c.created_at || "",
-          turn_count: c.turn_count || 0,
+          query: c.title || c.query || "",
+          timestamp: c.created_at || "",
+          turn_count: c.message_count || 0,
         }));
         setConversations(convs);
       })
@@ -276,14 +278,14 @@ export default function Sidebar({
 
         <button type="button" className="profile-card mt-3">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-[10px] font-semibold text-white">
-            AS
+            {user?.name?.charAt(0)?.toUpperCase() || "U"}
           </span>
           <span className="min-w-0 flex-1 text-left">
             <span className="block truncate text-xs font-medium text-[var(--text-primary)]">
-              AI Researcher
+              {user?.name || "User"}
             </span>
             <span className="block text-[9px] text-[var(--text-muted)]">
-              Local workspace
+              {user?.email || "Signed in"}
             </span>
           </span>
         </button>

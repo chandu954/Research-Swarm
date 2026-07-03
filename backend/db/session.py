@@ -1,7 +1,8 @@
 """Async SQLAlchemy session and engine for PostgreSQL."""
 from __future__ import annotations
-import os, re
+import os
 from typing import AsyncGenerator
+from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -17,8 +18,9 @@ _raw_db_url: str = os.getenv(
     "sqlite+aiosqlite:///./data/research_swarm.db",
 )
 # Auto-fix Railway/Neon PostgreSQL URLs missing the +asyncpg driver
-if _raw_db_url.startswith("postgresql://") and "+asyncpg" not in _raw_db_url:
-    _raw_db_url = _raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+parsed = urlparse(_raw_db_url)
+if parsed.scheme == "postgresql":
+    _raw_db_url = urlunparse(parsed._replace(scheme="postgresql+asyncpg"))
 DATABASE_URL = _raw_db_url
 
 if DATABASE_URL.startswith("sqlite"):

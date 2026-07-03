@@ -30,10 +30,13 @@ router = APIRouter(tags=["organizations"])
 
 
 def _slugify(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", "-"))
+    import unicodedata
+    normalized = unicodedata.normalize("NFKD", name.lower().replace(" ", "-"))
+    ascii_str = normalized.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9-]", "", ascii_str)
     if not slug:
         slug = "org"
-    return slug
+    return slug[:80]
 
 
 # ── Organizations ───────────────────────────────────────────────
@@ -84,8 +87,21 @@ async def list_organizations(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    member_count_subq = (
+        select(
+            OrganizationMember.organization_id,
+            func.count(OrganizationMember.id).label("cnt")
+        ).group_by(OrganizationMember.organization_id)
+        .subquery()
+    )
     result = await session.execute(
-        select(Organization).join(
+        select(
+            Organization,
+            func.coalesce(member_count_subq.c.cnt, 0).label("member_count"),
+        ).outerjoin(
+            member_count_subq,
+            member_count_subq.c.organization_id == Organization.id,
+        ).join(
             OrganizationMember,
             OrganizationMember.organization_id == Organization.id,
         ).where(
@@ -93,26 +109,21 @@ async def list_organizations(
             Organization.is_active == True,
         )
     )
-    orgs = result.scalars().all()
-    responses = []
-    for org in orgs:
-        member_count = await session.scalar(
-            select(func.count(OrganizationMember.id)).where(
-                OrganizationMember.organization_id == org.id,
-            )
-        )
-        responses.append(OrganizationResponse(
+    rows = result.all()
+    return [
+        OrganizationResponse(
             id=org.id,
             name=org.name,
             slug=org.slug,
             description=org.description,
             avatar_url=org.avatar_url,
             owner_id=org.owner_id,
-            member_count=member_count or 0,
+            member_count=member_count,
             is_active=org.is_active,
             created_at=org.created_at,
-        ))
-    return responses
+        )
+        for org, member_count in rows
+    ]
 
 
 @router.get("/organizations/{org_id}", response_model=OrganizationResponse)
@@ -387,8 +398,21 @@ async def list_workspaces(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    member_count_subq = (
+        select(
+            WorkspaceMember.workspace_id,
+            func.count(WorkspaceMember.id).label("cnt")
+        ).group_by(WorkspaceMember.workspace_id)
+        .subquery()
+    )
     result = await session.execute(
-        select(Workspace).join(
+        select(
+            Workspace,
+            func.coalesce(member_count_subq.c.cnt, 0).label("member_count"),
+        ).outerjoin(
+            member_count_subq,
+            member_count_subq.c.workspace_id == Workspace.id,
+        ).join(
             WorkspaceMember,
             WorkspaceMember.workspace_id == Workspace.id,
         ).where(
@@ -397,26 +421,21 @@ async def list_workspaces(
             Workspace.is_active == True,
         )
     )
-    workspaces = result.scalars().all()
-    responses = []
-    for ws in workspaces:
-        member_count = await session.scalar(
-            select(func.count(WorkspaceMember.id)).where(
-                WorkspaceMember.workspace_id == ws.id,
-            )
-        )
-        responses.append(WorkspaceResponse(
+    rows = result.all()
+    return [
+        WorkspaceResponse(
             id=ws.id,
             name=ws.name,
             slug=ws.slug,
             description=ws.description,
             organization_id=ws.organization_id,
             owner_id=ws.owner_id,
-            member_count=member_count or 0,
+            member_count=member_count,
             is_active=ws.is_active,
             created_at=ws.created_at,
-        ))
-    return responses
+        )
+        for ws, member_count in rows
+    ]
 
 
 @router.get("/organizations/{org_id}/workspaces/{ws_id}", response_model=WorkspaceResponse)

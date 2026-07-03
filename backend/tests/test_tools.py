@@ -30,13 +30,13 @@ class TestToolRegistry:
         specs = tool_registry.list_tools()
         assert len(specs) == 2
 
-    def test_execute_tool(self, tool_registry):
+    @pytest.mark.asyncio
+    async def test_execute_tool(self, tool_registry):
         """Tool execution should record the call."""
         async def async_tool(x: int) -> int:
             return x * 2
         tool_registry.register("double", async_tool, MagicMock(name="double", description="Double"))
-        import asyncio
-        result = asyncio.run(tool_registry.execute("double", x=5))
+        result = await tool_registry.execute_async("double", x=5)
         assert result == 10
         history = tool_registry.get_call_history()
         assert len(history) == 1

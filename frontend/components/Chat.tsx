@@ -18,6 +18,7 @@ import {
   Globe2,
   Loader2,
   Paperclip,
+  Scale,
   Search,
   Sparkles,
   User,
@@ -29,6 +30,7 @@ import AgentThinkingPanel from "./AgentThinkingPanel";
 import StreamingText from "./StreamingText";
 import FollowUpSuggestions from "./FollowUpSuggestions";
 import ConfidenceRenderer from "./ConfidenceRenderer";
+import DebateView from "./DebateView";
 
 interface ChatProps {
   messages: Message[];
@@ -36,6 +38,8 @@ interface ChatProps {
   onSend: (query: string) => void;
   onAttach: () => void;
   isRunning: boolean;
+  debateMode?: boolean;
+  onDebateToggle?: () => void;
   streamLogs?: AgentLog[];
   elapsed?: number;
   composerRef?: React.RefObject<HTMLTextAreaElement | null>;
@@ -207,27 +211,13 @@ function ChatMessage({ message, isLatest }: { message: Message; isLatest: boolea
             </span>
           </div>
         )}
+        {!isUser && !isThinking && message.debate && (
+          <div className="mt-4">
+            <DebateView debate={message.debate} />
+          </div>
+        )}
       </div>
     </motion.article>
-  );
-}
-
-function ThinkingMessage({ content }: { content: string }) {
-  const [displayed, setDisplayed] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDisplayed(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  if (!displayed) return null;
-
-  return (
-    <div className="prose-custom prose-sm">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {content}
-      </ReactMarkdown>
-    </div>
   );
 }
 
@@ -237,6 +227,8 @@ export default function Chat({
   onSend,
   onAttach,
   isRunning,
+  debateMode = false,
+  onDebateToggle,
   streamLogs = [],
   elapsed = 0,
   composerRef,
@@ -262,7 +254,7 @@ export default function Chat({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !isRunning) {
       event.preventDefault();
       submitQuery();
     }
@@ -429,6 +421,21 @@ export default function Chat({
               >
                 <Paperclip className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Attach</span>
+              </button>
+              <button
+                type="button"
+                onClick={onDebateToggle}
+                className={cn(
+                  "composer-tool",
+                  debateMode && "text-violet-400"
+                )}
+                aria-label={debateMode ? "Disable debate mode" : "Enable debate mode"}
+              >
+                <Scale className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Debate</span>
+                {debateMode && (
+                  <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-violet-400" />
+                )}
               </button>
               <span className="composer-tool hidden sm:flex">
                 <Globe2 className="h-3.5 w-3.5 text-cyan-400" />

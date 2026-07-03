@@ -177,7 +177,7 @@ export default function SourceInspector({ source, onClose }: SourceInspectorProp
                     <span className="text-[9px] text-[var(--text-muted)]">/100</span>
                   </div>
                 </div>
-                <div className={cn("rounded-xl border border-white/[0.06] p-3", getFreshnessColor(score.freshness).replace("text-", "bg-").replace("emerald-400", "emerald-500/8").replace("cyan-400", "cyan-500/8").replace("amber-400", "amber-500/8").replace("rose-400", "rose-500/8"))}>
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
                   <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
                     <Clock className="h-3 w-3" />
                     Freshness

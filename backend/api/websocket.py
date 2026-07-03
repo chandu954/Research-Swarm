@@ -1,5 +1,6 @@
 """WebSocket manager for real-time collaboration (presence, shared workspaces)."""
 from __future__ import annotations
+import asyncio
 import json
 import time
 from typing import Dict, Set, Any, Optional
@@ -32,26 +33,24 @@ class WorkspaceRoom:
     def remove(self, user_id: str) -> None:
         self.connections.pop(user_id, None)
 
-    def broadcast(self, message: dict, exclude: Optional[str] = None) -> None:
+    async def broadcast(self, message: dict, exclude: Optional[str] = None) -> None:
         payload = json.dumps(message)
         stale = []
+        tasks = []
         for uid, conn in self.connections.items():
             if uid == exclude:
                 continue
-            try:
-                import asyncio
-                if asyncio.iscoroutinefunction(conn.ws.send_text):
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.create_task(conn.ws.send_text(payload))
-                    else:
-                        loop.run_until_complete(conn.ws.send_text(payload))
-                else:
-                    conn.ws.send_text(payload)
-            except Exception:
-                stale.append(uid)
+            tasks.append(self._safe_send(conn, payload, stale, uid))
+        if tasks:
+            await asyncio.gather(*tasks)
         for uid in stale:
             self.remove(uid)
+
+    async def _safe_send(self, conn: Connection, payload: str, stale: list, uid: str) -> None:
+        try:
+            await conn.ws.send_text(payload)
+        except Exception:
+            stale.append(uid)
 
 
 class WorkspaceManager:
@@ -65,7 +64,7 @@ class WorkspaceManager:
             self._rooms[workspace_id] = WorkspaceRoom(workspace_id)
         return self._rooms[workspace_id]
 
-    def broadcast_presence(self, workspace_id: str) -> None:
+    async def broadcast_presence(self, workspace_id: str) -> None:
         room = self._rooms.get(workspace_id)
         if not room:
             return
@@ -78,15 +77,13 @@ class WorkspaceManager:
             }
             for conn in room.connections.values()
         ]
-        room.broadcast({"type": "presence", "users": users})
+        await room.broadcast({"type": "presence", "users": users})
 
     def disconnect(self, workspace_id: str, user_id: str) -> None:
         room = self._rooms.get(workspace_id)
         if room:
             room.remove(user_id)
-            self.broadcast_presence(workspace_id)
-            if not room.connections:
-                self._rooms.pop(workspace_id, None)
+            self._rooms.pop(workspace_id, None) if not room.connections else None
 
 
 _manager: Optional[WorkspaceManager] = None
