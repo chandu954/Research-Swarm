@@ -299,6 +299,9 @@ class ResearchResponse(BaseModel):
     cost_estimate: Optional[float] = None
     token_count: Optional[int] = None
     debate: Optional[dict[str, Any]] = Field(default=None, description="Debate mode result with perspectives and judge verdict")
+    answer_mode: str = Field(default="normal", description="normal | fallback | no_evidence")
+    evidence_summary: Optional[dict[str, Any]] = Field(default=None, description="What evidence was retrieved")
+    has_evidence: bool = False
 
 
 # ── Plugin ───────────────────────────────────────────────────────

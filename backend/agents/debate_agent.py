@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from loguru import logger
 
-from backend.llm.factory import get_llm_provider, resolve_model
+from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.api.stream import get_stream_manager, make_log
 
 DEBATE_MODEL = resolve_model("answer_agent")
@@ -126,7 +126,7 @@ def run_debate(
     perspective_ids: Optional[List[str]] = None,
 ) -> DebateResult:
     """Run a full AI debate — multiple perspective analyses + judge synthesis."""
-    llm = get_llm_provider()
+    llm = get_llm_provider_instance()
     result = DebateResult(query=query)
 
     selected = [p for p in PERSPECTIVES if p["id"] in (perspective_ids or [p["id"] for p in PERSPECTIVES])]

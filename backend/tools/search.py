@@ -1,8 +1,9 @@
 """Web search tool with multiple backend support (DuckDuckGo, Bing, Serper)."""
-import os, re, json, time, urllib.request, urllib.parse
+import os, re, json, time, urllib.parse
 from typing import List, Dict, Any, Optional
 from loguru import logger
 from pydantic import BaseModel, Field
+import httpx
 
 
 class WebSearchResult(BaseModel):
@@ -13,6 +14,7 @@ class WebSearchResult(BaseModel):
 
 
 BACKENDS = ["html", "auto", "lite"]
+_HTTP_TIMEOUT = 20.0
 
 
 def search_web(
@@ -33,25 +35,37 @@ def search_web(
 def _search_duckduckgo(
     query: str, max_results: int = 5, region: str = "wt-wt", safesearch: str = "moderate"
 ) -> List[Dict[str, Any]]:
-    try:
-        from duckduckgo_search import DDGS
-    except ImportError:
-        logger.error("duckduckgo-search package not installed")
+    ddgs_module = None
+    for mod_name in ["ddgs", "duckduckgo_search"]:
+        try:
+            ddgs_module = __import__(mod_name, fromlist=["DDGS"])
+            break
+        except ImportError:
+            continue
+
+    if ddgs_module is None:
+        logger.error("No DuckDuckGo search package installed (tried ddgs, duckduckgo_search)")
         return _search_fallback(query, max_results)
 
+    DDGS = ddgs_module.DDGS
     logger.info(f"[DuckDuckGo] Searching: {query[:100]}...")
-    for backend in BACKENDS:
-        try:
-            with DDGS() as ddgs:
-                raw = list(ddgs.text(keywords=query, region=region, safesearch=safesearch, max_results=max_results, backend=backend))
-            if raw:
-                logger.info(f"[DuckDuckGo] Backend '{backend}' returned {len(raw)} results")
-                return _format_results(raw, "duckduckgo")
-            logger.debug(f"[DuckDuckGo] Backend '{backend}' returned 0 results")
-        except Exception as e:
-            logger.debug(f"[DuckDuckGo] Backend '{backend}' failed: {e}")
+    last_error = None
+    for attempt in range(2):
+        for backend in BACKENDS:
+            try:
+                with DDGS() as ddgs:
+                    raw = list(ddgs.text(query, region=region, safesearch=safesearch, max_results=max_results * 2, backend=backend))
+                if raw:
+                    logger.info(f"[DuckDuckGo] Backend '{backend}' returned {len(raw)} results (attempt {attempt+1})")
+                    return _format_results(raw, "duckduckgo")
+                logger.debug(f"[DuckDuckGo] Backend '{backend}' returned 0 results (attempt {attempt+1})")
+            except Exception as e:
+                last_error = e
+                logger.debug(f"[DuckDuckGo] Backend '{backend}' failed (attempt {attempt+1}): {e}")
+        if attempt == 0:
+            time.sleep(1.0)
 
-    logger.warning("[DuckDuckGo] All backends failed, trying fallback search")
+    logger.warning(f"[DuckDuckGo] All backends failed after retry, trying fallback search. Last error: {last_error}")
     return _search_fallback(query, max_results)
 
 
@@ -63,11 +77,12 @@ def _search_bing(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
 
     logger.info(f"[Bing] Searching: {query[:100]}...")
     endpoint = "https://api.bing.microsoft.com/v7.0/search"
-    params = urllib.parse.urlencode({"q": query, "count": max_results, "mkt": "en-US"})
+    params = {"q": query, "count": max_results, "mkt": "en-US"}
     try:
-        req = urllib.request.Request(f"{endpoint}?{params}", headers={"Ocp-Apim-Subscription-Key": api_key})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
+        with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
+            resp = client.get(endpoint, params=params, headers={"Ocp-Apim-Subscription-Key": api_key})
+            resp.raise_for_status()
+            data = resp.json()
     except Exception as e:
         logger.error(f"[Bing] Search failed: {e}")
         return []
@@ -92,15 +107,15 @@ def _search_serper(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
         return _search_duckduckgo(query, max_results)
 
     logger.info(f"[Serper] Searching: {query[:100]}...")
-    payload = json.dumps({"q": query, "num": max_results}).encode()
     try:
-        req = urllib.request.Request(
-            "https://google.serper.dev/search",
-            data=payload,
-            headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
+        with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
+            resp = client.post(
+                "https://google.serper.dev/search",
+                json={"q": query, "num": max_results},
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
     except Exception as e:
         logger.error(f"[Serper] Search failed: {e}")
         return []
@@ -123,12 +138,13 @@ def _search_fallback(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
     logger.info(f"[Fallback] Searching: {query[:100]}...")
     url = "https://lite.duckduckgo.com/lite/?q=" + urllib.parse.quote(query)
     try:
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml",
-        })
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode()
+        with httpx.Client(verify=False, timeout=_HTTP_TIMEOUT) as client:
+            resp = client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+            })
+            resp.raise_for_status()
+            html = resp.text
 
         results = []
         for m in re.finditer(
@@ -182,10 +198,10 @@ def hybrid_search_web(
         return []
 
     from backend.search.hybrid import hybrid_rerank
-    from backend.llm.factory import get_llm_provider
+    from backend.llm.factory import get_llm_provider_instance
 
     try:
-        llm = get_llm_provider()
+        llm = get_llm_provider_instance()
         embed_fn = lambda t: llm.create_embedding(text=t, model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"))
         reranked = hybrid_rerank(query, raw, bm25_weight=0.3, top_k=max_results, embed_fn=embed_fn)
         return reranked

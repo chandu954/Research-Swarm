@@ -80,15 +80,20 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const orgs: Organization[] = await res.json();
         setOrganizations(orgs);
-        if (!currentOrg && orgs.length > 0) {
+        // Only auto-select an org if none is selected yet
+        setCurrentOrgState(prev => {
+          if (prev) return prev;
           const storedId = localStorage.getItem("research-swarm-org-id");
           const found = storedId ? orgs.find(o => o.id === storedId) : orgs[0];
-          setCurrentOrgState(found || orgs[0]);
-        }
+          return found || orgs[0] || null;
+        });
       }
     } catch { /* offline */ }
     setIsLoading(false);
-  }, [token, currentOrg]);
+  // Intentionally exclude currentOrg — including it would cause an
+  // infinite loop (org change triggers refresh which changes org state).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const refreshWorkspaces = useCallback(async () => {
     if (!token || !currentOrg) return;
@@ -99,14 +104,19 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const wsList: Workspace[] = await res.json();
         setWorkspaces(wsList);
-        if (!currentWorkspace && wsList.length > 0) {
+        // Auto-select workspace only if none selected, or if selected one not in new list
+        setCurrentWorkspaceState(prev => {
+          if (prev && wsList.find(w => w.id === prev.id)) return prev;
           const storedId = localStorage.getItem("research-swarm-ws-id");
           const found = storedId ? wsList.find(w => w.id === storedId) : wsList[0];
-          setCurrentWorkspaceState(found || wsList[0]);
-        }
+          return found || wsList[0] || null;
+        });
       }
     } catch { /* offline */ }
-  }, [token, currentOrg, currentWorkspace]);
+  // Exclude currentWorkspace to avoid loop — workspace selection
+  // should not trigger a full workspace list refresh.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, currentOrg]);
 
   const refreshProjects = useCallback(async () => {
     if (!token || !currentOrg || !currentWorkspace) return;
@@ -131,6 +141,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setCurrentOrgState(org);
     setCurrentWorkspaceState(null);
     setCurrentProjectState(null);
+    setWorkspaces([]);
+    setProjects([]);
     localStorage.setItem("research-swarm-org-id", org.id);
     localStorage.removeItem("research-swarm-ws-id");
   }, []);

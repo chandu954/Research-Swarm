@@ -10,7 +10,7 @@ Architecture:
 from __future__ import annotations
 import json
 import asyncio
-import threading
+import queue as _queue
 import time
 from typing import AsyncGenerator, Dict, Any, Optional
 from loguru import logger
@@ -21,7 +21,7 @@ class AsyncQueueAdapter:
     can await new items without blocking the event loop."""
 
     def __init__(self, maxsize: int = 500):
-        self._queue: threading.Queue = threading.Queue(maxsize=maxsize)
+        self._queue = _queue.Queue(maxsize=maxsize)
         self._closed = False
 
     def put(self, item: Any) -> None:
@@ -51,16 +51,25 @@ async def event_stream(
 ) -> AsyncGenerator[str, None]:
     """Generate SSE-formatted events from a thread-safe queue adapter.
 
+    Terminates when the adapter is closed and the queue is drained.
     Yields formatted SSE strings:
       event: log
       data: {json}
     """
     try:
         while True:
+            # Exit when the adapter is closed and nothing left in queue
+            if queue_adapter._closed and queue_adapter._queue.empty():
+                break
             try:
                 log_entry = await asyncio.wait_for(queue_adapter.get_async(), timeout=0.5)
+                if log_entry is None:
+                    break
                 yield f"event: log\ndata: {json.dumps(log_entry)}\n\n"
             except asyncio.TimeoutError:
+                # Send heartbeat; if closed check again next iteration
+                if queue_adapter._closed and queue_adapter._queue.empty():
+                    break
                 yield f"event: heartbeat\ndata: {json.dumps({'timestamp': time.time()})}\n\n"
     except asyncio.CancelledError:
         logger.debug(f"Stream {task_id} cancelled")

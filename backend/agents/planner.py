@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 
 from pydantic import BaseModel, Field
-from backend.llm.factory import get_llm_provider, resolve_model
+from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.tools.registry import ToolRegistry, get_registry
 
 PLANNER_MODEL = resolve_model("planner")
@@ -58,7 +58,7 @@ class Planner:
     """Agent that uses an LLM to dynamically plan research execution."""
 
     def __init__(self, registry: Optional[ToolRegistry] = None):
-        self.llm = get_llm_provider()
+        self.llm = get_llm_provider_instance()
         self.registry = registry or get_registry()
 
     def create_plan(self, query: str, max_retries: int = 2) -> PlanResult:

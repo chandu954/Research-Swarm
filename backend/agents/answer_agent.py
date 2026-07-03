@@ -4,7 +4,7 @@ from loguru import logger
 
 from pydantic import BaseModel, Field
 
-from backend.llm.factory import get_llm_provider, resolve_model
+from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.tools.registry import ToolRegistry, get_registry
 
 
@@ -47,6 +47,8 @@ class AnswerResponse(BaseModel):
 
     answer: str = Field(...)
     sources: List[SourceRef] = Field(default_factory=list)
+    mode: str = Field(default="normal", description="normal | fallback | no_evidence")
+    evidence_summary: Optional[Dict[str, Any]] = Field(default=None, description="What evidence was available")
 
 
 class AnswerAgent:
@@ -54,15 +56,36 @@ class AnswerAgent:
 
     def __init__(self, registry: Optional[ToolRegistry] = None):
         self.registry = registry or get_registry()
-        self.llm = get_llm_provider()
+        self.llm = get_llm_provider_instance()
         logger.info("AnswerAgent ready")
 
     def generate(self, request: AnswerRequest) -> AnswerResponse:
         """Generate answer using the LLM."""
         logger.info(f"Generating answer for: {request.question[:100]}...")
 
-        prompt = self._build_prompt(request)
         sources = self._extract_sources(request)
+        has_web = bool(request.web_results)
+        has_docs = bool(request.document_chunks)
+        has_evidence = has_web or has_docs
+
+        evidence_summary = {
+            "has_web_sources": has_web,
+            "has_documents": has_docs,
+            "web_count": len(request.web_results),
+            "document_chunks_count": len(request.document_chunks),
+            "source_count": len(sources),
+        }
+
+        if not has_evidence:
+            logger.warning("No evidence available — returning no-evidence response")
+            return AnswerResponse(
+                answer=self._no_evidence_answer(request),
+                sources=sources,
+                mode="no_evidence",
+                evidence_summary=evidence_summary,
+            )
+
+        prompt = self._build_prompt(request)
 
         try:
             raw = self.llm.generate(
@@ -72,11 +95,13 @@ class AnswerAgent:
                 options={"temperature": 0.2, "num_predict": 4096},
             )
             answer = raw.strip() if raw.strip() else self._fallback(request)
+            mode = "fallback" if answer != raw.strip() else "normal"
         except Exception as e:
             logger.error(f"Answer generation failed: {e}")
             answer = self._fallback(request)
+            mode = "fallback"
 
-        return AnswerResponse(answer=answer, sources=sources)
+        return AnswerResponse(answer=answer, sources=sources, mode=mode, evidence_summary=evidence_summary)
 
     def _build_prompt(self, request: AnswerRequest) -> str:
         """Construct the full prompt with context."""
@@ -133,6 +158,30 @@ class AnswerAgent:
             ))
         return sources
 
+    def _no_evidence_answer(self, request: AnswerRequest) -> str:
+        """Structured response when no evidence was retrieved."""
+        return f"""# Research could not be completed
+
+## Why?
+
+- **Web search**: No relevant web sources were retrieved (0 results).
+- **Documents**: No documents were uploaded or available.
+
+## What happened
+
+The AI was unable to retrieve any external evidence to answer your question. No search results or document content was available to synthesize an evidence-based response.
+
+## Suggestions
+
+- **Try enabling web search** — check that search backends (DuckDuckGo, Bing, or Serper) are configured correctly.
+- **Upload supporting documents** — PDF files can be uploaded and queried via the document agent.
+- **Rephrase your question** — a more specific or differently worded query may yield better results.
+- **Retry research** — temporary search service issues may resolve on retry.
+
+---
+
+*Research pipeline completed with no evidence retrieved.*"""
+
     def _fallback(self, request: AnswerRequest) -> str:
         """Fallback answer when LLM is unavailable."""
         lines = [f"# Research Summary: {request.question}", ""]
@@ -145,7 +194,6 @@ class AnswerAgent:
             for c in request.document_chunks:
                 content = c.get("content", "")[:300]
                 lines.append(f"- {content}...")
-        if not request.web_results and not request.document_chunks:
-            lines.append("*No research data available. Try rephrasing or uploading documents.*")
         lines.append("\n---\n*Answers were generated in fallback mode.*")
+        lines.append("\n> **⚠️ Fallback mode:** The AI answered using only its pretrained knowledge because the primary language model was unavailable. No external evidence was synthesized.")
         return "\n".join(lines)

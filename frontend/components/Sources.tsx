@@ -64,6 +64,7 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
     const score = getTrustScore(s.url, s.title);
     return getConfidence(score.authority, score.relevance);
   });
+  const hasAnySources = webSources.length > 0 || documentSources.length > 0;
   const avgConfidence = allConfidence.length
     ? Math.round(allConfidence.reduce((a, b) => a + b, 0) / allConfidence.length)
     : 0;
@@ -89,6 +90,12 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
               {avgConfidence}% avg
             </span>
           )}
+          {hasAnySources && avgConfidence === 0 && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-yellow-500/10 px-2 py-1 text-[9px] font-medium text-yellow-400">
+              <TrendingUp className="h-3 w-3" />
+              N/A
+            </span>
+          )}
           {sources.length > 0 && (
             <span className="latency-badge">{sources.length} total</span>
           )}
@@ -99,7 +106,7 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
         <div className="flex items-center gap-2 rounded-xl border border-dashed border-[var(--border)] px-3 py-4">
           <Library className="h-4 w-4 text-[var(--text-muted)]" />
           <p className="text-[10px] text-[var(--text-muted)]">
-            Citations will collect here as agents work.
+            No sources retrieved. Web search and document retrieval found no evidence.
           </p>
         </div>
       ) : (

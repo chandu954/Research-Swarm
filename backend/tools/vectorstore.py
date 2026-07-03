@@ -7,7 +7,14 @@ from loguru import logger
 
 try:
     import chromadb
-    from chromadb.config import Settings
+    # ChromaDB 0.5+ moved Settings to the top-level package
+    try:
+        from chromadb import Settings
+    except ImportError:
+        try:
+            from chromadb.config import Settings
+        except ImportError:
+            Settings = None
 except ImportError:
     chromadb = None
     Settings = None

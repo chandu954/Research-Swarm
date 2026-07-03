@@ -76,6 +76,7 @@ function classifyResponse(status: number, body: any): ApiError {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const DEFAULT_TIMEOUT_MS = 30_000;
+const RESEARCH_TIMEOUT_MS = 180_000;  // Research can take up to 3 minutes
 const STREAM_TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 2;
 
@@ -199,10 +200,13 @@ async function request<T>(
   const { orgId, wsId, projectId } = getTenantIds();
 
   const headers: Record<string, string> = {
-    "Content-Type": options.body instanceof FormData ? "multipart/form-data" : "application/json",
     "X-Request-ID": requestId,
     ...options.headers,
   };
+  // Never set Content-Type for FormData — browser must set it with the multipart boundary
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (orgId && !headers["X-Organization-Id"]) headers["X-Organization-Id"] = orgId;
   if (wsId && !headers["X-Workspace-Id"]) headers["X-Workspace-Id"] = wsId;
@@ -214,9 +218,6 @@ async function request<T>(
     headers,
   };
   if (options.body) fetchOptions.body = options.body;
-  if (options.body instanceof FormData) {
-    delete (fetchOptions.headers as Record<string, string>)["Content-Type"];
-  }
 
   let lastError: ApiError | null = null;
 
@@ -369,7 +370,7 @@ export async function runResearch(
   debateMode?: boolean,
 ): Promise<ResearchResult> {
   return api.post<ResearchResult>("/research", researchBody(query, documentIds, providerSettings, streamTaskId, conversationId, debateMode), {
-    timeout: DEFAULT_TIMEOUT_MS,
+    timeout: RESEARCH_TIMEOUT_MS,
   });
 }
 
@@ -456,11 +457,13 @@ export async function listDocuments() {
 }
 
 export async function listConversations() {
-  return api.get<{ conversations: any[] }>("/conversations");
+  // Backend returns array directly: list[ConversationResponse]
+  return api.get<any[]>("/conversations");
 }
 
 export async function loadConversation(id: string) {
-  return api.get<{ conversation: any; messages: any[] }>(`/conversations/${id}`);
+  // Backend returns ConversationDetail directly (not wrapped in an object)
+  return api.get<{ id: string; title?: string; messages: any[] }>(`/conversations/${id}`);
 }
 
 export async function healthCheck() {

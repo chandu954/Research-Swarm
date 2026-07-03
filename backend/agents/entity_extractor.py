@@ -5,7 +5,7 @@ import json, re
 from typing import Optional
 from pydantic import BaseModel
 from loguru import logger
-from backend.llm.factory import get_llm_provider
+from backend.llm.factory import get_llm_provider_instance
 
 EXTRACT_SYSTEM_PROMPT = """You are an entity extraction specialist. Extract structured entities and relationships from the given research text.
 
@@ -88,7 +88,7 @@ async def extract_entities(
         return ExtractionResult()
 
     try:
-        llm = get_llm_provider(llm_provider)
+        llm = get_llm_provider_instance(llm_provider)
         resolved_model = model or ("qwen/qwen3-32b" if llm_provider == "openrouter" else "qwen3:14b")
 
         loop = asyncio.get_running_loop()

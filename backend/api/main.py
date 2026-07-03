@@ -253,7 +253,7 @@ async def run_research(
     user_id = current_user.id
     logger.info(f"[{task_id}] Research by user={user_id} org={ctx.organization_id}: {request.query[:100]}...")
 
-    pdf_paths = _resolve_pdf_paths(request.document_ids)
+    pdf_paths = await _resolve_pdf_paths(session, request.document_ids)
     graph = app.state.graph
     app.state.stream_manager.get_or_create_stream(task_id)
 
@@ -283,6 +283,10 @@ async def run_research(
             "debate_mode": request.debate_mode,
             "debate_perspectives": request.debate_perspectives,
             "debate_result": None,
+            "has_evidence": False,
+            "evidence_summary": None,
+            "answer_mode": "normal",
+            "fallback_reason": None,
         }
         result = await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
         execution_time = time.time() - start_time
@@ -304,6 +308,9 @@ async def run_research(
             cost_estimate=result.get("cost_estimate"),
             token_count=result.get("token_count"),
             debate=result.get("debate_result"),
+            answer_mode=result.get("answer_mode", "normal"),
+            evidence_summary=result.get("evidence_summary"),
+            has_evidence=result.get("has_evidence", False),
         )
     except Exception as e:
         logger.error(f"[{task_id}] Research failed: {e}")
@@ -340,7 +347,8 @@ async def research_stream(
     task_id = str(uuid.uuid4())
     conv_id = conversation_id or str(uuid.uuid4())
     doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
-    pdf_paths = _resolve_pdf_paths(doc_ids)
+    # GET stream endpoint has no auth session; resolve paths from filesystem only
+    pdf_paths = [os.path.join(UPLOAD_DIR, d) for d in doc_ids if os.path.exists(os.path.join(UPLOAD_DIR, d))]
     stream_mgr = app.state.stream_manager
     log_queue = stream_mgr.create_stream(task_id)
     stream_mgr.push_log(task_id, make_log("planner", "analyze_query", "running", query[:100]))
@@ -354,9 +362,14 @@ async def research_stream(
                 "answer": None, "sources": [], "errors": [],
                 "status": "running", "logs": [], "pdf_paths": pdf_paths,
                 "execution_start": time.time(), "agent_metrics": {},
+                "stream_task_id": task_id,
                 "llm_provider": None, "planner_model": None,
                 "research_model": None, "document_model": None,
                 "answer_model": None, "openrouter_key": None,
+                "debate_mode": False, "debate_perspectives": None,
+                "debate_result": None,
+                "has_evidence": False, "evidence_summary": None,
+                "answer_mode": "normal", "fallback_reason": None,
             }
             graph = app.state.graph
             await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
@@ -790,17 +803,14 @@ async def mark_all_read(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    from sqlalchemy import update as sa_update
     await session.execute(
-        select(Notification).where(
+        sa_update(Notification)
+        .where(
             Notification.user_id == current_user.id,
             Notification.is_read == False,
         )
-    )
-    await session.execute(
-        Notification.__table__.update().where(
-            Notification.user_id == current_user.id,
-            Notification.is_read == False,
-        ).values(is_read=True, read_at=datetime.now(timezone.utc))
+        .values(is_read=True, read_at=datetime.now(timezone.utc))
     )
     await session.flush()
     return {"status": "all_read"}
@@ -1049,14 +1059,23 @@ async def list_models():
                 return {"provider": "ollama", "models": [], "error": str(e)}
 
 
-def _resolve_pdf_paths(document_ids: list[str]) -> list[str]:
+async def _resolve_pdf_paths(session: AsyncSession, document_ids: list[str]) -> list[str]:
+    """Resolve document UUIDs to absolute filesystem paths via DB lookup."""
+    if not document_ids:
+        return []
     paths = []
     for doc_id in document_ids:
-        path = os.path.join(UPLOAD_DIR, doc_id)
-        if os.path.exists(path):
-            paths.append(path)
+        result = await session.execute(
+            select(Document).where(
+                Document.id == doc_id,
+                Document.is_deleted == False,
+            )
+        )
+        doc = result.scalar_one_or_none()
+        if doc and doc.storage_path and os.path.exists(doc.storage_path):
+            paths.append(doc.storage_path)
         else:
-            logger.warning(f"Document not found: {doc_id}")
+            logger.warning(f"Document not found or missing on disk: {doc_id}")
     return paths
 
 
@@ -1083,8 +1102,9 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
     resolved_user_id = token_user_id or "anonymous"
     user_name = payload.get("name", "Anonymous")
 
-    async with get_session() as session:
-        ws_result = await session.execute(
+    ws_user = None
+    async for _ws_session in get_session():
+        ws_result = await _ws_session.execute(
             select(Workspace).where(Workspace.id == workspace_id, Workspace.is_active == True)
         )
         workspace = ws_result.scalar_one_or_none()
@@ -1092,7 +1112,7 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
             await ws.close(code=4004, reason="Workspace not found")
             return
 
-        user_result = await session.execute(
+        user_result = await _ws_session.execute(
             select(User).where(User.id == resolved_user_id, User.is_active == True)
         )
         ws_user = user_result.scalar_one_or_none()
@@ -1101,7 +1121,7 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
             return
 
         if not ws_user.is_superuser:
-            member_result = await session.execute(
+            member_result = await _ws_session.execute(
                 select(WorkspaceMember).where(
                     WorkspaceMember.workspace_id == workspace_id,
                     WorkspaceMember.user_id == resolved_user_id,
@@ -1110,6 +1130,7 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
             if not member_result.scalar_one_or_none():
                 await ws.close(code=4003, reason="Not a member of this workspace")
                 return
+        break  # only one iteration needed
 
     await ws.accept()
 

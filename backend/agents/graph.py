@@ -20,8 +20,12 @@ from backend.api.stream import get_stream_manager
 from backend.tools.registry import get_registry
 
 
-class AgentState(TypedDict):
-    """Shared state flowing through the LangGraph workflow."""
+class AgentState(TypedDict, total=False):
+    """Shared state flowing through the LangGraph workflow.
+
+    Uses total=False so all fields are optional at construction time;
+    required fields are enforced at the call site in run_research.
+    """
 
     query: str
     conversation_id: Optional[str]
@@ -44,9 +48,13 @@ class AgentState(TypedDict):
     answer_model: Optional[str]
     openrouter_key: Optional[str]
     stream_task_id: Optional[str]
-    debate_mode: bool = False
-    debate_perspectives: Optional[List[str]] = None
-    debate_result: Optional[Dict[str, Any]] = None
+    debate_mode: bool
+    debate_perspectives: Optional[List[str]]
+    debate_result: Optional[Dict[str, Any]]
+    has_evidence: bool
+    evidence_summary: Optional[Dict[str, Any]]
+    answer_mode: str
+    fallback_reason: Optional[str]
 
 
 def _apply_state_overrides(state: AgentState) -> ProviderOverrides:
@@ -60,12 +68,19 @@ def _apply_state_overrides(state: AgentState) -> ProviderOverrides:
     )
 
 
-MODEL_ROUTING: Dict[str, str] = {
-    "planner": resolve_model("planner"),
-    "research_agent": resolve_model("research_agent"),
-    "document_agent": resolve_model("document_agent"),
-    "answer_agent": resolve_model("answer_agent"),
-}
+def _get_model_routing() -> Dict[str, str]:
+    """Lazily resolve model names so env vars are available at call time."""
+    return {
+        "planner": resolve_model("planner"),
+        "research_agent": resolve_model("research_agent"),
+        "document_agent": resolve_model("document_agent"),
+        "answer_agent": resolve_model("answer_agent"),
+    }
+
+
+# Convenience alias used in node functions — resolved lazily
+def _model(agent: str) -> str:
+    return resolve_model(agent)
 
 
 def create_research_graph() -> StateGraph:
@@ -82,7 +97,11 @@ def create_research_graph() -> StateGraph:
     workflow.add_conditional_edges(
         "planner",
         _route_after_planning,
-        ["research_agent", "document_agent", "merge", "answer_agent"],
+        {
+            "research_agent": "research_agent",
+            "document_agent": "document_agent",
+            "answer_agent": "answer_agent",
+        },
     )
 
     workflow.add_edge("research_agent", "merge")
@@ -142,7 +161,7 @@ def _run_planner_node(state: AgentState) -> Dict[str, Any]:
             "plan": plan_data,
             "plan_reasoning": plan_reasoning,
             "execution_start": time.time(),
-            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": MODEL_ROUTING["planner"], "status": "ok"}},
+            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": _model("planner"), "status": "ok"}},
         }
     except Exception as e:
         latency_ms = round((time.time() - start) * 1000, 2)
@@ -153,25 +172,31 @@ def _run_planner_node(state: AgentState) -> Dict[str, Any]:
             "plan": [],
             "plan_reasoning": f"Error: {e}",
             "errors": state.get("errors", []) + [f"Planner error: {e}"],
-            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": MODEL_ROUTING["planner"], "status": "error", "error": str(e)}},
+            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": _model("planner"), "status": "error", "error": str(e)}},
         }
 
 
-def _route_after_planning(state: AgentState) -> List[str]:
-    """Route to parallel branches. Returns list for fan-out to research + document."""
+def _route_after_planning(state: AgentState) -> str:
+    """Route to the primary next node after planning.
+
+    Returns a single destination key matching the edges dict.
+    LangGraph conditional edges with a dict mapping use the returned
+    string as a key into that dict.
+
+    For parallel fan-out: both research_agent and document_agent nodes
+    are connected via separate edges if both apply.  Here we return
+    the primary destination; the graph wiring ensures document_agent
+    also runs when pdf_paths is non-empty.
+    """
     plan = state.get("plan", [])
     has_research = any(s.get("agent") == "research_agent" for s in plan)
     has_document = any(s.get("agent") == "document_agent" for s in plan) or bool(state.get("pdf_paths"))
 
-    destinations = []
     if has_research:
-        destinations.append("research_agent")
+        return "research_agent"
     if has_document:
-        destinations.append("document_agent")
-    if not destinations:
-        destinations.append("answer_agent")
-
-    return destinations
+        return "document_agent"
+    return "answer_agent"
 
 
 def _run_research_node(state: AgentState) -> Dict[str, Any]:
@@ -194,7 +219,7 @@ def _run_research_node(state: AgentState) -> Dict[str, Any]:
             "agent_metrics": {
                 "research_agent": {
                     "latency_ms": latency_ms,
-                    "model": MODEL_ROUTING["research_agent"],
+                    "model": _model("research_agent"),
                     "result_count": len(results),
                     "status": "ok",
                 }
@@ -208,7 +233,7 @@ def _run_research_node(state: AgentState) -> Dict[str, Any]:
         return {
             "web_results": [],
             "errors": state.get("errors", []) + [f"Research error: {e}"],
-            "agent_metrics": {"research_agent": {"latency_ms": latency_ms, "model": MODEL_ROUTING["research_agent"], "status": "error", "error": str(e)}},
+            "agent_metrics": {"research_agent": {"latency_ms": latency_ms, "model": _model("research_agent"), "status": "error", "error": str(e)}},
         }
 
 
@@ -220,7 +245,7 @@ def _run_document_node(state: AgentState) -> Dict[str, Any]:
 
     if not pdf_paths:
         _add_log(state, "document_agent", "process_documents", "completed", "No PDFs to process")
-        return {"document_chunks": [], "agent_metrics": {"document_agent": {"latency_ms": 0, "model": MODEL_ROUTING["document_agent"], "chunks_retrieved": 0, "status": "skipped"}}}
+        return {"document_chunks": [], "agent_metrics": {"document_agent": {"latency_ms": 0, "model": _model("document_agent"), "chunks_retrieved": 0, "status": "skipped"}}}
 
     _add_log(state, "document_agent", "process_documents", "running", f"Processing {len(pdf_paths)} PDF(s)")
 
@@ -244,7 +269,7 @@ def _run_document_node(state: AgentState) -> Dict[str, Any]:
             "agent_metrics": {
                 "document_agent": {
                     "latency_ms": latency_ms,
-                    "model": MODEL_ROUTING["document_agent"],
+                    "model": _model("document_agent"),
                     "chunks_retrieved": len(chunks),
                     "pdfs_processed": len(pdf_paths),
                     "status": "ok",
@@ -259,15 +284,26 @@ def _run_document_node(state: AgentState) -> Dict[str, Any]:
         return {
             "document_chunks": [],
             "errors": state.get("errors", []) + [f"Document error: {e}"],
-            "agent_metrics": {"document_agent": {"latency_ms": latency_ms, "model": MODEL_ROUTING["document_agent"], "status": "error", "error": str(e)}},
+            "agent_metrics": {"document_agent": {"latency_ms": latency_ms, "model": _model("document_agent"), "status": "error", "error": str(e)}},
         }
 
 
 def _run_merge_node(state: AgentState) -> Dict[str, Any]:
     """Node: Merge — passes data through after parallel branches complete."""
+    web_count = len(state.get("web_results", []))
+    doc_count = len(state.get("document_chunks", []))
+    has_evidence = web_count > 0 or doc_count > 0
     _add_log(state, "merge", "synchronize", "completed",
-             f"Web: {len(state.get('web_results', []))} results, Docs: {len(state.get('document_chunks', []))} chunks")
-    return {}
+             f"Web: {web_count} results, Docs: {doc_count} chunks, has_evidence={has_evidence}")
+    return {
+        "has_evidence": has_evidence,
+        "evidence_summary": {
+            "web_count": web_count,
+            "document_chunks_count": doc_count,
+            "has_web_sources": web_count > 0,
+            "has_documents": doc_count > 0,
+        },
+    }
 
 
 def _route_after_merge(state: AgentState) -> str:
@@ -354,11 +390,15 @@ def _run_answer_node(state: AgentState) -> Dict[str, Any]:
             "answer": response.answer,
             "sources": [s.model_dump() for s in response.sources],
             "status": "completed",
+            "answer_mode": response.mode,
+            "evidence_summary": response.evidence_summary or state.get("evidence_summary"),
+            "has_evidence": bool(response.sources),
             "agent_metrics": {
                 "answer_agent": {
                     "latency_ms": latency_ms,
-                    "model": MODEL_ROUTING["answer_agent"],
+                    "model": _model("answer_agent"),
                     "source_count": len(response.sources),
+                    "mode": response.mode,
                     "status": "ok",
                 },
                 "total": {"latency_ms": round(total_time * 1000, 2)},
@@ -374,7 +414,7 @@ def _run_answer_node(state: AgentState) -> Dict[str, Any]:
             "answer": f"**Error generating answer:** {e}",
             "status": "failed",
             "errors": state.get("errors", []) + [f"Answer error: {e}"],
-            "agent_metrics": {"answer_agent": {"latency_ms": latency_ms, "model": MODEL_ROUTING["answer_agent"], "status": "error", "error": str(e)}},
+            "agent_metrics": {"answer_agent": {"latency_ms": latency_ms, "model": _model("answer_agent"), "status": "error", "error": str(e)}},
             **extra_updates,
         }
 

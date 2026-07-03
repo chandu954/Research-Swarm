@@ -162,12 +162,16 @@ async def login(
     return _build_tokens(user)
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(
-    refresh_token: str,
+    body: RefreshRequest,
     session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
-    user_id = get_token_subject(refresh_token, expected_type="refresh")
+    user_id = get_token_subject(body.refresh_token, expected_type="refresh")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 

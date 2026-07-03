@@ -7,14 +7,14 @@ from pathlib import Path
 from loguru import logger
 
 from backend.tools.registry import ToolRegistry, get_registry, ToolSpec, ToolCategory
-from backend.llm.factory import get_llm_provider
+from backend.llm.factory import get_llm_provider_instance
 
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 TOP_K = 10
 RERANK_TOP_K = 5
-EMBEDDING_MODEL = "nomic-embed-text"
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 
 
 class DocumentAgent:
@@ -22,7 +22,7 @@ class DocumentAgent:
 
     def __init__(self, registry: Optional[ToolRegistry] = None):
         self.registry = registry or get_registry()
-        self.llm = get_llm_provider()
+        self.llm = get_llm_provider_instance()
         self._register_tools()
         logger.info("DocumentAgent ready")
 

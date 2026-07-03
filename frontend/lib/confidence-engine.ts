@@ -13,8 +13,15 @@ export interface ConfidenceSignal {
 function extractSignals(paragraph: string): ConfidenceSignal[] {
   const signals: ConfidenceSignal[] = [];
 
+  const lower = paragraph.toLowerCase();
+
   if (/\[\d+(?:,\s*\d+)*\]/.test(paragraph)) {
     signals.push({ type: "citation", label: "Has citations", strength: 1 });
+  }
+
+  if (lower.includes("no evidence") || lower.includes("fallback mode") || lower.includes("research could not be completed") || lower.includes("no relevant web sources")) {
+    signals.push({ type: "factual", label: "No evidence available", strength: -1 });
+    return signals;
   }
 
   const hedgeWords = [
@@ -59,6 +66,9 @@ function computeConfidence(signals: ConfidenceSignal[]): number {
   let base = 70;
   for (const s of signals) {
     base += s.strength * 10;
+  }
+  if (signals.some((s) => s.type === "factual" && s.label === "No evidence available")) {
+    return 15;
   }
   return Math.max(10, Math.min(99, base));
 }

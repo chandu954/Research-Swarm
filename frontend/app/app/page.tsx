@@ -162,6 +162,9 @@ export default function ResearchWorkspace() {
             logs: result.logs,
             status: result.status,
             debate: result.debate,
+            answerMode: result.answer_mode,
+            evidenceSummary: result.evidence_summary,
+            hasEvidence: result.has_evidence,
           },
         ]);
       } catch (error) {
@@ -184,7 +187,7 @@ export default function ResearchWorkspace() {
         setIsRunning(false);
       }
     },
-    [selectedDocs, providerSettings, debateMode],
+    [selectedDocs, providerSettings, debateMode, conversationId],
   );
 
   const handleNewChat = useCallback(() => {
@@ -214,17 +217,17 @@ export default function ResearchWorkspace() {
 
   const handleSelectConversation = useCallback(async (id: string) => {
     try {
+      // loadConversation returns ConversationDetail directly (not wrapped)
       const data = await loadConversation(id);
       setConversationId(id);
-      if (data.messages) {
-        setMessages(data.messages.map((m: any) => ({
-          id: m.id || m.message_id,
-          role: m.role,
-          content: m.content || "",
-          timestamp: m.created_at || m.timestamp || Date.now(),
-          sources: m.sources || [],
-        })));
-      }
+      const msgs = Array.isArray(data.messages) ? data.messages : [];
+      setMessages(msgs.map((m: any) => ({
+        id: m.id || m.message_id,
+        role: m.role,
+        content: m.content || "",
+        timestamp: m.created_at || m.timestamp || Date.now(),
+        sources: m.sources || [],
+      })));
     } catch {
       // conversation load failed silently
     }

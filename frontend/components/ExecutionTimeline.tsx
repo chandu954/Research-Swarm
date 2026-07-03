@@ -58,6 +58,7 @@ function AgentStep({
   const isActive = status === "running";
   const isComplete = status === "completed";
   const isFailed = status === "failed";
+  const isSkipped = status === "skipped";
 
   return (
     <motion.div
@@ -79,6 +80,7 @@ function AgentStep({
           "agent-step-icon relative z-10",
           `agent-step-icon-${meta.color}`,
           isActive && "ring-4 ring-cyan-400/10",
+          isSkipped && "opacity-40",
         )}
       >
         {isActive ? (
@@ -87,6 +89,8 @@ function AgentStep({
           <Check className="h-3.5 w-3.5" />
         ) : isFailed ? (
           <X className="h-3.5 w-3.5" />
+        ) : isSkipped ? (
+          <Icon className="h-3.5 w-3.5" />
         ) : (
           <Icon className="h-3.5 w-3.5" />
         )}
@@ -124,9 +128,11 @@ function AgentStep({
                 isComplete && "text-emerald-400",
                 isActive && "text-cyan-400",
                 isFailed && "text-rose-400",
+                isSkipped && "text-yellow-500/60",
                 !isComplete &&
                   !isActive &&
                   !isFailed &&
+                  !isSkipped &&
                   "text-[var(--text-muted)]",
               )}
             >
@@ -136,7 +142,9 @@ function AgentStep({
                   ? "Working"
                   : isFailed
                     ? "Failed"
-                    : "Queued"}
+                    : isSkipped
+                      ? "Skipped"
+                      : "Queued"}
             </span>
           </div>
         </div>

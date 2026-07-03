@@ -46,6 +46,15 @@ export interface ResearchResult {
   plan_reasoning?: string;
   agent_metrics?: Record<string, AgentMetric>;
   debate?: DebateData;
+  answer_mode?: string;
+  evidence_summary?: {
+    web_count: number;
+    document_chunks_count: number;
+    has_web_sources: boolean;
+    has_documents: boolean;
+    source_count?: number;
+  };
+  has_evidence?: boolean;
 }
 
 export interface AgentMetric {
@@ -76,6 +85,9 @@ export interface Message {
   logs?: AgentLog[];
   status?: string;
   debate?: DebateData;
+  answerMode?: string;
+  evidenceSummary?: ResearchResult["evidence_summary"];
+  hasEvidence?: boolean;
 }
 
 export interface UploadedDocument {

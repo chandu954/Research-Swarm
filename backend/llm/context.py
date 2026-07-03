@@ -43,7 +43,7 @@ def get_answer_model() -> str:
 
 class ProviderOverrides:
     def __init__(self) -> None:
-        self._tokens: list[Token] = []
+        self._entries: list[tuple[ContextVar, Token]] = []
 
     def apply(
         self,
@@ -55,42 +55,22 @@ class ProviderOverrides:
         openrouter_key: Optional[str] = None,
     ) -> None:
         if llm_provider is not None:
-            self._tokens.append(_llm_provider.set(llm_provider))
+            self._entries.append((_llm_provider, _llm_provider.set(llm_provider)))
         if planner_model is not None:
-            self._tokens.append(_planner_model.set(planner_model))
+            self._entries.append((_planner_model, _planner_model.set(planner_model)))
         if research_model is not None:
-            self._tokens.append(_research_model.set(research_model))
+            self._entries.append((_research_model, _research_model.set(research_model)))
         if document_model is not None:
-            self._tokens.append(_document_model.set(document_model))
+            self._entries.append((_document_model, _document_model.set(document_model)))
         if answer_model is not None:
-            self._tokens.append(_answer_model.set(answer_model))
+            self._entries.append((_answer_model, _answer_model.set(answer_model)))
         if openrouter_key is not None:
-            self._tokens.append(_openrouter_key.set(openrouter_key))
+            self._entries.append((_openrouter_key, _openrouter_key.set(openrouter_key)))
 
     def restore(self) -> None:
-        for t in reversed(self._tokens):
+        for var, token in reversed(self._entries):
             try:
-                _llm_provider.reset(t)
+                var.reset(token)
             except (ValueError, LookupError):
                 pass
-            try:
-                _planner_model.reset(t)
-            except (ValueError, LookupError):
-                pass
-            try:
-                _research_model.reset(t)
-            except (ValueError, LookupError):
-                pass
-            try:
-                _document_model.reset(t)
-            except (ValueError, LookupError):
-                pass
-            try:
-                _answer_model.reset(t)
-            except (ValueError, LookupError):
-                pass
-            try:
-                _openrouter_key.reset(t)
-            except (ValueError, LookupError):
-                pass
-        self._tokens.clear()
+        self._entries.clear()
