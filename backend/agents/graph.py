@@ -14,6 +14,7 @@ from backend.agents.planner import Planner
 from backend.agents.research_agent import WebResearchAgent
 from backend.agents.document_agent import DocumentAgent
 from backend.agents.answer_agent import AnswerAgent, AnswerRequest
+from backend.agents.merge import merge_research
 from backend.llm.factory import resolve_model, apply_provider_overrides, restore_provider_overrides
 from backend.llm.context import ProviderOverrides
 from backend.api.stream import get_stream_manager
@@ -104,7 +105,15 @@ def create_research_graph() -> StateGraph:
         },
     )
 
-    workflow.add_edge("research_agent", "merge")
+    workflow.add_conditional_edges(
+        "research_agent",
+        _route_after_research,
+        {
+            "document_agent": "document_agent",
+            "merge": "merge",
+        },
+    )
+
     workflow.add_edge("document_agent", "merge")
 
     workflow.add_conditional_edges(
@@ -180,13 +189,13 @@ def _route_after_planning(state: AgentState) -> str:
     """Route to the primary next node after planning.
 
     Returns a single destination key matching the edges dict.
-    LangGraph conditional edges with a dict mapping use the returned
-    string as a key into that dict.
-
-    For parallel fan-out: both research_agent and document_agent nodes
-    are connected via separate edges if both apply.  Here we return
-    the primary destination; the graph wiring ensures document_agent
-    also runs when pdf_paths is non-empty.
+    Because LangGraph conditional edges return a single string (not a
+    list), only one destination can be returned.  To ensure both
+    research_agent and document_agent run when needed, we chain them:
+    if both are needed we route to research_agent first, and its
+    conditional edge (see _route_after_research) fans out to
+    document_agent afterwards.  This is sequential but guarantees
+    both execute instead of one being skipped.
     """
     plan = state.get("plan", [])
     has_research = any(s.get("agent") == "research_agent" for s in plan)
@@ -197,6 +206,13 @@ def _route_after_planning(state: AgentState) -> str:
     if has_document:
         return "document_agent"
     return "answer_agent"
+
+
+def _route_after_research(state: AgentState) -> str:
+    """After research_agent completes, route to document_agent if needed or merge."""
+    plan = state.get("plan", [])
+    has_document = any(s.get("agent") == "document_agent" for s in plan) or bool(state.get("pdf_paths"))
+    return "document_agent" if has_document else "merge"
 
 
 def _run_research_node(state: AgentState) -> Dict[str, Any]:
@@ -289,19 +305,22 @@ def _run_document_node(state: AgentState) -> Dict[str, Any]:
 
 
 def _run_merge_node(state: AgentState) -> Dict[str, Any]:
-    """Node: Merge — passes data through after parallel branches complete."""
-    web_count = len(state.get("web_results", []))
-    doc_count = len(state.get("document_chunks", []))
-    has_evidence = web_count > 0 or doc_count > 0
+    """Node: Merge — combines web and document evidence, deduplicates."""
+    merged = merge_research(
+        web_results=state.get("web_results", []),
+        document_chunks=state.get("document_chunks", []),
+    )
     _add_log(state, "merge", "synchronize", "completed",
-             f"Web: {web_count} results, Docs: {doc_count} chunks, has_evidence={has_evidence}")
+             f"Web: {merged['source_count']} results, Docs: {merged['document_count']} chunks, "
+             f"merged: {len(merged['merged_evidence'])} items, has_evidence={merged['has_evidence']}")
     return {
-        "has_evidence": has_evidence,
+        "has_evidence": merged["has_evidence"],
         "evidence_summary": {
-            "web_count": web_count,
-            "document_chunks_count": doc_count,
-            "has_web_sources": web_count > 0,
-            "has_documents": doc_count > 0,
+            "web_count": merged["source_count"],
+            "document_chunks_count": merged["document_count"],
+            "merged_count": len(merged["merged_evidence"]),
+            "has_web_sources": merged["source_count"] > 0,
+            "has_documents": merged["document_count"] > 0,
         },
     }
 

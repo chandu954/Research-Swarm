@@ -11,10 +11,7 @@ from loguru import logger
 def _get_secret() -> str:
     secret = os.getenv("JWT_SECRET_KEY")
     if not secret:
-        if os.getenv("ENVIRONMENT", "development") == "production":
-            raise RuntimeError("JWT_SECRET_KEY must be set in production")
-        secret = "dev-insecure-key-do-not-use-in-production"
-        logger.warning("JWT_SECRET_KEY not set — using insecure dev key. Set JWT_SECRET_KEY in production.")
+        raise RuntimeError("JWT_SECRET_KEY environment variable is not set")
     return secret
 
 

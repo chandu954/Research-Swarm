@@ -136,6 +136,7 @@ async def register(
     session.add(user)
     await session.flush()
     await _create_default_organization(session, user)
+    await _create_session(user, request, session)
 
     return _build_tokens(user)
 
@@ -161,6 +162,7 @@ async def login(
     user.last_login_at = datetime.now(timezone.utc)
     user.last_login_ip = request.client.host if request.client else None
     await session.flush()
+    await _create_session(user, request, session)
 
     return _build_tokens(user)
 
@@ -241,6 +243,7 @@ async def _handle_oauth_callback(
     email_keys: list[str],
     avatar_key: str,
     id_key: str,
+    request: Request,
     session: AsyncSession,
 ) -> HTMLResponse:
     tokens = await exchange_func(code)
@@ -264,6 +267,7 @@ async def _handle_oauth_callback(
         provider=provider,
         db_session=session,
     )
+    await _create_session(user, request, session)
     return _oauth_callback_html(_build_tokens(user))
 
 
@@ -271,7 +275,17 @@ async def _handle_oauth_callback(
 
 @router.get("/google")
 async def google_login():
-    return RedirectResponse(url=get_google_auth_url())
+    state = secrets.token_urlsafe(32)
+    response = RedirectResponse(url=get_google_auth_url(state=state))
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        max_age=600,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/google/callback")
@@ -279,8 +293,12 @@ async def google_callback(
     code: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
+    state: str = Query(None),
 ) -> HTMLResponse:
-    return await _handle_oauth_callback(
+    stored_state = request.cookies.get("oauth_state")
+    if not stored_state or not state or stored_state != state:
+        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Invalid state parameter")
+    resp = await _handle_oauth_callback(
         provider="google",
         code=code,
         exchange_func=exchange_google_code,
@@ -289,15 +307,28 @@ async def google_callback(
         email_keys=["email"],
         avatar_key="picture",
         id_key="id",
+        request=request,
         session=session,
     )
+    resp.delete_cookie("oauth_state")
+    return resp
 
 
 # ── GitHub OAuth ────────────────────────────────────────────────
 
 @router.get("/github")
 async def github_login():
-    return RedirectResponse(url=get_github_auth_url())
+    state = secrets.token_urlsafe(32)
+    response = RedirectResponse(url=get_github_auth_url(state=state))
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        max_age=600,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/github/callback")
@@ -305,8 +336,12 @@ async def github_callback(
     code: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
+    state: str = Query(None),
 ) -> HTMLResponse:
-    return await _handle_oauth_callback(
+    stored_state = request.cookies.get("oauth_state")
+    if not stored_state or not state or stored_state != state:
+        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Invalid state parameter")
+    resp = await _handle_oauth_callback(
         provider="github",
         code=code,
         exchange_func=exchange_github_code,
@@ -315,15 +350,28 @@ async def github_callback(
         email_keys=["email"],
         avatar_key="avatar_url",
         id_key="id",
+        request=request,
         session=session,
     )
+    resp.delete_cookie("oauth_state")
+    return resp
 
 
 # ── Microsoft OAuth ─────────────────────────────────────────────
 
 @router.get("/microsoft")
 async def microsoft_login():
-    return RedirectResponse(url=get_microsoft_auth_url())
+    state = secrets.token_urlsafe(32)
+    response = RedirectResponse(url=get_microsoft_auth_url(state=state))
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        max_age=600,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/microsoft/callback")
@@ -331,8 +379,12 @@ async def microsoft_callback(
     code: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
+    state: str = Query(None),
 ) -> HTMLResponse:
-    return await _handle_oauth_callback(
+    stored_state = request.cookies.get("oauth_state")
+    if not stored_state or not state or stored_state != state:
+        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Invalid state parameter")
+    resp = await _handle_oauth_callback(
         provider="microsoft",
         code=code,
         exchange_func=exchange_microsoft_code,
@@ -341,8 +393,11 @@ async def microsoft_callback(
         email_keys=["mail", "userPrincipalName"],
         avatar_key="",
         id_key="id",
+        request=request,
         session=session,
     )
+    resp.delete_cookie("oauth_state")
+    return resp
 
 
 # ── Forgot Password ─────────────────────────────────────────────
@@ -365,7 +420,7 @@ async def forgot_password(
     user = result.scalar_one_or_none()
     if user:
         reset_token = create_access_token(user.id, {"type": "password_reset"})
-        logger.info(f"Password reset for {body.email}: token={reset_token[:20]}...")
+        logger.info(f"Password reset requested for {body.email}")
     return {"message": "If the email exists, a password reset link has been sent"}
 
 
@@ -454,6 +509,7 @@ async def setup_mfa(
     qr_url = generate_mfa_qr_code(secret, current_user.email)
     codes = generate_recovery_codes()
     current_user.mfa_secret = secret
+    current_user.mfa_recovery_codes = json.dumps(codes)
     return MFASetupResponse(
         secret=secret,
         qr_code_url=qr_url,

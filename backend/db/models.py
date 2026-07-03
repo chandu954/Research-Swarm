@@ -1,5 +1,6 @@
 """SQLAlchemy declarative models for ResearchSwarm multi-tenant platform."""
 from __future__ import annotations
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -58,6 +59,7 @@ class User(Base):
     is_superuser = Column(Boolean, default=False, nullable=False)
     mfa_enabled = Column(Boolean, default=False, nullable=False)
     mfa_secret = Column(String(255), nullable=True)
+    mfa_recovery_codes = Column(Text, nullable=True)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)

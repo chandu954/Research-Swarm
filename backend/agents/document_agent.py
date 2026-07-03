@@ -50,7 +50,7 @@ class DocumentAgent:
             vs = VectorStore()
             self.registry.register(
                 "vector_store",
-                vs,
+                vs.add_chunks,
                 ToolSpec(
                     name="vector_store",
                     description="ChromaDB vector store for document chunks",
@@ -70,8 +70,8 @@ class DocumentAgent:
         chunks = self._chunk_text(full_text, doc_id=path.stem)
         embeddings = self._create_embeddings([c["content"] for c in chunks])
 
-        vs = self.registry.get("vector_store")
-        vs.add_chunks(
+        self.registry.execute(
+            "vector_store",
             ids=[c["chunk_id"] for c in chunks],
             documents=[c["content"] for c in chunks],
             embeddings=embeddings,
@@ -148,21 +148,25 @@ class DocumentAgent:
         return chunks
 
     def _create_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Batch-create embeddings via LLM provider."""
-        embeddings = []
-        for i, text in enumerate(texts):
-            try:
-                emb = self.llm.create_embedding(model=EMBEDDING_MODEL, text=text)
-                if emb:
-                    embeddings.append(emb)
-                else:
-                    embeddings.append([0.0] * 768)
-            except Exception as e:
-                logger.error(f"Embedding failed for chunk {i}: {e}")
-                embeddings.append([0.0] * 768)
+        """Create embeddings in batches of 10 via LLM provider."""
+        embeddings: List[List[float]] = []
+        batch_size = 10
 
-            if (i + 1) % 20 == 0:
-                logger.debug(f"Embedded {i + 1}/{len(texts)} chunks")
+        for batch_start in range(0, len(texts), batch_size):
+            batch = texts[batch_start:batch_start + batch_size]
+            batch_embs: List[Optional[List[float]]] = [None] * len(batch)
+
+            for i, text in enumerate(batch):
+                try:
+                    emb = self.llm.create_embedding(model=EMBEDDING_MODEL, text=text)
+                    batch_embs[i] = emb
+                except Exception as e:
+                    logger.error(f"Embedding failed for chunk {batch_start + i}: {e}")
+
+            for emb in batch_embs:
+                embeddings.append(emb if emb else [0.0] * 768)
+
+            logger.debug(f"Embedded {min(batch_start + batch_size, len(texts))}/{len(texts)} chunks")
 
         return embeddings
 

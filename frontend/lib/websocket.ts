@@ -34,10 +34,10 @@ export class CollaborationClient {
     if (!this.currentWorkspaceId || !this.currentToken) return;
     const protocol = API_URL.startsWith("https") ? "wss" : "ws";
     const base = API_URL.replace(/^https?:\/\//, "");
-    const url = `${protocol}://${base}/ws/workspace/${this.currentWorkspaceId}?token=${this.currentToken}`;
+    const url = `${protocol}://${base}/ws/workspace/${this.currentWorkspaceId}`;
 
     try {
-      this.ws = new WebSocket(url);
+      this.ws = new WebSocket(url, ["research-swarm", this.currentToken]);
       this.ws.onopen = () => {
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);

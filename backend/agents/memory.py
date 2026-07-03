@@ -151,21 +151,31 @@ class ConversationMemory:
             logger.error(f"Semantic memory query failed: {e}")
             return []
 
+    _semantic_client = None
+    _semantic_collection = None
+
     def _ensure_semantic_collection(self):
-        """Get or create the ChromaDB collection for semantic memories."""
+        """Get or create the ChromaDB collection for semantic memories (cached)."""
         if not has_chromadb:
             return None
 
+        if ConversationMemory._semantic_collection is not None:
+            return ConversationMemory._semantic_collection
+
         persist_dir = str(self.memory_dir / "chroma")
         try:
-            client = chromadb.PersistentClient(
-                path=persist_dir,
-                settings=Settings(anonymized_telemetry=False),
+            if ConversationMemory._semantic_client is None:
+                ConversationMemory._semantic_client = chromadb.PersistentClient(
+                    path=persist_dir,
+                    settings=Settings(anonymized_telemetry=False),
+                )
+            ConversationMemory._semantic_collection = (
+                ConversationMemory._semantic_client.get_or_create_collection(
+                    name=SEMANTIC_MEMORY_COLLECTION,
+                    metadata={"hnsw:space": "cosine"},
+                )
             )
-            return client.get_or_create_collection(
-                name=SEMANTIC_MEMORY_COLLECTION,
-                metadata={"hnsw:space": "cosine"},
-            )
+            return ConversationMemory._semantic_collection
         except Exception as e:
             logger.error(f"Failed to create semantic memory collection: {e}")
             return None

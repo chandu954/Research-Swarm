@@ -342,13 +342,20 @@ async def research_stream(
     query: str = Query(..., min_length=1),
     conversation_id: Optional[str] = Query(None),
     document_ids: str = Query(default=""),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     _ensure_app_state()
     task_id = str(uuid.uuid4())
     conv_id = conversation_id or str(uuid.uuid4())
     doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
-    # GET stream endpoint has no auth session; resolve paths from filesystem only
-    pdf_paths = [os.path.join(UPLOAD_DIR, d) for d in doc_ids if os.path.exists(os.path.join(UPLOAD_DIR, d))]
+    pdf_paths = []
+    for d in doc_ids:
+        resolved = os.path.normpath(os.path.join(UPLOAD_DIR, d))
+        if not resolved.startswith(os.path.normpath(UPLOAD_DIR)):
+            logger.warning(f"Rejected path traversal attempt: {d}")
+            continue
+        if os.path.exists(resolved):
+            pdf_paths.append(resolved)
     stream_mgr = app.state.stream_manager
     log_queue = stream_mgr.create_stream(task_id)
     stream_mgr.push_log(task_id, make_log("planner", "analyze_query", "running", query[:100]))
@@ -1086,7 +1093,13 @@ async def _resolve_pdf_paths(session: AsyncSession, document_ids: list[str]) -> 
 @app.websocket("/ws/workspace/{workspace_id}")
 async def workspace_ws(workspace_id: str, ws: WebSocket):
     from backend.auth.jwt import decode_token as _decode_ws_token
-    token = ws.query_params.get("token", "")
+    protocols = ws.headers.get("sec-websocket-protocol", "")
+    parts = [p.strip() for p in protocols.split(",")] if protocols else []
+    token = ""
+    if len(parts) >= 2 and parts[0] == "research-swarm":
+        token = parts[1]
+    if not token:
+        token = ws.query_params.get("token", "")
     user_id = ws.query_params.get("user_id", "")
 
     payload = _decode_ws_token(token)
@@ -1169,7 +1182,7 @@ async def list_plugins():
 
 
 @app.post("/plugins/{name}/configure")
-async def configure_plugin(name: str, req: PluginConfigRequest):
+async def configure_plugin(name: str, req: PluginConfigRequest, current_user: User = Depends(get_current_user)):
     registry = get_plugin_registry()
     try:
         plugin = registry.get(name)
@@ -1182,7 +1195,7 @@ async def configure_plugin(name: str, req: PluginConfigRequest):
 
 
 @app.post("/plugins/{name}/execute")
-async def execute_plugin(name: str, action: str = Query(...), request: Request = None):
+async def execute_plugin(name: str, action: str = Query(...), current_user: User = Depends(get_current_user), request: Request = None):
     registry = get_plugin_registry()
     try:
         body = await request.json() if request.headers.get("content-type") == "application/json" else {}

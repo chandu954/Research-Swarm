@@ -1,37 +1,19 @@
-# Dependencies
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-.venv/
-venv/
-
-# Environment
+.git
+.gitignore
 .env
 .env.local
-.env.*.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
+.env.example
+__pycache__
+*.pyc
+.venv
+env311
+node_modules
+.next
 .DS_Store
-Thumbs.db
-
-# Git
-.git/
-.gitignore
-
-# Test & Docs
-tests/
-*.md
-*.txt
-
-# Data (created at runtime)
-data/
-
-# Logs
-*.log
+data
+assets
+scripts
+README.md
+RESUME.md
+docker-compose.yml
+.pytest_cache
