@@ -10,7 +10,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from datetime import timedelta
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -200,97 +203,146 @@ async def get_org_status(
     return {"has_organization": member is not None}
 
 
+def _oauth_callback_html(tokens: TokenResponse, error: str = "") -> HTMLResponse:
+    """Render HTML page that sends tokens to opener popup and closes."""
+    app_url = oauth_config.app_url
+    if error:
+        script = f"""
+          if (window.opener) {{
+            window.opener.postMessage({{ error: {json.dumps(error)} }}, "{app_url}");
+            window.close();
+          }} else {{
+            window.location.href = "{app_url}/login?error=" + encodeURIComponent({json.dumps(error)});
+          }}
+        """
+    else:
+        script = f"""
+          if (window.opener) {{
+            window.opener.postMessage({{
+              access_token: {json.dumps(tokens.access_token)},
+              refresh_token: {json.dumps(tokens.refresh_token)}
+            }}, "{app_url}");
+            window.close();
+          }} else {{
+            window.location.href = "{app_url}/login?oauth=success";
+          }}
+        """
+    html = f"""<!DOCTYPE html>
+<html><body><script>{script}</script></body></html>"""
+    return HTMLResponse(html)
+
+
+async def _handle_oauth_callback(
+    provider: str,
+    code: str,
+    exchange_func,
+    userinfo_func,
+    name_key: str,
+    email_keys: list[str],
+    avatar_key: str,
+    id_key: str,
+    session: AsyncSession,
+) -> HTMLResponse:
+    tokens = await exchange_func(code)
+    if not tokens:
+        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Failed to exchange authorization code")
+
+    userinfo = await userinfo_func(tokens.get("access_token", ""))
+    if not userinfo:
+        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Failed to get user info")
+
+    email = ""
+    for key in email_keys:
+        email = userinfo.get(key, "")
+        if email:
+            break
+
+    user = await _find_or_create_user(
+        email=email,
+        name=userinfo.get(name_key, ""),
+        provider_data={"id": str(userinfo.get(id_key, "")), "avatar_url": userinfo.get(avatar_key)},
+        provider=provider,
+        db_session=session,
+    )
+    return _oauth_callback_html(_build_tokens(user))
+
+
 # ── Google OAuth ────────────────────────────────────────────────
 
 @router.get("/google")
 async def google_login():
-    return {"url": get_google_auth_url()}
+    return RedirectResponse(url=get_google_auth_url())
 
 
-@router.get("/google/callback", response_model=TokenResponse)
+@router.get("/google/callback")
 async def google_callback(
     code: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
-) -> TokenResponse:
-    tokens = await exchange_google_code(code)
-    if not tokens:
-        raise HTTPException(status_code=400, detail="Failed to exchange Google code")
-
-    userinfo = await get_google_userinfo(tokens.get("access_token", ""))
-    if not userinfo:
-        raise HTTPException(status_code=400, detail="Failed to get Google user info")
-
-    user = await _find_or_create_user(
-        email=userinfo.get("email", ""),
-        name=userinfo.get("name", ""),
-        provider_data={"id": userinfo.get("id"), "avatar_url": userinfo.get("picture")},
+) -> HTMLResponse:
+    return await _handle_oauth_callback(
         provider="google",
-        db_session=session,
+        code=code,
+        exchange_func=exchange_google_code,
+        userinfo_func=get_google_userinfo,
+        name_key="name",
+        email_keys=["email"],
+        avatar_key="picture",
+        id_key="id",
+        session=session,
     )
-    return _build_tokens(user)
 
 
 # ── GitHub OAuth ────────────────────────────────────────────────
 
 @router.get("/github")
 async def github_login():
-    return {"url": get_github_auth_url()}
+    return RedirectResponse(url=get_github_auth_url())
 
 
-@router.get("/github/callback", response_model=TokenResponse)
+@router.get("/github/callback")
 async def github_callback(
     code: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
-) -> TokenResponse:
-    tokens = await exchange_github_code(code)
-    if not tokens:
-        raise HTTPException(status_code=400, detail="Failed to exchange GitHub code")
-
-    userinfo = await get_github_userinfo(tokens.get("access_token", ""))
-    if not userinfo:
-        raise HTTPException(status_code=400, detail="Failed to get GitHub user info")
-
-    user = await _find_or_create_user(
-        email=userinfo.get("email", ""),
-        name=userinfo.get("name") or userinfo.get("login", ""),
-        provider_data={"id": str(userinfo.get("id")), "avatar_url": userinfo.get("avatar_url")},
+) -> HTMLResponse:
+    return await _handle_oauth_callback(
         provider="github",
-        db_session=session,
+        code=code,
+        exchange_func=exchange_github_code,
+        userinfo_func=get_github_userinfo,
+        name_key="name",
+        email_keys=["email"],
+        avatar_key="avatar_url",
+        id_key="id",
+        session=session,
     )
-    return _build_tokens(user)
 
 
 # ── Microsoft OAuth ─────────────────────────────────────────────
 
 @router.get("/microsoft")
 async def microsoft_login():
-    return {"url": get_microsoft_auth_url()}
+    return RedirectResponse(url=get_microsoft_auth_url())
 
 
-@router.get("/microsoft/callback", response_model=TokenResponse)
+@router.get("/microsoft/callback")
 async def microsoft_callback(
     code: str,
     request: Request,
     session: AsyncSession = Depends(get_session),
-) -> TokenResponse:
-    tokens = await exchange_microsoft_code(code)
-    if not tokens:
-        raise HTTPException(status_code=400, detail="Failed to exchange Microsoft code")
-
-    userinfo = await get_microsoft_userinfo(tokens.get("access_token", ""))
-    if not userinfo:
-        raise HTTPException(status_code=400, detail="Failed to get Microsoft user info")
-
-    user = await _find_or_create_user(
-        email=userinfo.get("mail") or userinfo.get("userPrincipalName", ""),
-        name=userinfo.get("displayName", ""),
-        provider_data={"id": userinfo.get("id"), "avatar_url": None},
+) -> HTMLResponse:
+    return await _handle_oauth_callback(
         provider="microsoft",
-        db_session=session,
+        code=code,
+        exchange_func=exchange_microsoft_code,
+        userinfo_func=get_microsoft_userinfo,
+        name_key="displayName",
+        email_keys=["mail", "userPrincipalName"],
+        avatar_key="",
+        id_key="id",
+        session=session,
     )
-    return _build_tokens(user)
 
 
 # ── Forgot Password ─────────────────────────────────────────────

@@ -16,8 +16,10 @@ services:
         value: qwen/qwen3-32b
       - key: ANSWER_MODEL
         value: mistralai/mistral-small-3.2-24b-instruct
-      - key: CORS_ORIGINS
+      - key: APP_URL
         value: https://research-swarm-omega.vercel.app
+      - key: CORS_ORIGINS
+        value: https://research-swarm-omega.vercel.app,https://research-swarm.vercel.app
       - key: LOG_LEVEL
         value: INFO
       - key: JWT_SECRET_KEY
@@ -28,3 +30,23 @@ services:
         sync: false
       - key: EMBEDDING_MODEL
         value: openai/text-embedding-3-small
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://research-swarm-api.onrender.com/auth/google/callback
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_REDIRECT_URI
+        value: https://research-swarm-api.onrender.com/auth/github/callback
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_REDIRECT_URI
+        value: https://research-swarm-api.onrender.com/auth/microsoft/callback
+      - key: MICROSOFT_TENANT
+        value: common
