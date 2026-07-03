@@ -232,7 +232,7 @@ export default function ResearchWorkspace() {
       setConversationId(id);
       const msgs = Array.isArray(data.messages) ? data.messages : [];
       setMessages(msgs.map((m: ConversationMessageResponse) => ({
-        id: m.id || m.message_id,
+        id: m.id || m.message_id || crypto.randomUUID(),
         role: m.role as Message["role"],
         content: m.content || "",
         timestamp: m.created_at || m.timestamp || Date.now(),
