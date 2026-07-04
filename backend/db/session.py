@@ -68,11 +68,58 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def _migrate_columns() -> None:
+    """Add missing columns to existing tables (lightweight migration).
+
+    Each column addition runs in its own transaction so failures don't cascade.
+    """
+    from sqlalchemy import text as sa_text, Boolean, Integer, BigInteger
+
+    for table_name, table in Base.metadata.tables.items():
+        try:
+            async with _engine.begin() as conn:
+                rows = await conn.execute(
+                    sa_text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = :t"
+                    ),
+                    {"t": table_name},
+                )
+                existing = [r[0] for r in rows.fetchall()]
+        except Exception:
+            continue
+
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            try:
+                async with _engine.begin() as conn:
+                    col_type = column.type.compile(dialect=conn.dialect)
+                    nullable = "NULL" if column.nullable else "NOT NULL"
+                    default = ""
+                    if isinstance(column.type, (Boolean,)):
+                        default = " DEFAULT false"
+                    elif isinstance(column.type, (Integer, BigInteger)):
+                        default = " DEFAULT 0"
+                    elif column.default is not None:
+                        if hasattr(column.default, "arg") and isinstance(column.default.arg, str):
+                            default = f" DEFAULT {column.default.arg}"
+                    await conn.execute(
+                        sa_text(
+                            f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type} {nullable}{default}"
+                        )
+                    )
+                logger.info(f"Migrated: added column {table_name}.{column.name}")
+            except Exception as e:
+                logger.warning(f"Migration: could not add {table_name}.{column.name}: {e}")
+
+
 async def init_db() -> None:
     """Create all tables (for development; use Alembic in production)."""
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created")
+    await _migrate_columns()
 
 
 async def close_db() -> None:
