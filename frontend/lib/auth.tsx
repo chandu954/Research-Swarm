@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const oauthLogin = useCallback((provider: "google" | "github" | "microsoft") => {
+  const oauthLogin = useCallback(async (provider: "google" | "github" | "microsoft"): Promise<void> => {
     if (!window) return;
     const width = 600;
     const height = 700;
@@ -127,25 +127,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       `width=${width},height=${height},left=${left},top=${top}`,
     );
     if (!popup) {
+      // Popup blocked — fall back to redirect (full page navigation)
       window.location.href = `${API_URL}/auth/${provider}`;
-      return;
+      // Return a promise that never settles — page will navigate away
+      return new Promise<never>(() => {});
     }
-    const handler = (e: MessageEvent) => {
-      if (e.origin !== API_URL && e.origin !== window.location.origin) return;
-      if (e.data?.access_token) {
-        setStoredToken(e.data.access_token);
-        localStorage.setItem(REFRESH_KEY, e.data.refresh_token);
-        fetchUser();
-        window.removeEventListener("message", handler);
-      }
-    };
-    window.addEventListener("message", handler);
-    const checkClosed = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(checkClosed);
-        window.removeEventListener("message", handler);
-      }
-    }, 500);
+    return new Promise<void>((resolve, reject) => {
+      const handler = (e: MessageEvent) => {
+        if (e.origin !== API_URL && e.origin !== window.location.origin) return;
+        if (e.data?.access_token) {
+          setStoredToken(e.data.access_token);
+          if (e.data.refresh_token) localStorage.setItem(REFRESH_KEY, e.data.refresh_token);
+          fetchUser();
+          window.removeEventListener("message", handler);
+          clearInterval(checkClosed);
+          resolve();
+        }
+        if (e.data?.error) {
+          window.removeEventListener("message", handler);
+          clearInterval(checkClosed);
+          reject(new Error(e.data.error));
+        }
+      };
+      window.addEventListener("message", handler);
+      const checkClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkClosed);
+          window.removeEventListener("message", handler);
+          reject(new DOMException("Popup closed", "AbortError"));
+        }
+      }, 500);
+    });
   }, [setStoredToken, fetchUser]);
 
   const refreshToken = useCallback(async (): Promise<boolean> => {

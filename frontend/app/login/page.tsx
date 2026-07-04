@@ -32,6 +32,9 @@ const SOCIAL_PROVIDERS = [
   ) },
 ];
 
+const HEALTH_CHECK_RETRY_DELAY = 3000;
+const HEALTH_CHECK_MAX_RETRIES = 3;
+
 export default function LoginPage() {
   const router = useRouter();
   const { login, register, oauthLogin } = useAuth();
@@ -49,6 +52,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [socialLoading, setSocialLoading] = useState<string | null>(null);
+  const [backendStatus, setBackendStatus] = useState<"checking" | "available" | "unavailable">("checking");
   const emailRef = useRef<HTMLInputElement>(null);
   const submitBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -62,6 +66,34 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => { emailRef.current?.focus(); }, [view]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retries = 0;
+    async function check() {
+      while (!cancelled && retries < HEALTH_CHECK_MAX_RETRIES) {
+        try {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/health`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (cancelled) return;
+          if (res.ok) {
+            setBackendStatus("available");
+            return;
+          }
+        } catch {
+          // retry
+        }
+        retries++;
+        if (!cancelled && retries < HEALTH_CHECK_MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, HEALTH_CHECK_RETRY_DELAY));
+        }
+      }
+      if (!cancelled) setBackendStatus("unavailable");
+    }
+    check();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { if (e.getModifierState("CapsLock")) setCapsLock(true); };
@@ -135,9 +167,13 @@ export default function LoginPage() {
     setSocialLoading(provider);
     setError("");
     try {
-      oauthLogin(provider);
+      await oauthLogin(provider);
     } catch (err: unknown) {
-      setError(getErrorMessage(err));
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError(`${provider.charAt(0).toUpperCase() + provider.slice(1)} authentication was cancelled.`);
+      } else {
+        setError(getErrorMessage(err));
+      }
     } finally {
       setSocialLoading(null);
     }
@@ -188,7 +224,35 @@ export default function LoginPage() {
         </div>
 
         <AnimatePresence mode="wait">
-          {error && (
+          {backendStatus === "unavailable" && (
+            <motion.div
+              key="backend-offline"
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -8, height: 0 }}
+              transition={{ duration: 0.2 }}
+              role="alert"
+              aria-live="assertive"
+              className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3.5 py-2.5"
+            >
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+              <span className="text-xs leading-5 text-amber-300">ResearchSwarm backend is currently offline. Please try again in a few minutes.</span>
+            </motion.div>
+          )}
+          {backendStatus === "checking" && (
+            <motion.div
+              key="backend-checking"
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -8, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="mb-4 flex items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5"
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
+              <span className="text-xs text-gray-400">Connecting to ResearchSwarm...</span>
+            </motion.div>
+          )}
+          {error && backendStatus !== "unavailable" && (
             <motion.div
               key="error"
               initial={{ opacity: 0, y: -8, height: 0 }}

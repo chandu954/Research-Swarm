@@ -336,6 +336,26 @@ async def health_check():
     }
 
 
+@app.get("/ready")
+async def ready_check():
+    """Lightweight readiness probe (no auth, fast)."""
+    _ensure_app_state()
+    db_ok = True
+    try:
+        from backend.db.session import get_session
+        async for session in get_session():
+            await session.execute(select(func.now()))
+            break
+    except Exception as e:
+        db_ok = str(e)
+    if db_ok is True:
+        return {"status": "ready"}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "not_ready", "detail": f"Database: {db_ok}"},
+    )
+
+
 # ── Audit Logging Helper ────────────────────────────────────────
 
 async def _log_audit(

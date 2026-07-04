@@ -12,15 +12,6 @@ router = APIRouter(tags=["monitoring"])
 _start_time = time.time()
 
 
-@router.get("/health")
-async def health() -> dict[str, Any]:
-    """Basic health check with uptime."""
-    return {
-        "status": "ok",
-        "uptime_seconds": round(time.time() - _start_time),
-    }
-
-
 @router.get("/metrics")
 async def metrics() -> dict[str, Any]:
     """System metrics: uptime, registered plugins, configured state."""
