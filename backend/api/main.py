@@ -344,49 +344,52 @@ async def debug_db():
     errors = []
     import sys, traceback
 
-    # Run migration
-    try:
-        from backend.db.session import _migrate_columns
-        await _migrate_columns()
-        results.append({"test": "_migrate_columns", "ok": True})
-    except Exception as e:
-        errors.append({"test": "_migrate_columns", "error": str(e), "traceback": traceback.format_exc()})
+    from backend.db.session import _engine, Base
+    from sqlalchemy import text as sa_text, Boolean
 
-    # Check users columns after migration
-    try:
-        from backend.db.session import _engine
-        from sqlalchemy import text as sa_text
-        async with _engine.begin() as conn:
+    # Step 1: check what tables and columns exist
+    async with _engine.begin() as conn:
+        # List table columns
+        for tname in ('users', 'organizations', 'providers'):
             rows = await conn.execute(sa_text(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'"
-            ))
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :t"
+            ), {"t": tname})
             cols = [r[0] for r in rows.fetchall()]
-            results.append({"test": "users_columns", "ok": True, "columns": cols})
-    except Exception as e:
-        errors.append({"test": "users_columns", "error": str(e), "traceback": traceback.format_exc()})
+            results.append({"test": f"columns_{tname}", "ok": True, "columns": cols})
 
-    # Test bcrypt
-    try:
-        from backend.auth.password import hash_password, verify_password
-        h = hash_password("test")
-        v = verify_password("test", h)
-        results.append({"test": "bcrypt", "ok": True, "verify": v})
-    except Exception as e:
-        errors.append({"test": "bcrypt", "error": str(e), "traceback": traceback.format_exc()})
+    # Step 2: check model columns for users
+    from backend.db.models import User
+    model_cols = [c.name for c in User.__table__.columns]
+    results.append({"test": "model_columns", "ok": True, "columns": model_cols})
 
-    # Test JWT
-    try:
-        from backend.auth.jwt import create_access_token, get_token_subject
-        token = create_access_token("test-user-id")
-        sub = get_token_subject(token, "access")
-        results.append({"test": "jwt", "ok": True, "sub": sub})
-    except Exception as e:
-        errors.append({"test": "jwt", "error": str(e), "traceback": traceback.format_exc()})
+    existing_cols = []
+    async with _engine.begin() as conn:
+        rows = await conn.execute(sa_text(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'"
+        ))
+        existing_cols = [r[0] for r in rows.fetchall()]
 
-    # Try select from users
+    missing = [c for c in model_cols if c not in existing_cols]
+    results.append({"test": "missing_columns", "ok": True, "missing": missing})
+
+    # Step 3: add missing columns directly
+    for col_name in missing:
+        col = User.__table__.c[col_name]
+        async with _engine.begin() as conn:
+            col_type_str = col.type.compile(dialect=conn.dialect)
+            nullable_str = "NULL" if col.nullable else "NOT NULL"
+            default_str = " DEFAULT false" if isinstance(col.type, (Boolean,)) else ""
+            try:
+                await conn.execute(sa_text(
+                    f"ALTER TABLE users ADD COLUMN {col_name} {col_type_str} {nullable_str}{default_str}"
+                ))
+                results.append({"test": f"added_{col_name}", "ok": True})
+            except Exception as e:
+                errors.append({"test": f"add_{col_name}", "error": str(e), "traceback": traceback.format_exc()})
+
+    # Step 4: verify select users works
     try:
         from backend.db.session import get_session
-        from backend.db.models import User
         from sqlalchemy import select
         async for session in get_session():
             r = await session.execute(select(User).limit(1))
@@ -395,6 +398,27 @@ async def debug_db():
             break
     except Exception as e:
         errors.append({"test": "select_users", "error": str(e), "traceback": traceback.format_exc()})
+
+    # Step 5: Try login
+    try:
+        from backend.api.auth import _build_tokens
+        # Create a test user
+        from datetime import datetime, timezone
+        from backend.auth.password import hash_password
+        u = User(
+            email='fix-test@test.com',
+            hashed_password=hash_password('password123'),
+            name='Fix Test',
+            last_login_at=datetime.now(timezone.utc),
+        )
+        async for session in get_session():
+            session.add(u)
+            await session.flush()
+            tokens = _build_tokens(u)
+            results.append({"test": "create_user_and_token", "ok": True, "has_access": bool(tokens.access_token)})
+            break
+    except Exception as e:
+        errors.append({"test": "create_user_and_token", "error": str(e), "traceback": traceback.format_exc()})
 
     return {
         "results": results,
