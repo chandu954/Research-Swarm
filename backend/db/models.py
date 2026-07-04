@@ -649,14 +649,14 @@ class Bookmark(Base):
 class Provider(Base):
     __tablename__ = "providers"
 
-    id = Column(String, primary_key=True, default=_uuid)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     name = Column(String(100), nullable=False)
     provider_type = Column(String(50), nullable=False, comment="llm, search, or embedding")
     provider_key = Column(String(100), nullable=False, comment="Registered provider key (e.g. openrouter, duckduckgo)")
     config = Column(JSON, default=dict)
     is_active = Column(Boolean, default=True, nullable=False)
-    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
-    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    created_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
