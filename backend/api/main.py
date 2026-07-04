@@ -336,6 +336,90 @@ async def health_check():
     }
 
 
+@app.get("/debug/db")
+async def debug_db():
+    """Debug endpoint to test DB table operations step by step."""
+    _ensure_app_state()
+    results = []
+    errors = []
+    import sys, traceback
+
+    try:
+        from backend.db.session import get_session
+        from backend.db.models import User, Organization, Provider
+        from sqlalchemy import select, func, text as sa_text
+
+        async for session in get_session():
+            # Test 1: basic query
+            try:
+                r = await session.execute(select(func.now()))
+                v = r.scalar()
+                results.append({"test": "func.now()", "ok": True, "value": str(v)})
+            except Exception as e:
+                errors.append({"test": "func.now()", "error": str(e), "traceback": traceback.format_exc()})
+
+            # Test 2: list tables using raw SQL
+            try:
+                r = await session.execute(sa_text("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"))
+                tables = [row[0] for row in r.fetchall()]
+                results.append({"test": "list_tables", "ok": True, "tables": tables})
+            except Exception as e:
+                errors.append({"test": "list_tables", "error": str(e)})
+
+            # Test 3: select from User table
+            try:
+                r = await session.execute(select(User).limit(1))
+                users = r.fetchall()
+                results.append({"test": "select_users", "ok": True, "count": len(users)})
+            except Exception as e:
+                errors.append({"test": "select_users", "error": str(e), "traceback": traceback.format_exc()})
+
+            # Test 4: select from Provider table
+            try:
+                r = await session.execute(select(Provider).limit(1))
+                providers = r.fetchall()
+                results.append({"test": "select_providers", "ok": True, "count": len(providers)})
+            except Exception as e:
+                errors.append({"test": "select_providers", "error": str(e), "traceback": traceback.format_exc()})
+
+            # Test 5: select from Organization table
+            try:
+                r = await session.execute(select(Organization).limit(1))
+                orgs = r.fetchall()
+                results.append({"test": "select_organizations", "ok": True, "count": len(orgs)})
+            except Exception as e:
+                errors.append({"test": "select_organizations", "error": str(e), "traceback": traceback.format_exc()})
+
+            break
+
+    except Exception as outer:
+        errors.append({"test": "outer", "error": str(outer), "traceback": traceback.format_exc()})
+
+    # Test bcrypt
+    try:
+        from backend.auth.password import hash_password, verify_password
+        h = hash_password("test")
+        v = verify_password("test", h)
+        results.append({"test": "bcrypt", "ok": True, "verify": v})
+    except Exception as e:
+        errors.append({"test": "bcrypt", "error": str(e), "traceback": traceback.format_exc()})
+
+    # Test JWT
+    try:
+        from backend.auth.jwt import create_access_token, get_token_subject
+        token = create_access_token("test-user-id")
+        sub = get_token_subject(token, "access")
+        results.append({"test": "jwt", "ok": True, "sub": sub})
+    except Exception as e:
+        errors.append({"test": "jwt", "error": str(e), "traceback": traceback.format_exc()})
+
+    return {
+        "results": results,
+        "errors": errors,
+        "success": len(errors) == 0,
+    }
+
+
 @app.get("/ready")
 async def ready_check():
     """Lightweight readiness probe (no auth, fast)."""
