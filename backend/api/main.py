@@ -1181,15 +1181,20 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
     room.add(conn)
     await mgr.broadcast_presence(workspace_id)
 
+    # Send chat history to newly joined user
+    history = room.get_chat_history()
+    if history:
+        await ws.send_text(json.dumps({"type": "chat:history", "payload": {"messages": history}}))
+
     try:
         while True:
             data = await ws.receive_text()
-            if data == "ping":
-                await ws.send_text('{"type":"pong"}')
+            await room.handle_message(data, conn)
     except WebSocketDisconnect:
         pass
     finally:
         mgr.disconnect(workspace_id, resolved_user_id)
+        await mgr.broadcast_presence(workspace_id)
 
 
 # ═══════════════════════════════════════════════════════════════

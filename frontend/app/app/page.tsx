@@ -6,10 +6,12 @@ import {
   PanelLeft,
   Scale,
   Sparkles,
+  MessageSquare,
 } from "lucide-react";
 
 import AgentLogs from "@/components/AgentLogs";
 import Chat from "@/components/Chat";
+import { ChatSidebar } from "@/components/ChatSidebar";
 import CommandPalette from "@/components/CommandPalette";
 import ExecutionTimeline from "@/components/ExecutionTimeline";
 import MetricsPanel from "@/components/MetricsPanel";
@@ -23,7 +25,9 @@ import ReportGenerator from "@/components/ReportGenerator";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import SourceInspector from "@/components/SourceInspector";
 import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConversation, ApiClientError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useProviderSettings } from "@/lib/useSettings";
+import { collaborationClient } from "@/lib/websocket";
 import type {
   AgentMetric,
   AgentLog,
@@ -58,11 +62,13 @@ export default function ResearchWorkspace() {
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [inspectedSource, setInspectedSource] = useState<SourceCitation | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [debateMode, setDebateMode] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
+  const { user, token } = useAuth();
 
   useEffect(() => {
     listDocuments()
@@ -71,6 +77,35 @@ export default function ResearchWorkspace() {
       })
       .catch((err) => console.warn("Failed to load documents:", err));
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    collaborationClient.connect("default", token, {
+      onResearchStart: (payload) => {
+        if (payload.userId !== user?.id) {
+          setLogs((prev) => [...prev, {
+            agent: "collaboration",
+            action: "research_started",
+            status: "running",
+            timestamp: Date.now(),
+            details: `${payload.userName} started research: "${payload.query}"`,
+          }]);
+        }
+      },
+      onResearchComplete: (payload) => {
+        if (payload.userId !== user?.id) {
+          setLogs((prev) => [...prev, {
+            agent: "collaboration",
+            action: "research_completed",
+            status: "completed",
+            timestamp: Date.now(),
+            details: `Research completed by another user`,
+          }]);
+        }
+      },
+    });
+    return () => collaborationClient.disconnect();
+  }, [token]);
 
   useEffect(() => {
     if (!isRunning) {
@@ -317,6 +352,13 @@ export default function ResearchWorkspace() {
 
         <div className="relative flex min-h-0 flex-1">
           <button
+            onClick={() => setChatOpen((open) => !open)}
+            className="fixed bottom-4 right-16 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-[var(--surface)] shadow-lg backdrop-blur-xl"
+            aria-label="Toggle chat"
+          >
+            <MessageSquare className="h-4 w-4 text-[var(--text-secondary)]" />
+          </button>
+          <button
             onClick={() => setWorkflowOpen((open) => !open)}
             className="fixed bottom-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-[var(--surface)] shadow-lg backdrop-blur-xl xl:hidden"
             aria-label="Toggle workflow panel"
@@ -406,6 +448,8 @@ export default function ResearchWorkspace() {
           </aside>
         </div>
       </section>
+
+      <ChatSidebar open={chatOpen} onClose={() => setChatOpen(false)} />
 
       <SettingsPanel
         open={settingsOpen}
