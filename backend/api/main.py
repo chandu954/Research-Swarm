@@ -344,39 +344,26 @@ async def debug_db():
     errors = []
     import sys, traceback
 
-    # Test migration
+    # Run migration
+    try:
+        from backend.db.session import _migrate_columns
+        await _migrate_columns()
+        results.append({"test": "_migrate_columns", "ok": True})
+    except Exception as e:
+        errors.append({"test": "_migrate_columns", "error": str(e), "traceback": traceback.format_exc()})
+
+    # Check users columns after migration
     try:
         from backend.db.session import _engine
         from sqlalchemy import text as sa_text
         async with _engine.begin() as conn:
-            # Check users columns before migration
             rows = await conn.execute(sa_text(
                 "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'"
             ))
-            cols_before = [r[0] for r in rows.fetchall()]
-            results.append({"test": "users_columns_before", "ok": True, "columns": cols_before})
-
-            # Try ALTER TABLE for each missing column
-            for col_name in ['google_id', 'github_id', 'microsoft_id']:
-                if col_name not in cols_before:
-                    try:
-                        await conn.execute(sa_text(
-                            f"ALTER TABLE users ADD COLUMN {col_name} VARCHAR(255) NULL"
-                        ))
-                        results.append({"test": f"add_column_{col_name}", "ok": True})
-                    except Exception as e:
-                        errors.append({"test": f"add_column_{col_name}", "error": str(e), "traceback": traceback.format_exc()})
-                else:
-                    results.append({"test": f"add_column_{col_name}", "ok": True, "skipped": "already exists"})
-
-            # Check users columns after migration
-            rows = await conn.execute(sa_text(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'"
-            ))
-            cols_after = [r[0] for r in rows.fetchall()]
-            results.append({"test": "users_columns_after", "ok": True, "columns": cols_after})
+            cols = [r[0] for r in rows.fetchall()]
+            results.append({"test": "users_columns", "ok": True, "columns": cols})
     except Exception as e:
-        errors.append({"test": "migration_outer", "error": str(e), "traceback": traceback.format_exc()})
+        errors.append({"test": "users_columns", "error": str(e), "traceback": traceback.format_exc()})
 
     # Test bcrypt
     try:
