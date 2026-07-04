@@ -68,49 +68,57 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-async def _migrate_columns(conn) -> None:
-    """Add missing columns to existing tables (lightweight migration)."""
+async def _migrate_columns() -> None:
+    """Add missing columns to existing tables (lightweight migration).
+
+    Each ALTER TABLE runs in its own transaction so failures don't cascade.
+    """
     import sqlalchemy as sa
     from sqlalchemy import text as sa_text
 
     for table_name, table in Base.metadata.tables.items():
+        existing: list[str] = []
+        dialect = None
         try:
-            rows = await conn.execute(
-                sa_text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_schema = 'public' AND table_name = :t"
-                ),
-                {"t": table_name},
-            )
-            existing = [r[0] for r in rows.fetchall()]
+            async with _engine.begin() as conn:
+                dialect = conn.dialect
+                rows = await conn.execute(
+                    sa_text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = :t"
+                    ),
+                    {"t": table_name},
+                )
+                existing = [r[0] for r in rows.fetchall()]
         except Exception:
             continue
 
         for column in table.columns:
             if column.name not in existing:
-                col_type_str = column.type.compile(dialect=conn.dialect)
+                col_type_str = column.type.compile(dialect=dialect)
                 nullable_str = "NULL" if column.nullable else "NOT NULL"
                 default_str = ""
                 if column.default is not None:
                     if hasattr(column.default, "arg") and isinstance(column.default.arg, str):
                         default_str = f" DEFAULT {column.default.arg}"
                 try:
-                    await conn.execute(
-                        sa_text(
-                            f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type_str} {nullable_str}{default_str}"
+                    async with _engine.begin() as conn:
+                        await conn.execute(
+                            sa_text(
+                                f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type_str} {nullable_str}{default_str}"
+                            )
                         )
-                    )
-                    logger.info(f"Added missing column {table_name}.{column.name} ({col_type_str})")
+                    logger.info(f"Migrated: added column {table_name}.{column.name} ({col_type_str})")
                 except Exception as e:
-                    logger.warning(f"Could not add {table_name}.{column.name}: {e}")
+                    logger.warning(f"Migration: could not add {table_name}.{column.name}: {e}")
 
 
 async def init_db() -> None:
     """Create all tables (for development; use Alembic in production)."""
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await _migrate_columns(conn)
-    logger.info("Database tables initialized")
+    logger.info("Database tables created")
+    await _migrate_columns()
 
 
 async def close_db() -> None:

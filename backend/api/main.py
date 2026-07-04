@@ -344,56 +344,39 @@ async def debug_db():
     errors = []
     import sys, traceback
 
+    # Test migration
     try:
-        from backend.db.session import get_session
-        from backend.db.models import User, Organization, Provider
-        from sqlalchemy import select, func, text as sa_text
+        from backend.db.session import _engine
+        from sqlalchemy import text as sa_text
+        async with _engine.begin() as conn:
+            # Check users columns before migration
+            rows = await conn.execute(sa_text(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'"
+            ))
+            cols_before = [r[0] for r in rows.fetchall()]
+            results.append({"test": "users_columns_before", "ok": True, "columns": cols_before})
 
-        async for session in get_session():
-            # Test 1: basic query
-            try:
-                r = await session.execute(select(func.now()))
-                v = r.scalar()
-                results.append({"test": "func.now()", "ok": True, "value": str(v)})
-            except Exception as e:
-                errors.append({"test": "func.now()", "error": str(e), "traceback": traceback.format_exc()})
+            # Try ALTER TABLE for each missing column
+            for col_name in ['google_id', 'github_id', 'microsoft_id']:
+                if col_name not in cols_before:
+                    try:
+                        await conn.execute(sa_text(
+                            f"ALTER TABLE users ADD COLUMN {col_name} VARCHAR(255) NULL"
+                        ))
+                        results.append({"test": f"add_column_{col_name}", "ok": True})
+                    except Exception as e:
+                        errors.append({"test": f"add_column_{col_name}", "error": str(e), "traceback": traceback.format_exc()})
+                else:
+                    results.append({"test": f"add_column_{col_name}", "ok": True, "skipped": "already exists"})
 
-            # Test 2: list tables using raw SQL
-            try:
-                r = await session.execute(sa_text("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"))
-                tables = [row[0] for row in r.fetchall()]
-                results.append({"test": "list_tables", "ok": True, "tables": tables})
-            except Exception as e:
-                errors.append({"test": "list_tables", "error": str(e)})
-
-            # Test 3: select from User table
-            try:
-                r = await session.execute(select(User).limit(1))
-                users = r.fetchall()
-                results.append({"test": "select_users", "ok": True, "count": len(users)})
-            except Exception as e:
-                errors.append({"test": "select_users", "error": str(e), "traceback": traceback.format_exc()})
-
-            # Test 4: select from Provider table
-            try:
-                r = await session.execute(select(Provider).limit(1))
-                providers = r.fetchall()
-                results.append({"test": "select_providers", "ok": True, "count": len(providers)})
-            except Exception as e:
-                errors.append({"test": "select_providers", "error": str(e), "traceback": traceback.format_exc()})
-
-            # Test 5: select from Organization table
-            try:
-                r = await session.execute(select(Organization).limit(1))
-                orgs = r.fetchall()
-                results.append({"test": "select_organizations", "ok": True, "count": len(orgs)})
-            except Exception as e:
-                errors.append({"test": "select_organizations", "error": str(e), "traceback": traceback.format_exc()})
-
-            break
-
-    except Exception as outer:
-        errors.append({"test": "outer", "error": str(outer), "traceback": traceback.format_exc()})
+            # Check users columns after migration
+            rows = await conn.execute(sa_text(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'"
+            ))
+            cols_after = [r[0] for r in rows.fetchall()]
+            results.append({"test": "users_columns_after", "ok": True, "columns": cols_after})
+    except Exception as e:
+        errors.append({"test": "migration_outer", "error": str(e), "traceback": traceback.format_exc()})
 
     # Test bcrypt
     try:
@@ -412,6 +395,19 @@ async def debug_db():
         results.append({"test": "jwt", "ok": True, "sub": sub})
     except Exception as e:
         errors.append({"test": "jwt", "error": str(e), "traceback": traceback.format_exc()})
+
+    # Try select from users
+    try:
+        from backend.db.session import get_session
+        from backend.db.models import User
+        from sqlalchemy import select
+        async for session in get_session():
+            r = await session.execute(select(User).limit(1))
+            users = r.fetchall()
+            results.append({"test": "select_users", "ok": True, "count": len(users)})
+            break
+    except Exception as e:
+        errors.append({"test": "select_users", "error": str(e), "traceback": traceback.format_exc()})
 
     return {
         "results": results,
