@@ -23,7 +23,7 @@ class ConversationMemoryProvider(MemoryProvider):
     async def initialize(self) -> None:
         memory_dir = os.getenv("MEMORY_DIR", "./data/memory")
         self._memory = ConversationMemory(memory_dir=memory_dir)
-        logger.info(f"ConversationMemoryProvider initialized")
+        logger.info("ConversationMemoryProvider initialized")
 
     async def cleanup(self) -> None:
         self._memory = None

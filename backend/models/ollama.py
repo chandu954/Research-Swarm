@@ -1,5 +1,4 @@
 """Ollama client for connecting to local models."""
-import json
 from typing import Dict, Any, Optional
 import httpx
 from loguru import logger

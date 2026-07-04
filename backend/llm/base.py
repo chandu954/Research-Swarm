@@ -1,6 +1,5 @@
 """LLM provider base — extends core provider with streaming support."""
 from __future__ import annotations
-from abc import abstractmethod
 from collections.abc import Generator
 from typing import Any
 

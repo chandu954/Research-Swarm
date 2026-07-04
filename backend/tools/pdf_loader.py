@@ -1,7 +1,7 @@
 """PDF text extraction tool using PyMuPDF."""
 import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 from loguru import logger
 
 

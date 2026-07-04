@@ -8,10 +8,8 @@ import os
 import subprocess  # noqa: S404
 import sys
 import tempfile
-import textwrap
 import time
 from typing import Any
-from loguru import logger
 
 
 _EXECUTION_TIMEOUT = 30
@@ -115,8 +113,7 @@ def execute_shell(
     start = time.time()
     try:
         result = subprocess.run(  # noqa: S603
-            command,
-            shell=True,
+            ["sh", "-c", command],
             capture_output=True,
             text=True,
             timeout=timeout,

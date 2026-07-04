@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import { api, ApiClientError } from "./api-client";
+import { api, API_URL, TOKEN_KEY, REFRESH_KEY, ApiClientError } from "./api-client";
 
 export interface AuthUser {
   id: string;
@@ -22,10 +22,6 @@ interface AuthContextType {
   oauthLogin: (provider: "google" | "github" | "microsoft") => void;
   refreshToken: () => Promise<boolean>;
 }
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const TOKEN_KEY = "research-swarm-token";
-const REFRESH_KEY = "research-swarm-refresh";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 

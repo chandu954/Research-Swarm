@@ -52,9 +52,10 @@ function classifyError(e: unknown): ApiError {
   return new ApiError(ERROR_CLASSIFICATIONS.UNKNOWN.message, "UNKNOWN", 0, true);
 }
 
-function classifyResponse(status: number, body: any): ApiError {
-  const code = body?.code || body?.detail?.code || "";
-  const detail = body?.detail?.message || body?.detail || body?.message || body?.error || "";
+function classifyResponse(status: number, body: Record<string, unknown>): ApiError {
+  const code = typeof body.code === "string" ? body.code : typeof (body.detail as Record<string, unknown>)?.code === "string" ? (body.detail as Record<string, unknown>).code as string : "";
+  const detailRaw = (body.detail as Record<string, unknown>)?.message || body.detail || body.message || body.error || "";
+  const detail = typeof detailRaw === "string" ? detailRaw : String(detailRaw);
 
   if (status === 401) return new ApiError(ERROR_CLASSIFICATIONS.UNAUTHORIZED.message, "UNAUTHORIZED", status, false);
   if (status === 403) {
@@ -74,14 +75,17 @@ function classifyResponse(status: number, body: any): ApiError {
    Configuration
    ─────────────────────────────────────────── */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const RESEARCH_TIMEOUT_MS = 180_000;  // Research can take up to 3 minutes
+const RESEARCH_TIMEOUT_MS = 180_000;
 const STREAM_TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 2;
 
-const TOKEN_KEY = "research-swarm-token";
-const REFRESH_KEY = "research-swarm-refresh";
+export const TOKEN_KEY = "research-swarm-token";
+export const REFRESH_KEY = "research-swarm-refresh";
+export const ORG_ID_KEY = "research-swarm-org-id";
+export const WS_ID_KEY = "research-swarm-ws-id";
+export const PROJECT_ID_KEY = "research-swarm-project-id";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -111,9 +115,9 @@ function setToken(t: string | null) {
 function getTenantIds() {
   if (typeof window === "undefined") return { orgId: null, wsId: null, projectId: null };
   return {
-    orgId: localStorage.getItem("research-swarm-org-id"),
-    wsId: localStorage.getItem("research-swarm-ws-id"),
-    projectId: localStorage.getItem("research-swarm-project-id"),
+    orgId: localStorage.getItem(ORG_ID_KEY),
+    wsId: localStorage.getItem(WS_ID_KEY),
+    projectId: localStorage.getItem(PROJECT_ID_KEY),
   };
 }
 
@@ -234,9 +238,10 @@ async function request<T>(
       }
 
       // Parse error body
-      let errorBody: any = {};
+      let errorBody: Record<string, unknown> = {};
       try {
-        errorBody = await response.json();
+        const parsed = await response.json();
+        if (parsed && typeof parsed === "object") errorBody = parsed as Record<string, unknown>;
       } catch {
         try {
           const text = await response.text();
@@ -334,8 +339,8 @@ export async function checkHealth(): Promise<{ ok: boolean; status: string; deta
     }
     const data = await res.json();
     return { ok: true, status: data.status || "healthy" };
-  } catch (e: any) {
-    return { ok: false, status: "offline", detail: e.message };
+  } catch (e: unknown) {
+    return { ok: false, status: "offline", detail: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -432,9 +437,9 @@ export function subscribeResearchLogs(
       }
       clearTimeout(timer);
       callbacks.onDone?.();
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timer);
-      if (err.name === "AbortError") return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
       callbacks.onError?.(err instanceof ApiError ? err : classifyError(err));
     }
   })();
@@ -446,28 +451,99 @@ export function subscribeResearchLogs(
    Upload
    ─────────────────────────────────────────── */
 
+export interface UploadResult {
+  document_id: string;
+  filename: string;
+  original_filename?: string;
+  size: number;
+  status: string;
+  page_count?: number;
+}
+
 export async function uploadPDF(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  return api.post<any>("/upload", formData, { timeout: 60_000 });
+  return api.post<UploadResult>("/upload", formData, { timeout: 60_000 });
 }
 
 /* ───────────────────────────────────────────
    Convenience wrappers
    ─────────────────────────────────────────── */
 
+export interface DocumentInfo {
+  document_id: string;
+  filename: string;
+  original_filename?: string;
+  size: number;
+  status: string;
+  page_count?: number;
+  created_at?: string;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title?: string;
+  created_at?: string;
+  updated_at?: string;
+  message_count?: number;
+}
+
+export interface OrganizationInfo {
+  id: string;
+  name: string;
+  slug: string;
+  owner_id: string;
+  member_count: number;
+}
+
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  organization_id: string;
+}
+
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  workspace_id: string;
+}
+
+export interface ApiKeyInfo {
+  id: string;
+  name: string;
+  prefix: string;
+  created_at: string;
+  last_used_at?: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  created_at: string;
+  details?: Record<string, unknown>;
+}
+
 export async function listDocuments() {
-  return api.get<any[]>("/documents");
+  return api.get<DocumentInfo[]>("/documents");
 }
 
 export async function listConversations() {
-  // Backend returns array directly: list[ConversationResponse]
-  return api.get<any[]>("/conversations");
+  return api.get<ConversationSummary[]>("/conversations");
+}
+
+export interface ConversationMessageResponse {
+  id: string;
+  message_id?: string;
+  role: string;
+  content: string;
+  timestamp?: number;
+  sources?: Array<{ source_type: string; title: string; url?: string }>;
 }
 
 export async function loadConversation(id: string) {
-  // Backend returns ConversationDetail directly (not wrapped in an object)
-  return api.get<{ id: string; title?: string; messages: any[] }>(`/conversations/${id}`);
+  return api.get<{ id: string; title?: string; messages: ConversationMessageResponse[] }>(`/conversations/${id}`);
 }
 
 export async function healthCheck() {
@@ -475,39 +551,39 @@ export async function healthCheck() {
 }
 
 export async function listOrganizations() {
-  return api.get<any[]>("/organizations");
+  return api.get<OrganizationInfo[]>("/organizations");
 }
 
 export async function listWorkspaces(orgId: string) {
-  return api.get<any[]>(`/organizations/${orgId}/workspaces`);
+  return api.get<WorkspaceInfo[]>(`/organizations/${orgId}/workspaces`);
 }
 
 export async function listProjects(orgId: string, wsId: string) {
-  return api.get<any[]>(`/organizations/${orgId}/workspaces/${wsId}/projects`);
+  return api.get<ProjectInfo[]>(`/organizations/${orgId}/workspaces/${wsId}/projects`);
 }
 
 export async function createOrganization(name: string, slug: string) {
-  return api.post<any>("/organizations", { name, slug });
+  return api.post<OrganizationInfo>("/organizations", { name, slug });
 }
 
 export async function createWorkspace(orgId: string, name: string) {
-  return api.post<any>(`/organizations/${orgId}/workspaces`, { name });
+  return api.post<WorkspaceInfo>(`/organizations/${orgId}/workspaces`, { name });
 }
 
 export async function createConversation(title?: string) {
-  return api.post<any>("/conversations", { title: title || "New Conversation" });
+  return api.post<ConversationSummary>("/conversations", { title: title || "New Conversation" });
 }
 
 export async function getApiKeys() {
-  return api.get<any[]>("/api-keys");
+  return api.get<ApiKeyInfo[]>("/api-keys");
 }
 
 export async function createApiKey(name: string) {
-  return api.post<any>("/api-keys", { name });
+  return api.post<ApiKeyInfo>("/api-keys", { name });
 }
 
 export async function getAuditLogs() {
-  return api.get<any[]>("/audit-logs");
+  return api.get<AuditLogEntry[]>("/audit-logs");
 }
 
 // ── Document Actions ───────────────────────────────────────
@@ -527,7 +603,7 @@ export async function deleteConversation(convId: string) {
 }
 
 export async function updateConversation(convId: string, data: Record<string, unknown>) {
-  return api.patch<any>(`/conversations/${convId}`, data);
+  return api.patch<ConversationSummary>(`/conversations/${convId}`, data);
 }
 
 export { classifyError, classifyResponse, ApiError as ApiClientError };

@@ -6,7 +6,6 @@ instead of brittle regex matching.
 from __future__ import annotations
 import json
 import re
-import time
 from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 
@@ -66,6 +65,7 @@ class Planner:
         user_prompt = f"Create an execution plan for this research query:\n\n{query}"
         last_error = None
 
+        last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             if attempt > 0:
                 logger.info(f"Planner retry {attempt}/{max_retries}")
@@ -92,7 +92,7 @@ class Planner:
 
             last_error = ValueError("Planner returned empty steps")
 
-        logger.error(f"Planner failed after {max_retries + 1} attempts, using fallback")
+        logger.error(f"Planner failed after {max_retries + 1} attempts, using fallback: {last_error}")
         return self._fallback_plan(query)
 
     def _parse_output(self, text: str) -> Tuple[List[Dict[str, Any]], str]:

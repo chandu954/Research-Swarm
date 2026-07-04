@@ -91,7 +91,7 @@ class PluginRegistry:
     def list_plugins(self, type_filter: str | None = None) -> list[PluginSpec]:
         if type_filter:
             return [p.spec for p in self._by_type.get(type_filter, {}).values()]
-        return list(self._plugins.values())
+        return [p.spec for p in self._plugins.values()]
 
     def is_configured(self, name: str) -> bool:
         plugin = self._plugins.get(name)

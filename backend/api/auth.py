@@ -12,7 +12,7 @@ from typing import Optional
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from datetime import timedelta
 from pydantic import BaseModel, EmailStr, Field
@@ -25,7 +25,7 @@ from backend.db.models import User, UserSession, UserDevice, Organization, Works
 from backend.db.schemas import (
     RegisterRequest, LoginRequest, TokenResponse, UserResponse,
 )
-from backend.auth.jwt import create_access_token, create_refresh_token, decode_token, get_token_subject
+from backend.auth.jwt import create_access_token, create_refresh_token, get_token_subject
 from backend.auth.password import hash_password, verify_password
 from backend.auth.providers import (
     get_google_auth_url, exchange_google_code, get_google_userinfo,
@@ -35,8 +35,7 @@ from backend.auth.providers import (
     verify_mfa_code, generate_recovery_codes,
     config as oauth_config,
 )
-from backend.auth.dependencies import get_current_user, get_optional_user
-from backend.auth.tenant import set_tenant_context, reset_tenant_context
+from backend.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -48,9 +47,10 @@ def _build_tokens(user: User) -> TokenResponse:
     )
 
 
-async def _create_session(user: User, request: Request, session: AsyncSession) -> None:
+async def _create_session(user: User, request: Request, session: AsyncSession) -> str:
+    """Create a refresh-token session. Returns the raw refresh token (caller sets it as a cookie)."""
     from backend.auth.jwt import REFRESH_TOKEN_EXPIRE_DAYS
-    refresh_token = create_refresh_token(user.id)
+    refresh_token_value = create_refresh_token(user.id)
     token_hash = secrets.token_hex(32)
     user_session = UserSession(
         user_id=user.id,
@@ -60,6 +60,7 @@ async def _create_session(user: User, request: Request, session: AsyncSession) -
         expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
     )
     session.add(user_session)
+    return refresh_token_value
 
 
 async def _create_default_organization(db_session: AsyncSession, user: User) -> None:
@@ -81,7 +82,6 @@ async def _create_default_organization(db_session: AsyncSession, user: User) -> 
 
 async def _find_or_create_user(email: str, name: str, provider_data: dict, provider: str, db_session: AsyncSession) -> User:
     filters = [User.email == email]
-    provider_id_field = f"{provider}_id"
     if provider_id := provider_data.get("id"):
         filters.append(getattr(User, f"{provider}_id") == provider_id)
 
@@ -421,7 +421,6 @@ async def forgot_password(
     result = await session.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if user:
-        reset_token = create_access_token(user.id, {"type": "password_reset"})
         logger.info(f"Password reset requested for {body.email}")
     return {"message": "If the email exists, a password reset link has been sent"}
 

@@ -4,9 +4,6 @@ Providers are registered in the global PluginRegistry.  The factory
 handles context-var overrides and provider caching.
 """
 from __future__ import annotations
-import os
-from typing import Any
-from loguru import logger
 
 from backend.llm.base import LLMProvider
 from backend.llm.context import (

@@ -2,7 +2,6 @@
 from __future__ import annotations
 import os
 from typing import Any
-from loguru import logger
 import httpx
 
 from backend.plugins.base import Plugin

@@ -14,8 +14,7 @@ from sqlalchemy import select
 from backend.db.session import get_session
 from backend.db.models import (
     User, Organization, OrganizationMember,
-    Workspace, WorkspaceMember,
-    Project,
+    Workspace, Project,
 )
 from backend.auth.dependencies import get_current_user
 
@@ -151,7 +150,6 @@ async def resolve_tenant_dependencies(
                 resolved_org_slug = org.slug
 
     if not resolved_org_id:
-        from fastapi.responses import JSONResponse
         raise HTTPException(
             status_code=403,
             detail={"code": "organization_required", "message": "We need to set up your workspace before you can start researching."},

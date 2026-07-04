@@ -1,6 +1,7 @@
 """Hybrid search: BM25 lexical + dense embedding fusion with cross-encoder reranking."""
 from __future__ import annotations
 import math
+import re
 from typing import List, Dict, Any, Optional
 from loguru import logger
 
@@ -10,6 +11,20 @@ except ImportError:
     BM25Okapi = None
 
 
+_STOPWORDS: set[str] = {
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "by", "with", "as", "is", "was", "are", "were", "be", "been",
+    "it", "its", "this", "that", "these", "those", "from", "about", "into",
+    "through", "during", "before", "after", "above", "below", "between",
+    "such", "each", "both", "more", "most", "some", "any", "all", "no",
+    "not", "only", "own", "same", "so", "than", "too", "very", "just",
+    "can", "will", "has", "have", "had", "do", "does", "did", "would",
+    "could", "should", "may", "might", "shall", "need", "dare", "ought",
+    "used", "what", "which", "who", "whom", "when", "where", "why", "how",
+    "here", "there", "then", "else", "once", "also", "well", "back", "over",
+}
+
+
 def build_bm25_index(documents: List[Dict[str, Any]]) -> Optional[BM25Okapi]:
     """Build a BM25 index from a list of result dicts with 'title' and 'snippet' keys."""
     if BM25Okapi is None:
@@ -17,12 +32,15 @@ def build_bm25_index(documents: List[Dict[str, Any]]) -> Optional[BM25Okapi]:
         return None
     if not documents:
         return None
-    corpus = [_bm25_tokenize(d.get("title", "") + " " + d.get("snippet", "")) for d in documents]
+    corpus = [_bm25_tokenize(d.get("title", "") + " " + d.get("snippet", "") + " " + d.get("content", "")) for d in documents]
     return BM25Okapi(corpus)
 
 
 def _bm25_tokenize(text: str) -> List[str]:
-    return text.lower().split()
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    tokens = text.split()
+    return [t for t in tokens if len(t) > 1 and t not in _STOPWORDS]
 
 
 def bm25_scores(bm25: BM25Okapi, query: str, doc_count: int) -> List[float]:

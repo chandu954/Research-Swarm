@@ -126,18 +126,30 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
                     <Globe2 className="h-3.5 w-3.5" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1.5 flex-wrap">
                       <span className="block truncate text-[11px] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
                         {source.title}
                       </span>
                       <span className="flex-shrink-0 text-[7px] text-yellow-500/60">
                         {authorityStars(score.authority)}
                       </span>
+                      {source.provider && (
+                        <span className="inline-flex items-center rounded-sm bg-white/5 px-1 py-0.5 text-[7px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
+                          {source.provider}
+                        </span>
+                      )}
                     </span>
                     <span className="mt-1 block truncate text-[9px] text-[var(--text-muted)]">
                       {source.url}
                     </span>
-                    <TrustBadge score={score} />
+                    <span className="flex items-center gap-2">
+                      <TrustBadge score={score} />
+                      {source.hybrid_score != null && (
+                        <span className="text-[7px] text-[var(--text-muted)]">
+                          rel: {source.hybrid_score.toFixed(3)}
+                        </span>
+                      )}
+                    </span>
                   </span>
                   <ExternalLink className="mt-1 h-3 w-3 flex-shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
                 </motion.div>

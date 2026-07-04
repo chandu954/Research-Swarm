@@ -37,6 +37,9 @@ class SourceRef(BaseModel):
     title: str = Field(...)
     url: Optional[str] = None
     relevance: str = ""
+    provider: Optional[str] = None
+    hybrid_score: Optional[float] = None
+    source_diversity_score: Optional[float] = None
 
 
 class AnswerResponse(BaseModel):
@@ -145,6 +148,9 @@ class AnswerAgent:
                 source_type="web",
                 title=r.get("title", "Untitled"),
                 url=r.get("url"),
+                provider=r.get("_provider") or r.get("source"),
+                hybrid_score=r.get("hybrid_score"),
+                source_diversity_score=r.get("source_diversity_score"),
             ))
         for c in request.document_chunks:
             meta = c.get("metadata", {})
@@ -157,7 +163,7 @@ class AnswerAgent:
 
     def _no_evidence_answer(self, request: AnswerRequest) -> str:
         """Structured response when no evidence was retrieved."""
-        return f"""# Research could not be completed
+        return """# Research could not be completed
 
 ## Why?
 

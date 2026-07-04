@@ -1,10 +1,9 @@
 """Tests for conversation memory module."""
 from __future__ import annotations
 import tempfile
-import os
 import pytest
 
-from backend.agents.memory import ConversationMemory, Conversation, ConversationTurn
+from backend.agents.memory import ConversationMemory
 
 
 class TestConversationMemory:

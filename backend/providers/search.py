@@ -1,6 +1,7 @@
 """Built-in search providers: DuckDuckGo, Bing, Serper, fallback."""
 from __future__ import annotations
-import os, re, time, urllib.parse
+import asyncio
+import os, re, urllib.parse
 from typing import Any
 from loguru import logger
 import httpx
@@ -29,9 +30,9 @@ class DuckDuckGoProvider(SearchProvider):
     async def search(self, query: str, max_results: int = 5, **kwargs: Any) -> list[dict[str, Any]]:
         region = kwargs.get("region", "wt-wt")
         safesearch = kwargs.get("safesearch", "moderate")
-        return self._search(query, max_results, region, safesearch)
+        return await self._search(query, max_results, region, safesearch)
 
-    def _search(self, query: str, max_results: int, region: str, safesearch: str) -> list[dict[str, Any]]:
+    async def _search(self, query: str, max_results: int, region: str, safesearch: str) -> list[dict[str, Any]]:
         ddgs_module = None
         for mod_name in ["ddgs", "duckduckgo_search"]:
             try:
@@ -42,7 +43,7 @@ class DuckDuckGoProvider(SearchProvider):
 
         if ddgs_module is None:
             logger.error("No DuckDuckGo search package installed (tried ddgs, duckduckgo_search)")
-            return _fallback_search(query, max_results)
+            return await _fallback_search(query, max_results)
 
         DDGS = ddgs_module.DDGS
         logger.info(f"[DuckDuckGo] Searching: {query[:100]}...")
@@ -58,10 +59,10 @@ class DuckDuckGoProvider(SearchProvider):
                 except Exception as e:
                     last_error = e
             if attempt == 0:
-                time.sleep(1.0)
+                await asyncio.sleep(1.0)
 
         logger.warning(f"[DuckDuckGo] All backends failed, trying fallback. Last error: {last_error}")
-        return _fallback_search(query, max_results)
+        return await _fallback_search(query, max_results)
 
 
 class BingProvider(SearchProvider):
@@ -82,7 +83,7 @@ class BingProvider(SearchProvider):
         api_key = os.getenv("BING_API_KEY")
         if not api_key:
             logger.warning("BING_API_KEY not set, falling back to DuckDuckGo")
-            return DuckDuckGoProvider().search(query, max_results, **kwargs)
+            return await DuckDuckGoProvider().search(query, max_results, **kwargs)
 
         logger.info(f"[Bing] Searching: {query[:100]}...")
         try:

@@ -1,6 +1,7 @@
 """Local filesystem storage provider."""
 from __future__ import annotations
 import os
+from pathlib import Path
 from loguru import logger
 
 from backend.core.plugin import PluginSpec
@@ -18,36 +19,42 @@ class LocalStorageProvider(StorageProvider):
     )
 
     def __init__(self) -> None:
-        self._base_path: str = ""
+        self._base_path: Path = Path()
 
     async def initialize(self) -> None:
-        self._base_path = os.getenv("UPLOAD_DIR", UPLOAD_DIR)
-        os.makedirs(self._base_path, exist_ok=True)
+        raw = os.getenv("UPLOAD_DIR", UPLOAD_DIR)
+        self._base_path = Path(raw).resolve()
+        self._base_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"LocalStorageProvider initialized at {self._base_path}")
 
     async def cleanup(self) -> None:
         pass
 
+    def _resolve(self, path: str) -> Path:
+        """Resolve a user-supplied path safely within the base directory."""
+        joined = (self._base_path / path).resolve()
+        if not str(joined).startswith(str(self._base_path)):
+            raise PermissionError(f"Path traversal denied: {path}")
+        return joined
+
     async def save(self, path: str, content: bytes) -> str:
-        full_path = os.path.join(self._base_path, path)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        with open(full_path, "wb") as f:
-            f.write(content)
-        return full_path
+        full_path = self._resolve(path)
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_bytes(content)
+        return str(full_path)
 
     async def load(self, path: str) -> bytes | None:
-        full_path = os.path.join(self._base_path, path)
-        if not os.path.exists(full_path):
+        full_path = self._resolve(path)
+        if not full_path.exists():
             return None
-        with open(full_path, "rb") as f:
-            return f.read()
+        return full_path.read_bytes()
 
     async def delete(self, path: str) -> bool:
-        full_path = os.path.join(self._base_path, path)
-        if not os.path.exists(full_path):
+        full_path = self._resolve(path)
+        if not full_path.exists():
             return False
-        os.remove(full_path)
+        full_path.unlink()
         return True
 
     async def exists(self, path: str) -> bool:
-        return os.path.exists(os.path.join(self._base_path, path))
+        return self._resolve(path).exists()

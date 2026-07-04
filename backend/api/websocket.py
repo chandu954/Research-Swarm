@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass, field
-from typing import Dict, Set, Any, Optional, Callable, Awaitable
+from dataclasses import dataclass
+from typing import Dict, Set, Optional, Callable, Awaitable
 from fastapi import WebSocket
 from loguru import logger
 

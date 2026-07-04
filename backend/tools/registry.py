@@ -102,7 +102,6 @@ class ToolRegistry:
             a running event loop".
         """
         tool = self.get(name)
-        spec = self.get_spec(name)
         if _is_async(tool):
             try:
                 loop = asyncio.get_running_loop()
@@ -138,7 +137,6 @@ class ToolRegistry:
     ) -> Any:
         """Execute a tool asynchronously and record the call."""
         tool = self.get(name)
-        spec = self.get_spec(name)
         if _is_async(tool):
             call = ToolCall(tool_name=name, input=kwargs)
             logger.debug(f"Executing tool (async): {name}")

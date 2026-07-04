@@ -32,11 +32,12 @@ from backend.api.websocket import get_workspace_manager, Connection
 from backend.tools.registry import get_registry
 from backend.db.session import init_db, close_db, get_session
 from backend.core.registry import get_plugin_registry, reset_plugin_registry
+from backend.core.logging import setup_logging
+from backend.api.metrics import router as metrics_router
+from backend.tools.tracer import get_tracer
 from backend.db.models import (
-    User, Conversation, Message, Document, ResearchTask,
-    Organization, OrganizationMember,
-    Workspace, WorkspaceMember,
-    Project, AuditLog, APIKey, BillingRecord, Notification,
+    User, Conversation, Message, Document, DocumentVersion, Workspace, WorkspaceMember,
+    AuditLog, APIKey, BillingRecord, Notification, Provider,
 )
 from backend.db.schemas import (
     ResearchRequest, ResearchResponse,
@@ -50,8 +51,8 @@ from backend.db.schemas import (
     ExtractEntitiesRequest,
     ProviderCreate, ProviderUpdate, ProviderResponse, ProviderListResponse,
 )
-from backend.auth.dependencies import get_current_user, get_optional_user
-from backend.auth.tenant import resolve_tenant_dependencies, resolve_optional_tenant, TenantContext
+from backend.auth.dependencies import get_current_user
+from backend.auth.tenant import resolve_tenant_dependencies, TenantContext
 # The unified PluginRegistry is imported via core.registry above
 # Old compat note: providers.registry is deprecated in favor of core.registry
 
@@ -125,14 +126,17 @@ async def _register_builtin_plugins() -> None:
     from backend.plugins.github import GitHubPlugin
     from backend.plugins.notion import NotionPlugin
     from backend.plugins.slack import SlackPlugin
+    from backend.plugins.weather import WeatherPlugin
 
     for p_cls, cfg_key, name in [
         (GitHubPlugin, "GITHUB_TOKEN", "github"),
         (NotionPlugin, "NOTION_TOKEN", "notion"),
         (SlackPlugin, "SLACK_TOKEN", "slack"),
+        (WeatherPlugin, None, "weather"),
     ]:
         try:
-            inst = p_cls(config={"token": os.getenv(cfg_key, "")})
+            config = {"token": os.getenv(cfg_key, "")} if cfg_key else {}
+            inst = p_cls(config=config)
             await inst.initialize()
             registry.register(inst, "external")
             logger.info(f"Registered external plugin: {name}")
@@ -174,6 +178,7 @@ async def _register_builtin_plugins() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging()
     logger.info("ResearchSwarm AI starting up")
     app.state.start_time = time.time()
     await init_db()
@@ -285,6 +290,7 @@ async def global_fallback(request: Request, exc):
 
 app.include_router(auth_router)
 app.include_router(org_router)
+app.include_router(metrics_router)
 
 
 # ── Health ──────────────────────────────────────────────────────
@@ -412,7 +418,16 @@ async def run_research(
             "answer_mode": "normal",
             "fallback_reason": None,
         }
-        result = await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
+        tracer = get_tracer()
+        tracer.start_trace(task_id, body.query)
+        result = None
+        try:
+            with tracer.span("research_graph", "graph", span_type="node"):
+                result = await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
+        finally:
+            status = result.get("status", "failed") if result else "failed"
+            tracer.end_trace("completed" if status != "failed" else "failed")
+
         execution_time = time.time() - start_time
         app.state.stream_manager.close_stream(task_id)
 
@@ -777,7 +792,7 @@ async def upload_document(
         return {"document_id": doc.id, "filename": file.filename, "size": len(content), "status": "uploaded"}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Upload failed")
         raise HTTPException(status_code=500, detail="Failed to upload document")
 
@@ -846,7 +861,6 @@ async def get_document_versions(
     )
     if not doc_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Document not found")
-    from backend.db.models import DocumentVersion
     result = await session.execute(
         select(DocumentVersion).where(
             DocumentVersion.document_id == doc_id,
@@ -1232,9 +1246,9 @@ async def list_models():
                 logger.error(f"Failed to fetch Ollama models: {e}")
                 return {"provider": "ollama", "models": [], "error": str(e)}
         else:
-            # Check registry for custom LLM providers
-            all_providers = registry.list_llms()
-            return {"provider": provider, "models": [], "available_providers": list(all_providers.keys())}
+            from backend.core.registry import get_plugin_registry
+            plugin_registry = get_plugin_registry()
+            return {"provider": provider, "models": [], "available_providers": plugin_registry.list_types()}
 
 
 async def _resolve_pdf_paths(session: AsyncSession, document_ids: list[str]) -> list[str]:
@@ -1351,7 +1365,7 @@ async def list_plugins():
         PluginStatus(
             name=spec.name,
             configured=registry.is_configured(spec.name),
-            actions=spec.actions,
+            actions=spec.tags,
         )
         for spec in registry.list_plugins()
     ]

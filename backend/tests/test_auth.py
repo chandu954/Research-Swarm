@@ -1,6 +1,6 @@
 """Tests for authentication: JWT, password hashing, OAuth, dependencies."""
 from __future__ import annotations
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 

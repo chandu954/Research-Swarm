@@ -1,12 +1,10 @@
 """Organization, workspace, and project management endpoints."""
 from __future__ import annotations
 import re
-from datetime import datetime, timezone
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func
 
 from backend.db.session import get_session
 from backend.db.models import (
@@ -22,7 +20,7 @@ from backend.db.schemas import (
 )
 from backend.auth.dependencies import get_current_user
 from backend.auth.tenant import (
-    resolve_tenant_dependencies, TenantContext,
+    TenantContext,
     require_permission,
 )
 

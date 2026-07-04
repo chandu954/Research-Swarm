@@ -3,6 +3,9 @@ export interface SourceCitation {
   title: string;
   url?: string;
   relevance?: string;
+  provider?: string | null;
+  hybrid_score?: number | null;
+  source_diversity_score?: number | null;
 }
 
 export interface AgentLog {

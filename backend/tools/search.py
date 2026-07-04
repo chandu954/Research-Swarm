@@ -7,6 +7,15 @@ from loguru import logger
 from backend.core.registry import get_plugin_registry
 
 
+def _clean_url(url: str) -> str:
+    """Prepend https:// if no protocol is present."""
+    if not url:
+        return ""
+    if "://" not in url:
+        return "https://" + url
+    return url
+
+
 def search_web(
     query: str,
     max_results: int = 5,

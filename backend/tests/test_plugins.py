@@ -1,7 +1,6 @@
 """Tests for PluginInterface and external integration plugins."""
 from __future__ import annotations
-import pytest
-from backend.core.plugin import PluginInterface, PluginSpec
+from backend.core.plugin import PluginSpec
 from backend.plugins.base import Plugin
 
 

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { useAuth } from "./auth";
-import { api } from "./api-client";
+import { api, ORG_ID_KEY, WS_ID_KEY } from "./api-client";
 
 export interface Organization {
   id: string;
@@ -67,12 +67,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const refreshOrganizations = useCallback(async () => {
     if (!token) return;
     try {
-      const orgs: Organization[] = await api.get("/organizations");
+        const orgs = await api.get<Organization[]>("/organizations");
       setOrganizations(orgs);
       // Only auto-select an org if none is selected yet
       setCurrentOrgState(prev => {
         if (prev) return prev;
-        const storedId = localStorage.getItem("research-swarm-org-id");
+        const storedId = localStorage.getItem(ORG_ID_KEY);
         const found = storedId ? orgs.find(o => o.id === storedId) : orgs[0];
         return found || orgs[0] || null;
       });
@@ -91,7 +91,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       // Auto-select workspace only if none selected, or if selected one not in new list
       setCurrentWorkspaceState(prev => {
         if (prev && wsList.find(w => w.id === prev.id)) return prev;
-        const storedId = localStorage.getItem("research-swarm-ws-id");
+        const storedId = localStorage.getItem(WS_ID_KEY);
         const found = storedId ? wsList.find(w => w.id === storedId) : wsList[0];
         return found || wsList[0] || null;
       });
@@ -120,14 +120,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setCurrentProjectState(null);
     setWorkspaces([]);
     setProjects([]);
-    localStorage.setItem("research-swarm-org-id", org.id);
-    localStorage.removeItem("research-swarm-ws-id");
+    localStorage.setItem(ORG_ID_KEY, org.id);
+    localStorage.removeItem(WS_ID_KEY);
   }, []);
 
   const setCurrentWorkspace = useCallback(async (ws: Workspace) => {
     setCurrentWorkspaceState(ws);
     setCurrentProjectState(null);
-    localStorage.setItem("research-swarm-ws-id", ws.id);
+    localStorage.setItem(WS_ID_KEY, ws.id);
   }, []);
 
   const setCurrentProject = useCallback((proj: Project | null) => {

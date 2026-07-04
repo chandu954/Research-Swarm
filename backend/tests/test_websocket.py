@@ -1,7 +1,7 @@
 """Tests for WebSocket collaboration manager."""
 from __future__ import annotations
 import pytest
-from backend.api.websocket import WorkspaceRoom, WorkspaceManager, Connection, get_workspace_manager
+from backend.api.websocket import WorkspaceRoom, WorkspaceManager, Connection
 
 
 class FakeWebSocket:

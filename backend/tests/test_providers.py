@@ -1,8 +1,5 @@
 """Tests for concrete provider implementations."""
 from __future__ import annotations
-import os
-import pytest
-from backend.core.plugin import PluginSpec
 
 
 class TestVectorDBProvider:

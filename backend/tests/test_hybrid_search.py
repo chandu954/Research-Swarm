@@ -1,8 +1,7 @@
 """Integration tests for hybrid search pipeline end-to-end."""
 from __future__ import annotations
-import pytest
-from unittest.mock import patch, MagicMock
-from backend.tools.search import hybrid_search_web, search_web
+from unittest.mock import patch
+from backend.tools.search import hybrid_search_web
 
 
 class TestHybridSearchWeb:

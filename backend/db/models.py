@@ -1,16 +1,14 @@
 """SQLAlchemy declarative models for ResearchSwarm multi-tenant platform."""
 from __future__ import annotations
-import json
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import (
     Column, String, Text, Boolean, BigInteger, Float, Integer,
     ForeignKey, DateTime, JSON, Index, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, declared_attr
+from sqlalchemy.orm import relationship
 
 from backend.db.session import Base
 

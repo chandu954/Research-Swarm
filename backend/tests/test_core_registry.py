@@ -1,7 +1,7 @@
 """Tests for the unified PluginRegistry (core.registry)."""
 from __future__ import annotations
 import pytest
-from backend.core.plugin import PluginInterface, PluginSpec
+from backend.core.plugin import PluginSpec
 from backend.core.registry import get_plugin_registry, reset_plugin_registry
 from backend.core.providers.llm import LLMProvider
 from backend.core.providers.search import SearchProvider

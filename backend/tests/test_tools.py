@@ -1,9 +1,7 @@
 """Tests for tools: search, registry, PDF loader, embedding, vector store, tracer."""
 from __future__ import annotations
-import json
 import tempfile
-import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 import pytest
 
 
@@ -118,8 +116,8 @@ class TestTracer:
         with tempfile.TemporaryDirectory() as tmpdir:
             tracer = Tracer(trace_dir=tmpdir)
             tracer.start_trace("task-2", "Test")
-            parent_id = tracer.start_span("parent", "planner")
-            child_id = tracer.start_span("child", "research_agent")
+            tracer.start_span("parent", "planner")
+            tracer.start_span("child", "research_agent")
             tracer.end_span()
             tracer.end_span()
 
