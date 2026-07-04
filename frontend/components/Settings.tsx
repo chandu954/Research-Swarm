@@ -358,17 +358,8 @@ export default function Settings({ open, onClose, settings, onSettingsChange }: 
                     <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
                       OpenRouter API Key
                     </label>
-                    <input
-                      type="password"
-                      value={settings.openrouterKey}
-                      onChange={(e) => update({ openrouterKey: e.target.value })}
-                      placeholder="sk-or-v1-..."
-                      className="input-field w-full text-sm"
-                    />
-                    <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
-                      Get your key at{" "}
-                      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer"
-                         className="text-primary hover:underline">openrouter.ai/keys</a>
+                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      Configured via <code className="text-primary">OPENROUTER_API_KEY</code> on the server.
                     </p>
                   </div>
                 )}

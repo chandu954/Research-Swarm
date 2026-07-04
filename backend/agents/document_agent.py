@@ -1,13 +1,13 @@
 """Document processing agent with RAG pipeline and reranking."""
 from __future__ import annotations
 import os
-import tempfile
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 from pathlib import Path
 from loguru import logger
 
 from backend.tools.registry import ToolRegistry, get_registry, ToolSpec, ToolCategory
-from backend.llm.factory import get_llm_provider_instance
+from backend.llm.factory import get_llm_provider_instance, resolve_model
+from backend.core.registry import get_plugin_registry
 
 
 CHUNK_SIZE = 1000
@@ -20,16 +20,15 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 class DocumentAgent:
     """Agent for ingesting PDFs, chunking, embedding, storing, retrieving, and reranking."""
 
-    def __init__(self, registry: Optional[ToolRegistry] = None):
+    def __init__(self, registry: ToolRegistry | None = None):
         self.registry = registry or get_registry()
         self.llm = get_llm_provider_instance()
+        self._embedding_provider = get_plugin_registry().get_embedding()
         self._register_tools()
         logger.info("DocumentAgent ready")
 
     def _register_tools(self) -> None:
-        """Register document processing tools."""
         from backend.tools.pdf_loader import load_pdf as pdf_fn
-        from backend.tools.vectorstore import VectorStore
 
         try:
             self.registry.get_spec("load_pdf")
@@ -47,18 +46,19 @@ class DocumentAgent:
         try:
             self.registry.get_spec("vector_store")
         except KeyError:
-            vs = VectorStore()
-            self.registry.register(
-                "vector_store",
-                vs.add_chunks,
-                ToolSpec(
-                    name="vector_store",
-                    description="ChromaDB vector store for document chunks",
-                    category=ToolCategory.VECTOR_STORE,
-                ),
-            )
+            vs = get_plugin_registry().get_vector_db()
+            if vs:
+                self.registry.register(
+                    "vector_store",
+                    vs.store,
+                    ToolSpec(
+                        name="vector_store",
+                        description="ChromaDB vector store for document chunks",
+                        category=ToolCategory.VECTOR_STORE,
+                    ),
+                )
 
-    def ingest_pdf(self, pdf_path: str) -> Dict[str, Any]:
+    def ingest_pdf(self, pdf_path: str) -> dict[str, Any]:
         """Ingest a PDF: extract text, chunk, embed, and store in vector DB."""
         path = Path(pdf_path)
         if not path.exists():
@@ -81,7 +81,7 @@ class DocumentAgent:
         logger.info(f"Ingested {len(chunks)} chunks from {path.name}")
         return {"doc_id": path.stem, "filename": path.name, "chunks": len(chunks)}
 
-    def retrieve(self, query: str, top_k: int = TOP_K) -> List[Dict[str, Any]]:
+    def retrieve(self, query: str, top_k: int = TOP_K) -> list[dict[str, Any]]:
         """Retrieve relevant chunks with hybrid BM25 + dense fusion + reranking."""
         if not query:
             return []
@@ -91,13 +91,17 @@ class DocumentAgent:
             logger.warning("Could not create query embedding, returning empty")
             return []
 
-        vs = self.registry.get("vector_store")
-        results = vs.query(query_embedding=query_embedding, top_k=top_k * 2)
+        vdb = get_plugin_registry().get_vector_db()
+        if vdb is None:
+            logger.warning("No vector DB available, returning empty")
+            return []
+
+        import asyncio
+        results = asyncio.run(vdb.query(query_embedding=query_embedding, top_k=top_k * 2))
 
         if not results:
             return []
 
-        # Hybrid rerank: combine vector score with BM25 over chunk content
         from backend.search.hybrid import hybrid_rerank
         scored = hybrid_rerank(
             query,
@@ -111,7 +115,7 @@ class DocumentAgent:
 
         return reranked[:RERANK_TOP_K]
 
-    def _chunk_text(self, text: str, doc_id: str) -> List[Dict[str, Any]]:
+    def _chunk_text(self, text: str, doc_id: str) -> list[dict[str, Any]]:
         """Split text into overlapping chunks with metadata."""
         if not text:
             return []
@@ -147,42 +151,23 @@ class DocumentAgent:
         logger.debug(f"Created {len(chunks)} chunks from {len(words)} words")
         return chunks
 
-    def _create_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Create embeddings in batches of 10 via LLM provider."""
-        embeddings: List[List[float]] = []
-        batch_size = 10
+    def _create_embeddings(self, texts: list[str]) -> list[list[float]]:
+        """Create embeddings in batches via the embedding provider."""
+        if self._embedding_provider is None:
+            return [[0.0] * 768 for _ in texts]
+        result = self._embedding_provider.embed(texts, model=EMBEDDING_MODEL)
+        if result is None:
+            return [[0.0] * 768 for _ in texts]
+        return result
 
-        for batch_start in range(0, len(texts), batch_size):
-            batch = texts[batch_start:batch_start + batch_size]
-            batch_embs: List[Optional[List[float]]] = [None] * len(batch)
-
-            for i, text in enumerate(batch):
-                try:
-                    emb = self.llm.create_embedding(model=EMBEDDING_MODEL, text=text)
-                    batch_embs[i] = emb
-                except Exception as e:
-                    logger.error(f"Embedding failed for chunk {batch_start + i}: {e}")
-
-            for emb in batch_embs:
-                embeddings.append(emb if emb else [0.0] * 768)
-
-            logger.debug(f"Embedded {min(batch_start + batch_size, len(texts))}/{len(texts)} chunks")
-
-        return embeddings
-
-    def _create_embedding(self, text: str) -> Optional[List[float]]:
-        """Create a single embedding."""
-        try:
-            return self.llm.create_embedding(model=EMBEDDING_MODEL, text=text)
-        except Exception as e:
-            logger.error(f"Query embedding failed: {e}")
+    def _create_embedding(self, text: str) -> list[float] | None:
+        """Create a single embedding via the embedding provider."""
+        if self._embedding_provider is None:
             return None
+        return self._embedding_provider.embed_query(text, model=EMBEDDING_MODEL)
 
-    def _rerank(self, query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Rerank results using cross-encoder style relevance scoring via Gemma3.
-
-        Scores each chunk on relevance to the query, then re-sorts.
-        """
+    def _rerank(self, query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Rerank results using cross-encoder style relevance scoring."""
         if not results:
             return results
 
@@ -197,17 +182,12 @@ class DocumentAgent:
         for i, r in enumerate(scored):
             r["rank"] = i + 1
 
-        logger.debug(f"Reranked {len(scored)} results. Top score: {scored[0].get('relevance_score', 0):.3f}")
         return scored
 
     def _compute_relevance(self, query: str, chunk: str) -> float:
-        """Score a chunk's relevance using Gemma3 cross-encoder scoring.
-
-        Uses the LLM to produce a relevance score (0.0-1.0) rather than
-        embedding cosine similarity, giving higher-quality rankings.
-        Falls back to cosine similarity if LLM scoring fails.
-        """
+        """Score a chunk's relevance using LLM cross-encoder scoring."""
         try:
+            relevance_model = os.getenv("RELEVANCE_MODEL", resolve_model("answer_agent"))
             prompt = (
                 f"Rate the relevance of the following document chunk to the query "
                 f"on a scale of 0.0 to 1.0 (where 0.0 is completely irrelevant "
@@ -215,7 +195,6 @@ class DocumentAgent:
                 f"Query: {query[:500]}\n\n"
                 f"Chunk: {chunk[:1500]}"
             )
-            relevance_model = os.getenv("RELEVANCE_MODEL", os.getenv("ANSWER_MODEL", "qwen3:14b"))
             raw = self.llm.generate(
                 prompt=prompt,
                 model=relevance_model,
@@ -232,8 +211,8 @@ class DocumentAgent:
             logger.debug(f"LLM relevance scoring failed, using cosine fallback: {e}")
 
         try:
-            q_emb = self.llm.create_embedding(model=EMBEDDING_MODEL, text=query)
-            c_emb = self.llm.create_embedding(model=EMBEDDING_MODEL, text=chunk[:2000])
+            q_emb = self._create_embedding(query)
+            c_emb = self._create_embedding(chunk[:2000])
             if q_emb and c_emb:
                 return self._cosine_similarity(q_emb, c_emb)
         except Exception:
@@ -241,16 +220,12 @@ class DocumentAgent:
         return 0.0
 
     @staticmethod
-    def _cosine_similarity(a: List[float], b: List[float]) -> float:
-        """Compute cosine similarity between two vectors."""
+    def _cosine_similarity(a: list[float], b: list[float]) -> float:
         if not a or not b or len(a) != len(b):
             return 0.0
-
         dot = sum(x * y for x, y in zip(a, b))
         norm_a = sum(x * x for x in a) ** 0.5
         norm_b = sum(y * y for y in b) ** 0.5
-
         if norm_a == 0 or norm_b == 0:
             return 0.0
-
         return dot / (norm_a * norm_b)

@@ -19,4 +19,8 @@ export {
   getApiKeys,
   createApiKey,
   getAuditLogs,
+  deleteDocument,
+  getDocumentDownloadUrl,
+  deleteConversation,
+  updateConversation,
 } from "./api-client";

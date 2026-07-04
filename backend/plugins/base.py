@@ -1,48 +1,33 @@
-"""Plugin ABC for MCP-style external integrations."""
+"""Plugin ABC for MCP-style external integrations — extends core PluginInterface."""
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from abc import abstractmethod
+from typing import Any
+
+from backend.core.plugin import PluginInterface, PluginSpec
 
 
-class PluginSpec(BaseModel):
-    name: str = Field(..., description="Unique plugin name")
-    description: str = Field(..., description="What the plugin does")
-    version: str = Field(default="1.0.0")
-    config_schema: Dict[str, Any] = Field(default_factory=dict)
-    actions: List[str] = Field(default_factory=list)
+class Plugin(PluginInterface):
+    """Base class for external integrations (GitHub, Notion, Slack, etc.)."""
 
+    spec: PluginSpec
 
-class Plugin(ABC):
-    """Base class for all external integrations."""
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        self._config = config or {}
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        self.config = config or {}
-        self._initialized = False
+    @property
+    def config(self) -> dict[str, Any]:
+        return self._config
 
-    @abstractmethod
-    def spec(self) -> PluginSpec:
-        """Return the plugin specification."""
-        ...
+    @config.setter
+    def config(self, value: dict[str, Any]) -> None:
+        self._config = value
 
-    def initialize(self) -> None:
-        """Initialize the plugin with its config."""
-        if not self._initialized:
-            self._on_initialize()
-            self._initialized = True
-
-    def _on_initialize(self) -> None:
-        """Override to perform initialization logic."""
+    async def initialize(self) -> None:
+        pass
 
     @abstractmethod
-    def execute(self, action: str, **kwargs: Any) -> Any:
-        """Execute a plugin action."""
+    async def execute(self, action: str, **kwargs: Any) -> Any:
         ...
 
-    def list_actions(self) -> List[str]:
-        return self.spec().actions
-
-    def is_configured(self) -> bool:
-        """Check if required config is present."""
-        required = {k for k, v in self.spec().config_schema.items()}
-        return required.issubset(self.config.keys())
+    def list_actions(self) -> list[str]:
+        return list(self.spec.tags) if self.spec.tags else []

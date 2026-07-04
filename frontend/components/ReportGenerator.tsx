@@ -315,7 +315,7 @@ function generateHTML(md: string, query: string, includeCover: boolean, includeT
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Research Report: ${query}</title>
+        <title>Research Report: ${escapeHtml(query)}</title>
   <style>
     @page { margin: 20mm; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #1a1a2e; background: #fff; }

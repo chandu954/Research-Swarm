@@ -279,7 +279,6 @@ class ResearchRequest(BaseModel):
     research_model: Optional[str] = None
     document_model: Optional[str] = None
     answer_model: Optional[str] = None
-    openrouter_key: Optional[str] = None
     stream_task_id: Optional[str] = Field(default=None, description="Client task id for live log streaming")
 
 

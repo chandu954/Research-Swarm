@@ -8,7 +8,6 @@ export interface ProviderSettings {
   researchModel: string;
   documentModel: string;
   answerModel: string;
-  openrouterKey: string;
 }
 
 const STORAGE_KEY = "researchswarm-provider-settings";
@@ -19,7 +18,6 @@ const DEFAULTS: ProviderSettings = {
   researchModel: "google/gemini-2.5-flash",
   documentModel: "qwen/qwen3-32b",
   answerModel: "mistralai/mistral-small-3.2-24b-instruct",
-  openrouterKey: "",
 };
 
 function loadFromStorage(): ProviderSettings {

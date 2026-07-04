@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Clock3,
   FileText,
   FolderOpen,
   History,
   Plus,
+  Pencil,
   Search,
   Settings2,
   Sparkles,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import type { UploadedDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { listConversations } from "@/lib/api";
+import { listConversations, deleteConversation, updateConversation } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
 import Link from "next/link";
@@ -34,6 +35,7 @@ interface SidebarProps {
   onOpenSettings?: () => void;
   onSelectConversation?: (id: string) => void;
   activeConversationId?: string | null;
+  refreshKey?: number;
 }
 
 interface ConversationResponse {
@@ -69,13 +71,17 @@ export default function Sidebar({
   onOpenSettings,
   onSelectConversation,
   activeConversationId,
+  refreshKey,
 }: SidebarProps) {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [menuConvId, setMenuConvId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
-  useEffect(() => {
+  const fetchConversations = useCallback(() => {
     setLoading(true);
     listConversations()
       .then((data: ConversationResponse[]) => {
@@ -92,6 +98,39 @@ export default function Sidebar({
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations, refreshKey]);
+
+  const handleDelete = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Delete this conversation?")) return;
+    try {
+      await deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      console.warn("Failed to delete conversation:", err);
+    }
+    setMenuConvId(null);
+  }, []);
+
+  const handleRename = useCallback(async (id: string) => {
+    const newTitle = renameValue.trim();
+    if (!newTitle) {
+      setRenamingId(null);
+      return;
+    }
+    try {
+      await updateConversation(id, { title: newTitle });
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, query: newTitle } : c)),
+      );
+    } catch (err) {
+      console.warn("Failed to rename conversation:", err);
+    }
+    setRenamingId(null);
+  }, [renameValue]);
 
   const displayConversations =
     conversations.length > 0
@@ -217,29 +256,89 @@ export default function Sidebar({
             </p>
           ) : (
             filtered.map((conv) => (
-              <button
-                type="button"
-                key={conv.id}
-                onClick={() => onSelectConversation?.(conv.id)}
-                className={cn(
-                  "conversation-item group w-full text-left",
-                  activeConversationId === conv.id && "bg-violet-500/10 border-l-2 border-violet-400",
-                )}
-                title={conv.query}
-              >
-                <span className="conversation-dot bg-white/15" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-                    {conv.query || "Untitled"}
-                  </span>
-                  {conv.timestamp && (
-                    <span className="block text-[8px] text-[var(--text-muted)]">
-                      {new Date(conv.timestamp).toLocaleDateString()}
-                      {conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
+              <div key={conv.id} className="relative group/conversation">
+                {renamingId === conv.id ? (
+                  <input
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleRename(conv.id);
+                      if (e.key === "Escape") setRenamingId(null);
+                    }}
+                    onBlur={() => handleRename(conv.id)}
+                    className="w-full rounded-lg border border-violet-400/30 bg-white/[0.03] px-3 py-2 text-[11px] text-[var(--text-primary)] outline-none"
+                    autoFocus
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onSelectConversation?.(conv.id)}
+                    className={cn(
+                      "conversation-item group w-full text-left",
+                      activeConversationId === conv.id && "bg-violet-500/10 border-l-2 border-violet-400",
+                    )}
+                    title={conv.query}
+                  >
+                    <span className="conversation-dot bg-white/15" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+                        {conv.query || "Untitled"}
+                      </span>
+                      {conv.timestamp && (
+                        <span className="block text-[8px] text-[var(--text-muted)]">
+                          {new Date(conv.timestamp).toLocaleDateString()}
+                          {conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-              </button>
+                  </button>
+                )}
+                {menuConvId === conv.id && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setMenuConvId(null)} />
+                    <div className="absolute right-0 top-0 z-50 w-32 rounded-lg border border-white/[0.08] bg-[var(--surface-elevated)] py-1 shadow-xl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingId(conv.id);
+                          setRenameValue(conv.query || "");
+                          setMenuConvId(null);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-white/[0.04]"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDelete(conv.id, e)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-rose-400 hover:bg-white/[0.04]"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+                {menuConvId !== conv.id && renamingId !== conv.id && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuConvId(menuConvId === conv.id ? null : conv.id);
+                    }}
+                    className="absolute right-1 top-1/2 z-10 hidden -translate-y-1/2 rounded p-0.5 text-[var(--text-muted)] opacity-0 hover:bg-white/[0.06] hover:text-[var(--text-secondary)] group-hover/conversation:opacity-100 group-hover/conversation:block"
+                    aria-label="Conversation actions"
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+                      <circle cx="8" cy="3" r="1.5" />
+                      <circle cx="8" cy="8" r="1.5" />
+                      <circle cx="8" cy="13" r="1.5" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             ))
           )}
         </div>
@@ -259,7 +358,7 @@ export default function Sidebar({
                   className="conversation-item"
                 >
                   <FileText className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
-                  <span className="truncate">{document.filename}</span>
+                  <span className="truncate">{document.original_filename || document.filename}</span>
                 </button>
               ))}
             </div>

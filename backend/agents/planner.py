@@ -14,8 +14,6 @@ from pydantic import BaseModel, Field
 from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.tools.registry import ToolRegistry, get_registry
 
-PLANNER_MODEL = resolve_model("planner")
-
 PLANNER_SYSTEM_PROMPT = """You are a senior research planner. Your job is to analyze a user's research query and create an optimal execution plan.
 
 Available agents:
@@ -74,9 +72,10 @@ class Planner:
 
             raw_output = ""
             try:
+                model = resolve_model("planner")
                 raw_output = self.llm.generate(
                     prompt=user_prompt,
-                    model=PLANNER_MODEL,
+                    model=model,
                     system_prompt=PLANNER_SYSTEM_PROMPT,
                     options={"temperature": 0.1 + (attempt * 0.1), "num_predict": 2048},
                 )

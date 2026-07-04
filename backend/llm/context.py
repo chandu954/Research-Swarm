@@ -1,14 +1,12 @@
 from __future__ import annotations
 import os
 from contextvars import ContextVar, Token
-from typing import Optional
 
 _llm_provider: ContextVar[str] = ContextVar("_llm_provider", default="")
 _planner_model: ContextVar[str] = ContextVar("_planner_model", default="")
 _research_model: ContextVar[str] = ContextVar("_research_model", default="")
 _document_model: ContextVar[str] = ContextVar("_document_model", default="")
 _answer_model: ContextVar[str] = ContextVar("_answer_model", default="")
-_openrouter_key: ContextVar[str] = ContextVar("_openrouter_key", default="")
 
 
 def get_llm_provider() -> str:
@@ -17,8 +15,7 @@ def get_llm_provider() -> str:
 
 
 def get_openrouter_key() -> Optional[str]:
-    val = _openrouter_key.get()
-    return val or os.getenv("OPENROUTER_API_KEY")
+    return os.getenv("OPENROUTER_API_KEY")
 
 
 def get_planner_model() -> str:
@@ -47,12 +44,11 @@ class ProviderOverrides:
 
     def apply(
         self,
-        llm_provider: Optional[str] = None,
-        planner_model: Optional[str] = None,
-        research_model: Optional[str] = None,
-        document_model: Optional[str] = None,
-        answer_model: Optional[str] = None,
-        openrouter_key: Optional[str] = None,
+        llm_provider: str | None = None,
+        planner_model: str | None = None,
+        research_model: str | None = None,
+        document_model: str | None = None,
+        answer_model: str | None = None,
     ) -> None:
         if llm_provider is not None:
             self._entries.append((_llm_provider, _llm_provider.set(llm_provider)))
@@ -64,8 +60,6 @@ class ProviderOverrides:
             self._entries.append((_document_model, _document_model.set(document_model)))
         if answer_model is not None:
             self._entries.append((_answer_model, _answer_model.set(answer_model)))
-        if openrouter_key is not None:
-            self._entries.append((_openrouter_key, _openrouter_key.set(openrouter_key)))
 
     def restore(self) -> None:
         for var, token in reversed(self._entries):

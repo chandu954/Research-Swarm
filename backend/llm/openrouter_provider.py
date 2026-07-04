@@ -1,10 +1,12 @@
+"""OpenRouter LLM provider — cloud models via OpenRouter API."""
 from __future__ import annotations
 import json
-from typing import Dict, Any, Optional
+from typing import Any
 import httpx
 from loguru import logger
 
 from backend.llm.base import LLMProvider
+from backend.core.plugin import PluginSpec
 from backend.llm.context import get_openrouter_key
 
 
@@ -12,24 +14,42 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class OpenRouterProvider(LLMProvider):
-    def __init__(self):
-        self.api_key = get_openrouter_key()
+    spec = PluginSpec(
+        name="openrouter",
+        description="Cloud LLMs via OpenRouter",
+        version="1.0.0",
+        config_schema={"api_key": {"type": "string", "required": True}},
+    )
+
+    def __init__(self) -> None:
+        self._client: httpx.Client | None = None
+        self.api_key: str = ""
+        self._config: dict[str, Any] = {}
+
+    async def initialize(self) -> None:
+        self.api_key = self._config.get("api_key") or get_openrouter_key()
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY not set")
-        self._client: httpx.Client | None = None
+        self._client = httpx.Client(timeout=60.0)
+        logger.info("OpenRouter provider initialized")
+
+    async def cleanup(self) -> None:
+        if self._client:
+            self._client.close()
+            self._client = None
 
     @property
     def client(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(timeout=60.0)
+            raise RuntimeError("OpenRouterProvider not initialized — call initialize() first")
         return self._client
 
     def generate(
         self,
         prompt: str,
         model: str,
-        system_prompt: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        system_prompt: str | None = None,
+        options: dict[str, Any] | None = None,
     ) -> str:
         messages = []
         if system_prompt:
@@ -71,8 +91,8 @@ class OpenRouterProvider(LLMProvider):
             raise
 
     def create_embedding(self, model: str, text: str) -> list[float]:
-        payload = {"model": model or "text-embedding-3-small", "input": text}
-
+        import os
+        payload = {"model": model or os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"), "input": text}
         try:
             response = self.client.post(
                 f"{OPENROUTER_BASE_URL}/embeddings",

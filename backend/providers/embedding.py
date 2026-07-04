@@ -5,29 +5,42 @@ from typing import Any
 from loguru import logger
 import httpx
 
-from backend.providers.base import EmbeddingProvider, ProviderInfo
+from backend.core.plugin import PluginSpec
+from backend.core.providers.embedding import EmbeddingProvider
 
 
 class OllamaEmbeddingProvider(EmbeddingProvider):
-    def __init__(self) -> None:
-        self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self._client: httpx.Client | None = None
+    spec = PluginSpec(
+        name="ollama",
+        description="Ollama local embeddings",
+        version="1.0.0",
+    )
 
-    @property
-    def client(self) -> httpx.Client:
-        if self._client is None:
-            self._client = httpx.Client(base_url=self.base_url, timeout=60)
-        return self._client
+    def __init__(self) -> None:
+        self._config: dict[str, Any] = {}
+        self._client: httpx.Client | None = None
+        self.base_url: str = ""
+
+    async def initialize(self) -> None:
+        self.base_url = self._config.get("base_url") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        self._client = httpx.Client(base_url=self.base_url, timeout=60)
+
+    async def cleanup(self) -> None:
+        if self._client:
+            self._client.close()
+            self._client = None
 
     def embed(self, texts: list[str], model: str | None = None, **kwargs: Any) -> list[list[float]] | None:
         if not texts:
             logger.warning("No texts provided for embedding")
             return None
+        if self._client is None:
+            raise RuntimeError("OllamaEmbeddingProvider not initialized")
         model = model or os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
         embeddings: list[list[float]] = []
         for i, text in enumerate(texts):
             try:
-                response = self.client.post(
+                response = self._client.post(
                     "/api/embeddings",
                     json={"model": model, "prompt": text, "truncate": True},
                 )
@@ -44,37 +57,44 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         logger.info(f"Successfully created {len(embeddings)} embeddings")
         return embeddings if embeddings else None
 
-    def close(self) -> None:
-        if self._client:
-            self._client.close()
-            self._client = None
-
-    @property
-    def info(self) -> ProviderInfo:
-        return ProviderInfo(name="ollama", description="Ollama local embeddings")
+    def embed_query(self, text: str, model: str | None = None) -> list[float] | None:
+        result = self.embed([text], model)
+        return result[0] if result else None
 
 
 class OpenRouterEmbeddingProvider(EmbeddingProvider):
-    def __init__(self) -> None:
-        self.api_key = os.getenv("OPENROUTER_API_KEY", "")
-        self._client: httpx.Client | None = None
+    spec = PluginSpec(
+        name="openrouter",
+        description="OpenRouter cloud embeddings",
+        version="1.0.0",
+    )
 
-    @property
-    def client(self) -> httpx.Client:
-        if self._client is None:
-            self._client = httpx.Client(timeout=60.0)
-        return self._client
+    def __init__(self) -> None:
+        self._config: dict[str, Any] = {}
+        self._client: httpx.Client | None = None
+        self.api_key: str = ""
+
+    async def initialize(self) -> None:
+        self.api_key = self._config.get("api_key") or os.getenv("OPENROUTER_API_KEY", "")
+        self._client = httpx.Client(timeout=60.0)
+
+    async def cleanup(self) -> None:
+        if self._client:
+            self._client.close()
+            self._client = None
 
     def embed(self, texts: list[str], model: str | None = None, **kwargs: Any) -> list[list[float]] | None:
         if not texts:
             logger.warning("No texts provided for embedding")
             return None
+        if self._client is None:
+            raise RuntimeError("OpenRouterEmbeddingProvider not initialized")
         model = model or os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
         embeddings: list[list[float]] = []
         for text in texts:
             payload = {"model": model, "input": text}
             try:
-                response = self.client.post(
+                response = self._client.post(
                     "https://openrouter.ai/api/v1/embeddings",
                     json=payload,
                     headers={
@@ -91,6 +111,6 @@ class OpenRouterEmbeddingProvider(EmbeddingProvider):
         logger.info(f"OpenRouter: created {len(embeddings)} embeddings")
         return embeddings if embeddings else None
 
-    @property
-    def info(self) -> ProviderInfo:
-        return ProviderInfo(name="openrouter", description="OpenRouter cloud embeddings")
+    def embed_query(self, text: str, model: str | None = None) -> list[float] | None:
+        result = self.embed([text], model)
+        return result[0] if result else None

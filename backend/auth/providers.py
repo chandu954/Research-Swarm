@@ -220,17 +220,43 @@ async def get_microsoft_userinfo(access_token: str) -> Optional[dict]:
 
 # ── Magic Links ─────────────────────────────────────────────────
 
+_magic_link_store: dict[str, dict] = {}
+
+def _cleanup_expired_magic_links() -> None:
+    now = datetime.now(timezone.utc)
+    expired = [k for k, v in _magic_link_store.items() if v.get("expires_at", now) < now]
+    for k in expired:
+        _magic_link_store.pop(k, None)
+
 def generate_magic_link_token(email: str) -> str:
     raw = f"{email}:{secrets.token_urlsafe(32)}:{datetime.now(timezone.utc).timestamp()}"
     token = hashlib.sha256(raw.encode()).hexdigest()
     return token
 
 
-def create_magic_link(email: str) -> str:
+def create_magic_link(email: str) -> tuple[str, str, datetime]:
     token = generate_magic_link_token(email)
     expire_minutes = config.magic_link_expire_minutes
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
+    _cleanup_expired_magic_links()
+    _magic_link_store[token] = {"email": email, "expires_at": expires_at, "used": False}
     return f"{config.app_url}/auth/magic?token={token}&email={email}", token, expires_at
+
+
+def verify_magic_token(token: str, email: str) -> bool:
+    _cleanup_expired_magic_links()
+    entry = _magic_link_store.get(token)
+    if not entry:
+        return False
+    if entry["used"]:
+        return False
+    if entry["email"] != email:
+        return False
+    if datetime.now(timezone.utc) > entry["expires_at"]:
+        _magic_link_store.pop(token, None)
+        return False
+    entry["used"] = True
+    return True
 
 
 # ── MFA ─────────────────────────────────────────────────────────

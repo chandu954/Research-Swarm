@@ -1,16 +1,15 @@
-"""LLM provider base — extends core provider with streaming support."""
+"""LLM provider interface."""
 from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Generator
 from typing import Any
-
-from backend.core.providers.llm import LLMProvider as CoreLLMProvider
-from backend.core.plugin import PluginSpec
+from backend.core.plugin import PluginInterface, PluginSpec
 
 
-class LLMProvider(CoreLLMProvider):
+class LLMProvider(PluginInterface):
     spec: PluginSpec
 
+    @abstractmethod
     def generate(
         self,
         prompt: str,
@@ -18,7 +17,7 @@ class LLMProvider(CoreLLMProvider):
         system_prompt: str | None = None,
         options: dict[str, Any] | None = None,
     ) -> str:
-        raise NotImplementedError
+        ...
 
     def generate_stream(
         self,

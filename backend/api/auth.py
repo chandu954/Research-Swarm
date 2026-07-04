@@ -31,7 +31,7 @@ from backend.auth.providers import (
     get_google_auth_url, exchange_google_code, get_google_userinfo,
     get_github_auth_url, exchange_github_code, get_github_userinfo,
     get_microsoft_auth_url, exchange_microsoft_code, get_microsoft_userinfo,
-    create_magic_link, generate_mfa_secret, generate_mfa_qr_code,
+    create_magic_link, verify_magic_token, generate_mfa_secret, generate_mfa_qr_code,
     verify_mfa_code, generate_recovery_codes,
     config as oauth_config,
 )
@@ -475,6 +475,9 @@ async def verify_magic_link(
     body: MagicLinkVerify,
     session: AsyncSession = Depends(get_session),
 ):
+    if not verify_magic_token(body.token, body.email):
+        raise HTTPException(status_code=401, detail="Invalid or expired magic link")
+
     result = await session.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user:

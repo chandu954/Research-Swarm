@@ -312,6 +312,13 @@ export const api = {
 
   delete: <T>(endpoint: string, options?: RequestOptions) =>
     request<T>(endpoint, { ...options, method: "DELETE" }),
+
+  patch: <T>(endpoint: string, body?: unknown, options?: RequestOptions) =>
+    request<T>(endpoint, {
+      ...options,
+      method: "PATCH",
+      body: body != null ? JSON.stringify(body) : undefined,
+    }),
 };
 
 /* ───────────────────────────────────────────
@@ -348,16 +355,13 @@ function researchBody(
   if (streamTaskId) body.stream_task_id = streamTaskId;
   if (conversationId) body.conversation_id = conversationId;
   if (debateMode) body.debate_mode = true;
-  if (providerSettings) {
-    body.llm_provider = providerSettings.provider;
-    body.planner_model = providerSettings.plannerModel;
-    body.research_model = providerSettings.researchModel;
-    body.document_model = providerSettings.documentModel;
-    body.answer_model = providerSettings.answerModel;
-    if (providerSettings.provider === "openrouter" && providerSettings.openrouterKey) {
-      body.openrouter_key = providerSettings.openrouterKey;
+    if (providerSettings) {
+      body.llm_provider = providerSettings.provider;
+      body.planner_model = providerSettings.plannerModel;
+      body.research_model = providerSettings.researchModel;
+      body.document_model = providerSettings.documentModel;
+      body.answer_model = providerSettings.answerModel;
     }
-  }
   return body;
 }
 
@@ -504,6 +508,26 @@ export async function createApiKey(name: string) {
 
 export async function getAuditLogs() {
   return api.get<any[]>("/audit-logs");
+}
+
+// ── Document Actions ───────────────────────────────────────
+
+export async function deleteDocument(docId: string) {
+  return api.delete<{ status: string }>(`/documents/${docId}`);
+}
+
+export function getDocumentDownloadUrl(docId: string) {
+  return `${API_URL}/documents/${docId}/download`;
+}
+
+// ── Conversation Actions ──────────────────────────────────
+
+export async function deleteConversation(convId: string) {
+  return api.delete<{ status: string }>(`/conversations/${convId}`);
+}
+
+export async function updateConversation(convId: string, data: Record<string, unknown>) {
+  return api.patch<any>(`/conversations/${convId}`, data);
 }
 
 export { classifyError, classifyResponse, ApiError as ApiClientError };

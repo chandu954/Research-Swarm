@@ -31,6 +31,7 @@ from backend.api.organizations import router as org_router
 from backend.api.websocket import get_workspace_manager, Connection
 from backend.tools.registry import get_registry
 from backend.db.session import init_db, close_db, get_session
+from backend.core.registry import get_plugin_registry, reset_plugin_registry
 from backend.db.models import (
     User, Conversation, Message, Document, ResearchTask,
     Organization, OrganizationMember,
@@ -51,15 +52,124 @@ from backend.db.schemas import (
 )
 from backend.auth.dependencies import get_current_user, get_optional_user
 from backend.auth.tenant import resolve_tenant_dependencies, resolve_optional_tenant, TenantContext
-from backend.plugins.registry import get_plugin_registry
-from backend.plugins.github import GitHubPlugin
-from backend.plugins.notion import NotionPlugin
-from backend.plugins.slack import SlackPlugin
-from backend.providers.registry import get_provider_registry
+# The unified PluginRegistry is imported via core.registry above
+# Old compat note: providers.registry is deprecated in favor of core.registry
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./data/uploads")
 for d in [UPLOAD_DIR, "./data/chroma_db", "./data/memory", "./data/logs"]:
     os.makedirs(d, exist_ok=True)
+
+
+async def _register_builtin_plugins() -> None:
+    """Register and initialize all built-in plugins."""
+    registry = get_plugin_registry()
+    reset_plugin_registry()
+    registry = get_plugin_registry()
+
+    # LLM providers
+    from backend.llm.ollama_provider import OllamaProvider
+    from backend.llm.openrouter_provider import OpenRouterProvider
+
+    try:
+        ollama = OllamaProvider()
+        await ollama.initialize()
+        registry.register(ollama, "llm")
+        logger.info("Registered Ollama LLM provider")
+    except Exception as e:
+        logger.warning(f"Failed to register Ollama: {e}")
+
+    try:
+        openrouter = OpenRouterProvider()
+        await openrouter.initialize()
+        registry.register(openrouter, "llm", default=True)
+        logger.info("Registered OpenRouter LLM provider")
+    except Exception as e:
+        logger.warning(f"Failed to register OpenRouter: {e}")
+
+    # Search providers
+    from backend.providers.search import DuckDuckGoProvider, BingProvider, SerperProvider
+
+    for name, cls, is_default in [
+        ("duckduckgo", DuckDuckGoProvider, True),
+        ("bing", BingProvider, False),
+        ("serper", SerperProvider, False),
+    ]:
+        try:
+            prov = cls()
+            await prov.initialize()
+            registry.register(prov, "search", default=is_default)
+            logger.info(f"Registered search provider: {name}")
+        except Exception as e:
+            logger.warning(f"Failed to register search {name}: {e}")
+
+    # Embedding providers
+    from backend.providers.embedding import OllamaEmbeddingProvider, OpenRouterEmbeddingProvider
+
+    try:
+        emb = OllamaEmbeddingProvider()
+        await emb.initialize()
+        registry.register(emb, "embedding", default=True)
+        logger.info("Registered Ollama embedding provider")
+    except Exception as e:
+        logger.warning(f"Failed to register Ollama embedding: {e}")
+
+    try:
+        emb = OpenRouterEmbeddingProvider()
+        await emb.initialize()
+        registry.register(emb, "embedding")
+        logger.info("Registered OpenRouter embedding provider")
+    except Exception as e:
+        logger.warning(f"Failed to register OpenRouter embedding: {e}")
+
+    # External integration plugins
+    from backend.plugins.github import GitHubPlugin
+    from backend.plugins.notion import NotionPlugin
+    from backend.plugins.slack import SlackPlugin
+
+    for p_cls, cfg_key, name in [
+        (GitHubPlugin, "GITHUB_TOKEN", "github"),
+        (NotionPlugin, "NOTION_TOKEN", "notion"),
+        (SlackPlugin, "SLACK_TOKEN", "slack"),
+    ]:
+        try:
+            inst = p_cls(config={"token": os.getenv(cfg_key, "")})
+            await inst.initialize()
+            registry.register(inst, "external")
+            logger.info(f"Registered external plugin: {name}")
+        except Exception as e:
+            logger.warning(f"Failed to register plugin {name}: {e}")
+
+    # Vector DB provider
+    from backend.providers.vector_db import ChromaDBVectorStore
+    try:
+        vdb = ChromaDBVectorStore()
+        await vdb.initialize()
+        registry.register(vdb, "vector_db", default=True)
+        logger.info("Registered ChromaDB vector store provider")
+    except Exception as e:
+        logger.warning(f"Failed to register ChromaDB vector store: {e}")
+
+    # Storage provider
+    from backend.providers.storage import LocalStorageProvider
+    try:
+        storage = LocalStorageProvider()
+        await storage.initialize()
+        registry.register(storage, "storage", default=True)
+        logger.info("Registered local storage provider")
+    except Exception as e:
+        logger.warning(f"Failed to register local storage: {e}")
+
+    # Memory provider
+    from backend.providers.memory import ConversationMemoryProvider
+    try:
+        mem = ConversationMemoryProvider()
+        await mem.initialize()
+        registry.register(mem, "memory", default=True)
+        logger.info("Registered conversation memory provider")
+    except Exception as e:
+        logger.warning(f"Failed to register memory provider: {e}")
+
+    logger.info(f"Plugin registration complete — {len(registry.list())} plugins total")
 
 
 @asynccontextmanager
@@ -77,19 +187,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Tool listing failed: {e}")
 
-    plugin_reg = get_plugin_registry()
-    plugin_reg.register(GitHubPlugin(config={"token": os.getenv("GITHUB_TOKEN", "")}))
-    plugin_reg.register(NotionPlugin(config={"token": os.getenv("NOTION_TOKEN", "")}))
-    plugin_reg.register(SlackPlugin(config={"token": os.getenv("SLACK_TOKEN", "")}))
-    logger.info("Built-in plugins registered")
-    app.state.plugin_registry = plugin_reg
-
-    prov_reg = get_provider_registry()
-    prov_reg.initialize_builtins()
-    app.state.provider_registry = prov_reg
+    await _register_builtin_plugins()
+    app.state.plugin_registry = get_plugin_registry()
 
     yield
     await close_db()
+    # Cleanup all registered plugins
+    registry = get_plugin_registry()
+    for name in list(registry._plugins):
+        plugin = registry._plugins[name]
+        try:
+            await plugin.cleanup()
+            logger.debug(f"Cleaned up plugin: {name}")
+        except Exception as e:
+            logger.warning(f"Plugin cleanup failed for {name}: {e}")
     logger.info("ResearchSwarm AI shutting down")
 
 
@@ -214,7 +325,7 @@ async def health_check():
         "version": "3.0.0",
         "uptime": time.time() - app.state.start_time,
         "tools_available": len(registry.list_tools()),
-        "providers": list(get_provider_registry().list_all().keys()),
+        "providers": list(get_plugin_registry().list_types()),
         "checks": provider_checks,
     }
 
@@ -250,27 +361,29 @@ async def _log_audit(
 # RESEARCH
 # ═══════════════════════════════════════════════════════════════
 
+@limiter.limit("10/minute")
 @app.post("/research", response_model=ResearchResponse)
 async def run_research(
-    request: ResearchRequest,
+    request: Request,
+    body: ResearchRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     ctx: TenantContext = Depends(resolve_tenant_dependencies),
 ):
     _ensure_app_state()
-    task_id = request.stream_task_id or str(uuid.uuid4())
-    conversation_id = request.conversation_id or str(uuid.uuid4())
+    task_id = body.stream_task_id or str(uuid.uuid4())
+    conversation_id = body.conversation_id or str(uuid.uuid4())
     start_time = time.time()
     user_id = current_user.id
-    logger.info(f"[{task_id}] Research by user={user_id} org={ctx.organization_id}: {request.query[:100]}...")
+    logger.info(f"[{task_id}] Research by user={user_id} org={ctx.organization_id}: {body.query[:100]}...")
 
-    pdf_paths = await _resolve_pdf_paths(session, request.document_ids)
+    pdf_paths = await _resolve_pdf_paths(session, body.document_ids)
     graph = app.state.graph
     app.state.stream_manager.get_or_create_stream(task_id)
 
     try:
         initial_state = {
-            "query": request.query,
+            "query": body.query,
             "conversation_id": conversation_id,
             "plan": [],
             "plan_reasoning": None,
@@ -285,14 +398,14 @@ async def run_research(
             "execution_start": start_time,
             "agent_metrics": {},
             "stream_task_id": task_id,
-            "llm_provider": request.llm_provider,
-            "planner_model": request.planner_model,
-            "research_model": request.research_model,
-            "document_model": request.document_model,
-            "answer_model": request.answer_model,
-            "openrouter_key": request.openrouter_key,
-            "debate_mode": request.debate_mode,
-            "debate_perspectives": request.debate_perspectives,
+            "llm_provider": body.llm_provider,
+            "planner_model": body.planner_model,
+            "research_model": body.research_model,
+            "document_model": body.document_model,
+            "answer_model": body.answer_model,
+            "openrouter_key": None,
+            "debate_mode": body.debate_mode,
+            "debate_perspectives": body.debate_perspectives,
             "debate_result": None,
             "has_evidence": False,
             "evidence_summary": None,
@@ -306,7 +419,7 @@ async def run_research(
         return ResearchResponse(
             task_id=task_id,
             conversation_id=conversation_id,
-            query=request.query,
+            query=body.query,
             answer=result.get("answer"),
             sources=result.get("sources", []),
             plan=result.get("plan", []),
@@ -329,7 +442,7 @@ async def run_research(
         return ResearchResponse(
             task_id=task_id,
             conversation_id=conversation_id,
-            query=request.query,
+            query=body.query,
             status="failed",
             errors=[str(e)],
             execution_time=time.time() - start_time,
@@ -337,7 +450,10 @@ async def run_research(
 
 
 @app.get("/research/stream/{task_id}")
-async def subscribe_research_stream(task_id: str):
+async def subscribe_research_stream(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
     _ensure_app_state()
     stream_mgr = app.state.stream_manager
     log_queue = stream_mgr.get_or_create_stream(task_id)
@@ -353,7 +469,7 @@ async def research_stream(
     query: str = Query(..., min_length=1),
     conversation_id: Optional[str] = Query(None),
     document_ids: str = Query(default=""),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(get_current_user),
 ):
     _ensure_app_state()
     task_id = str(uuid.uuid4())
@@ -361,12 +477,13 @@ async def research_stream(
     doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
     pdf_paths = []
     for d in doc_ids:
-        resolved = os.path.normpath(os.path.join(UPLOAD_DIR, d))
-        if not resolved.startswith(os.path.normpath(UPLOAD_DIR)):
+        resolved = (Path(UPLOAD_DIR) / d).resolve()
+        allowed = Path(UPLOAD_DIR).resolve()
+        if allowed not in resolved.parents and resolved != allowed:
             logger.warning(f"Rejected path traversal attempt: {d}")
             continue
-        if os.path.exists(resolved):
-            pdf_paths.append(resolved)
+        if resolved.exists():
+            pdf_paths.append(str(resolved))
     stream_mgr = app.state.stream_manager
     log_queue = stream_mgr.create_stream(task_id)
     stream_mgr.push_log(task_id, make_log("planner", "analyze_query", "running", query[:100]))
@@ -761,6 +878,33 @@ async def soft_delete_document(
     return {"status": "deleted"}
 
 
+@app.get("/documents/{doc_id}/download")
+async def download_document(
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    from fastapi.responses import FileResponse
+    result = await session.execute(
+        select(Document).where(
+            Document.id == doc_id,
+            Document.organization_id == ctx.organization_id,
+            Document.is_deleted == False,
+        )
+    )
+    doc = result.scalar_one_or_none()
+    if not doc or not doc.storage_path:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not os.path.exists(doc.storage_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    return FileResponse(
+        doc.storage_path,
+        media_type="application/pdf",
+        filename=doc.original_filename,
+    )
+
+
 @app.post("/documents/{doc_id}/restore")
 async def restore_document(
     doc_id: str,
@@ -1058,7 +1202,6 @@ async def get_audit_logs(
 async def list_models():
     import httpx
     provider = os.getenv("LLM_PROVIDER", "openrouter").lower()
-    registry = get_provider_registry()
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         if provider == "openrouter":
@@ -1217,22 +1360,28 @@ async def list_plugins():
 @app.post("/plugins/{name}/configure")
 async def configure_plugin(name: str, req: PluginConfigRequest, current_user: User = Depends(get_current_user)):
     registry = get_plugin_registry()
-    try:
-        plugin = registry.get(name)
-        plugin.config.update(req.config)
-        plugin._initialized = False
-        logger.info(f"Plugin '{name}' configured")
-        return {"status": "configured", "name": name}
-    except KeyError:
+    plugin = registry.get(name)
+    if plugin is None:
         raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
+    if hasattr(plugin, "_config"):
+        plugin._config.update(req.config)
+    logger.info(f"Plugin '{name}' configured")
+    return {"status": "configured", "name": name}
 
 
 @app.post("/plugins/{name}/execute")
-async def execute_plugin(name: str, action: str = Query(...), current_user: User = Depends(get_current_user), request: Request = None):
+async def execute_plugin(
+    name: str,
+    action: str = Query(...),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+):
     registry = get_plugin_registry()
     try:
-        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
-        result = registry.execute(name, action, **body)
+        body = {}
+        if request is not None and request.headers.get("content-type") == "application/json":
+            body = await request.json()
+        result = await registry.execute(name, action, **body)
         return {"status": "ok", "name": name, "action": action, "result": result}
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
@@ -1246,7 +1395,7 @@ async def execute_plugin(name: str, action: str = Query(...), current_user: User
 
 @app.get("/providers", response_model=ProviderListResponse)
 async def list_providers():
-    registry = get_provider_registry()
+    registry = get_plugin_registry()
     return ProviderListResponse(
         builtin=registry.list_all(),
         custom=[],
@@ -1256,7 +1405,7 @@ async def list_providers():
 @app.get("/providers/types")
 async def list_provider_types():
     """Return available built-in providers grouped by type."""
-    registry = get_provider_registry()
+    registry = get_plugin_registry()
     return registry.list_all()
 
 

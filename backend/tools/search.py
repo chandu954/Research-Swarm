@@ -1,10 +1,10 @@
-"""Web search tool — delegates to the provider registry."""
+"""Web search tool — uses the search aggregator for multi-provider results."""
 from __future__ import annotations
 import os
 from typing import Any
 from loguru import logger
 
-from backend.providers.registry import get_provider_registry
+from backend.core.registry import get_plugin_registry
 
 
 def search_web(
@@ -13,13 +13,18 @@ def search_web(
     region: str = "wt-wt",
     safesearch: str = "moderate",
 ) -> list[dict[str, Any]]:
-    """Search the web using the configured search provider from the registry."""
-    registry = get_provider_registry()
+    """Search using the default provider from the plugin registry."""
+    registry = get_plugin_registry()
     provider = registry.get_search()
     if provider is None:
-        logger.error(f"No search provider available (registered: {list(registry.list_searches().keys())})")
+        logger.error("No search provider available")
         return []
-    return provider.search(query, max_results=max_results, region=region, safesearch=safesearch)
+    import asyncio
+    try:
+        return asyncio.run(provider.search(query, max_results=max_results))
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        return []
 
 
 def hybrid_search_web(
@@ -28,20 +33,30 @@ def hybrid_search_web(
     region: str = "wt-wt",
     safesearch: str = "moderate",
 ) -> list[dict[str, Any]]:
-    """Search + hybrid-rerank by BM25 + embedding relevance."""
-    from backend.search.hybrid import hybrid_rerank
-    from backend.providers.registry import get_provider_registry
-
-    raw = search_web(query, max_results * 2, region, safesearch)
-    if not raw:
-        return []
-
+    """Aggregate search across all configured providers + hybrid rerank."""
+    from backend.search.aggregator import aggregate_search
+    import asyncio
     try:
-        registry = get_provider_registry()
+        results = asyncio.run(
+            aggregate_search(query, max_results=max_results, hybrid=True)
+        )
+        if results:
+            return results
+    except Exception as e:
+        logger.warning(f"Aggregate search failed, falling back: {e}")
+
+    registry = get_plugin_registry()
+    provider = registry.get_search()
+    if provider is None:
+        return []
+    try:
+        raw = asyncio.run(provider.search(query, max_results=max_results * 2))
+        if not raw:
+            return []
+        from backend.search.hybrid import hybrid_rerank
         llm = registry.get_llm()
         embed_fn = lambda t: llm.create_embedding(model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"), text=t) if llm else None
-        reranked = hybrid_rerank(query, raw, bm25_weight=0.3, top_k=max_results, embed_fn=embed_fn)
-        return reranked
+        return hybrid_rerank(query, raw, bm25_weight=0.3, top_k=max_results, embed_fn=embed_fn)
     except Exception as e:
-        logger.warning(f"Hybrid rerank failed, falling back to raw results: {e}")
-        return raw[:max_results]
+        logger.warning(f"Fallback search failed: {e}")
+        return []

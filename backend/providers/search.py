@@ -5,7 +5,8 @@ from typing import Any
 from loguru import logger
 import httpx
 
-from backend.providers.base import SearchProvider, ProviderInfo
+from backend.core.plugin import PluginSpec
+from backend.core.providers.search import SearchProvider
 
 
 _BACKENDS = ["html", "auto", "lite"]
@@ -13,7 +14,19 @@ _HTTP_TIMEOUT = 20.0
 
 
 class DuckDuckGoProvider(SearchProvider):
-    def search(self, query: str, max_results: int = 5, **kwargs: Any) -> list[dict[str, Any]]:
+    spec = PluginSpec(
+        name="duckduckgo",
+        description="DuckDuckGo search (no API key needed)",
+        version="1.0.0",
+    )
+
+    def __init__(self) -> None:
+        self._config: dict[str, Any] = {}
+
+    async def initialize(self) -> None:
+        pass
+
+    async def search(self, query: str, max_results: int = 5, **kwargs: Any) -> list[dict[str, Any]]:
         region = kwargs.get("region", "wt-wt")
         safesearch = kwargs.get("safesearch", "moderate")
         return self._search(query, max_results, region, safesearch)
@@ -50,13 +63,22 @@ class DuckDuckGoProvider(SearchProvider):
         logger.warning(f"[DuckDuckGo] All backends failed, trying fallback. Last error: {last_error}")
         return _fallback_search(query, max_results)
 
-    @property
-    def info(self) -> ProviderInfo:
-        return ProviderInfo(name="duckduckgo", description="DuckDuckGo search (no API key needed)")
-
 
 class BingProvider(SearchProvider):
-    def search(self, query: str, max_results: int = 5, **kwargs: Any) -> list[dict[str, Any]]:
+    spec = PluginSpec(
+        name="bing",
+        description="Microsoft Bing Search API",
+        version="1.0.0",
+        config_schema={"api_key": {"type": "string", "env_var": "BING_API_KEY"}},
+    )
+
+    def __init__(self) -> None:
+        self._config: dict[str, Any] = {}
+
+    async def initialize(self) -> None:
+        pass
+
+    async def search(self, query: str, max_results: int = 5, **kwargs: Any) -> list[dict[str, Any]]:
         api_key = os.getenv("BING_API_KEY")
         if not api_key:
             logger.warning("BING_API_KEY not set, falling back to DuckDuckGo")
@@ -64,8 +86,8 @@ class BingProvider(SearchProvider):
 
         logger.info(f"[Bing] Searching: {query[:100]}...")
         try:
-            with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
-                resp = client.get(
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+                resp = await client.get(
                     "https://api.bing.microsoft.com/v7.0/search",
                     params={"q": query, "count": max_results, "mkt": "en-US"},
                     headers={"Ocp-Apim-Subscription-Key": api_key},
@@ -88,26 +110,31 @@ class BingProvider(SearchProvider):
         logger.info(f"[Bing] Found {len(results)} results")
         return results
 
-    @property
-    def info(self) -> ProviderInfo:
-        return ProviderInfo(
-            name="bing",
-            description="Microsoft Bing Search API",
-            config_schema={"api_key": {"type": "string", "env_var": "BING_API_KEY"}},
-        )
-
 
 class SerperProvider(SearchProvider):
-    def search(self, query: str, max_results: int = 5, **kwargs: Any) -> list[dict[str, Any]]:
+    spec = PluginSpec(
+        name="serper",
+        description="Serper.dev Google Search API",
+        version="1.0.0",
+        config_schema={"api_key": {"type": "string", "env_var": "SERPER_API_KEY"}},
+    )
+
+    def __init__(self) -> None:
+        self._config: dict[str, Any] = {}
+
+    async def initialize(self) -> None:
+        pass
+
+    async def search(self, query: str, max_results: int = 5, **kwargs: Any) -> list[dict[str, Any]]:
         api_key = os.getenv("SERPER_API_KEY")
         if not api_key:
             logger.warning("SERPER_API_KEY not set, falling back to DuckDuckGo")
-            return DuckDuckGoProvider().search(query, max_results, **kwargs)
+            return await DuckDuckGoProvider().search(query, max_results, **kwargs)
 
         logger.info(f"[Serper] Searching: {query[:100]}...")
         try:
-            with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
-                resp = client.post(
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+                resp = await client.post(
                     "https://google.serper.dev/search",
                     json={"q": query, "num": max_results},
                     headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
@@ -129,14 +156,6 @@ class SerperProvider(SearchProvider):
             })
         logger.info(f"[Serper] Found {len(results)} results")
         return results
-
-    @property
-    def info(self) -> ProviderInfo:
-        return ProviderInfo(
-            name="serper",
-            description="Serper.dev Google Search API",
-            config_schema={"api_key": {"type": "string", "env_var": "SERPER_API_KEY"}},
-        )
 
 
 def _fallback_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:

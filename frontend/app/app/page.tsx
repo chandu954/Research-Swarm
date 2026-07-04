@@ -63,6 +63,7 @@ export default function ResearchWorkspace() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [conversationsRefreshKey, setConversationsRefreshKey] = useState(0);
   const [inspectedSource, setInspectedSource] = useState<SourceCitation | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [debateMode, setDebateMode] = useState(false);
@@ -87,7 +88,7 @@ export default function ResearchWorkspace() {
             agent: "collaboration",
             action: "research_started",
             status: "running",
-            timestamp: Date.now(),
+            timestamp: Date.now() / 1000,
             details: `${payload.userName} started research: "${payload.query}"`,
           }]);
         }
@@ -98,7 +99,7 @@ export default function ResearchWorkspace() {
             agent: "collaboration",
             action: "research_completed",
             status: "completed",
-            timestamp: Date.now(),
+            timestamp: Date.now() / 1000,
             details: `Research completed by another user`,
           }]);
         }
@@ -188,6 +189,7 @@ export default function ResearchWorkspace() {
         setAgentMetrics(result.agent_metrics || {});
         setExecutionTime(result.execution_time);
         if (result.conversation_id) setConversationId(result.conversation_id);
+        setConversationsRefreshKey((k) => k + 1);
 
         if (!result.answer?.trim()) {
           throw new Error(
@@ -339,6 +341,7 @@ export default function ResearchWorkspace() {
           onOpenSettings={() => setSettingsOpen(true)}
           onSelectConversation={handleSelectConversation}
           activeConversationId={conversationId}
+          refreshKey={conversationsRefreshKey}
         />
       </aside>
 

@@ -7,9 +7,6 @@ from pydantic import BaseModel, Field
 from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.tools.registry import ToolRegistry, get_registry
 
-
-ANSWER_MODEL = resolve_model("answer_agent")
-
 ANSWER_SYSTEM_PROMPT = """You are a senior research analyst. Synthesize information from web research and document chunks to answer the user's question.
 
 Rules:
@@ -90,7 +87,7 @@ class AnswerAgent:
         try:
             raw = self.llm.generate(
                 prompt=prompt,
-                model=ANSWER_MODEL,
+                model=resolve_model("answer_agent"),
                 system_prompt=ANSWER_SYSTEM_PROMPT,
                 options={"temperature": 0.2, "num_predict": 4096},
             )

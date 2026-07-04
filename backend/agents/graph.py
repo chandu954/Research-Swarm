@@ -47,7 +47,6 @@ class AgentState(TypedDict, total=False):
     research_model: Optional[str]
     document_model: Optional[str]
     answer_model: Optional[str]
-    openrouter_key: Optional[str]
     stream_task_id: Optional[str]
     debate_mode: bool
     debate_perspectives: Optional[List[str]]
@@ -65,23 +64,7 @@ def _apply_state_overrides(state: AgentState) -> ProviderOverrides:
         research_model=state.get("research_model"),
         document_model=state.get("document_model"),
         answer_model=state.get("answer_model"),
-        openrouter_key=state.get("openrouter_key"),
     )
-
-
-def _get_model_routing() -> Dict[str, str]:
-    """Lazily resolve model names so env vars are available at call time."""
-    return {
-        "planner": resolve_model("planner"),
-        "research_agent": resolve_model("research_agent"),
-        "document_agent": resolve_model("document_agent"),
-        "answer_agent": resolve_model("answer_agent"),
-    }
-
-
-# Convenience alias used in node functions — resolved lazily
-def _model(agent: str) -> str:
-    return resolve_model(agent)
 
 
 def create_research_graph() -> StateGraph:
@@ -170,7 +153,7 @@ def _run_planner_node(state: AgentState) -> Dict[str, Any]:
             "plan": plan_data,
             "plan_reasoning": plan_reasoning,
             "execution_start": time.time(),
-            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": _model("planner"), "status": "ok"}},
+            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": resolve_model("planner"), "status": "ok"}},
         }
     except Exception as e:
         latency_ms = round((time.time() - start) * 1000, 2)
@@ -181,7 +164,7 @@ def _run_planner_node(state: AgentState) -> Dict[str, Any]:
             "plan": [],
             "plan_reasoning": f"Error: {e}",
             "errors": state.get("errors", []) + [f"Planner error: {e}"],
-            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": _model("planner"), "status": "error", "error": str(e)}},
+            "agent_metrics": {"planner": {"latency_ms": latency_ms, "model": resolve_model("planner"), "status": "error", "error": str(e)}},
         }
 
 
@@ -235,7 +218,7 @@ def _run_research_node(state: AgentState) -> Dict[str, Any]:
             "agent_metrics": {
                 "research_agent": {
                     "latency_ms": latency_ms,
-                    "model": _model("research_agent"),
+                    "model": resolve_model("research_agent"),
                     "result_count": len(results),
                     "status": "ok",
                 }
@@ -249,7 +232,7 @@ def _run_research_node(state: AgentState) -> Dict[str, Any]:
         return {
             "web_results": [],
             "errors": state.get("errors", []) + [f"Research error: {e}"],
-            "agent_metrics": {"research_agent": {"latency_ms": latency_ms, "model": _model("research_agent"), "status": "error", "error": str(e)}},
+            "agent_metrics": {"research_agent": {"latency_ms": latency_ms, "model": resolve_model("research_agent"), "status": "error", "error": str(e)}},
         }
 
 
@@ -261,7 +244,7 @@ def _run_document_node(state: AgentState) -> Dict[str, Any]:
 
     if not pdf_paths:
         _add_log(state, "document_agent", "process_documents", "completed", "No PDFs to process")
-        return {"document_chunks": [], "agent_metrics": {"document_agent": {"latency_ms": 0, "model": _model("document_agent"), "chunks_retrieved": 0, "status": "skipped"}}}
+        return {"document_chunks": [], "agent_metrics": {"document_agent": {"latency_ms": 0, "model": resolve_model("document_agent"), "chunks_retrieved": 0, "status": "skipped"}}}
 
     _add_log(state, "document_agent", "process_documents", "running", f"Processing {len(pdf_paths)} PDF(s)")
 
@@ -285,7 +268,7 @@ def _run_document_node(state: AgentState) -> Dict[str, Any]:
             "agent_metrics": {
                 "document_agent": {
                     "latency_ms": latency_ms,
-                    "model": _model("document_agent"),
+                    "model": resolve_model("document_agent"),
                     "chunks_retrieved": len(chunks),
                     "pdfs_processed": len(pdf_paths),
                     "status": "ok",
@@ -300,7 +283,7 @@ def _run_document_node(state: AgentState) -> Dict[str, Any]:
         return {
             "document_chunks": [],
             "errors": state.get("errors", []) + [f"Document error: {e}"],
-            "agent_metrics": {"document_agent": {"latency_ms": latency_ms, "model": _model("document_agent"), "status": "error", "error": str(e)}},
+            "agent_metrics": {"document_agent": {"latency_ms": latency_ms, "model": resolve_model("document_agent"), "status": "error", "error": str(e)}},
         }
 
 
@@ -415,7 +398,7 @@ def _run_answer_node(state: AgentState) -> Dict[str, Any]:
             "agent_metrics": {
                 "answer_agent": {
                     "latency_ms": latency_ms,
-                    "model": _model("answer_agent"),
+                    "model": resolve_model("answer_agent"),
                     "source_count": len(response.sources),
                     "mode": response.mode,
                     "status": "ok",
@@ -433,7 +416,7 @@ def _run_answer_node(state: AgentState) -> Dict[str, Any]:
             "answer": f"**Error generating answer:** {e}",
             "status": "failed",
             "errors": state.get("errors", []) + [f"Answer error: {e}"],
-            "agent_metrics": {"answer_agent": {"latency_ms": latency_ms, "model": _model("answer_agent"), "status": "error", "error": str(e)}},
+            "agent_metrics": {"answer_agent": {"latency_ms": latency_ms, "model": resolve_model("answer_agent"), "status": "error", "error": str(e)}},
             **extra_updates,
         }
 

@@ -27,7 +27,6 @@ describe("Chat", () => {
       researchModel: "google/gemini-2.5-pro",
       documentModel: "qwen/qwen3-32b",
       answerModel: "deepseek/deepseek-r1",
-      openrouterKey: "",
     },
   };
 

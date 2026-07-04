@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, MessageSquare, X } from "lucide-react";
 import { collaborationClient } from "@/lib/websocket";
+import { useAuth } from "@/lib/auth";
 import type { ChatMessage, TypingUser } from "@/lib/websocket";
 
 interface Props {
@@ -10,14 +11,18 @@ interface Props {
   onClose: () => void;
 }
 
+const DEFAULT_WORKSPACE_ID = "default";
+
 export function ChatSidebar({ open, onClose }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { user, token } = useAuth();
 
   useEffect(() => {
+    if (!open || !token) return;
     const cbs = {
       onChatMessage: (msg: ChatMessage) => {
         setMessages((prev) => [...prev, msg]);
@@ -29,9 +34,13 @@ export function ChatSidebar({ open, onClose }: Props) {
         setTypingUsers(users);
       },
     };
-    collaborationClient.connect = collaborationClient.connect.bind(collaborationClient);
-    return () => {};
-  }, []);
+    if (open && token) {
+      collaborationClient.connect(DEFAULT_WORKSPACE_ID, token, cbs);
+    }
+    return () => {
+      collaborationClient.disconnect();
+    };
+  }, [open, token]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -84,7 +93,7 @@ export function ChatSidebar({ open, onClose }: Props) {
           </p>
         )}
         {messages.map((msg) => {
-          const isOwn = msg.userId === "";
+          const isOwn = msg.userId === user?.id;
           return (
             <div key={msg.id} className={`flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
               <div

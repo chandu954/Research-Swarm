@@ -1,67 +1,75 @@
-"""Unified provider registry — manages search, embedding, and LLM providers."""
+"""DEPRECATED — unified provider registry.
+
+This module is kept for backward compatibility. All new code should use
+``backend.core.registry.PluginRegistry`` and ``get_plugin_registry()`` instead.
+
+The compat shim delegates to ``PluginRegistry`` so old callers continue to work.
+"""
 from __future__ import annotations
 import os
+import warnings
 from typing import Any
 from loguru import logger
 
-from backend.providers.base import SearchProvider, EmbeddingProvider
-from backend.providers.search import DuckDuckGoProvider, BingProvider, SerperProvider
-from backend.providers.embedding import OllamaEmbeddingProvider, OpenRouterEmbeddingProvider
-from backend.providers.llm import LLMProviderWrapper, get_builtin_llm_providers
+from backend.core.registry import get_plugin_registry as _new_registry
+
+
+def _warn():
+    warnings.warn(
+        "providers.registry.get_provider_registry() is deprecated. "
+        "Use core.registry.get_plugin_registry() instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 class ProviderRegistry:
-    """Singleton registry for all provider types."""
+    """DEPRECATED compat shim — delegates to PluginRegistry."""
 
     def __init__(self) -> None:
-        self._search: dict[str, SearchProvider] = {}
-        self._embedding: dict[str, EmbeddingProvider] = {}
-        self._llm: dict[str, LLMProviderWrapper] = {}
-        self._default_search: str = "duckduckgo"
-        self._default_embedding: str | None = None
-        self._default_llm: str | None = None
         self._initialized = False
 
-    def register_search(self, name: str, provider: SearchProvider, default: bool = False) -> None:
-        self._search[name] = provider
-        if default or self._default_search is None:
-            self._default_search = name
-        logger.info(f"Registered search provider: {name}")
+    def register_search(self, name: str, provider: Any, default: bool = False) -> None:
+        _warn()
+        reg = _new_registry()
+        reg.register(provider, "search", default=default)
 
-    def register_embedding(self, name: str, provider: EmbeddingProvider, default: bool = False) -> None:
-        self._embedding[name] = provider
-        if default or self._default_embedding is None:
-            self._default_embedding = name
-        logger.info(f"Registered embedding provider: {name}")
+    def register_embedding(self, name: str, provider: Any, default: bool = False) -> None:
+        _warn()
+        reg = _new_registry()
+        reg.register(provider, "embedding", default=default)
 
-    def register_llm(self, name: str, provider: LLMProviderWrapper, default: bool = False) -> None:
-        self._llm[name] = provider
-        if default or self._default_llm is None:
-            self._default_llm = name
-        logger.info(f"Registered LLM provider: {name}")
+    def register_llm(self, name: str, provider: Any, default: bool = False) -> None:
+        _warn()
+        reg = _new_registry()
+        reg.register(provider, "llm", default=default)
 
-    def get_search(self, name: str | None = None) -> SearchProvider | None:
-        key = name or os.getenv("SEARCH_BACKEND", self._default_search)
-        return self._search.get(key)
+    def get_search(self, name: str | None = None) -> Any:
+        _warn()
+        return _new_registry().get_search(name)
 
-    def get_embedding(self, name: str | None = None) -> EmbeddingProvider | None:
-        key = name or self._default_embedding
-        if key is None:
-            key = "ollama" if "ollama" in self._embedding else next(iter(self._embedding), None)
-        return self._embedding.get(key)
+    def get_embedding(self, name: str | None = None) -> Any:
+        _warn()
+        return _new_registry().get_embedding(name)
 
-    def get_llm(self, name: str | None = None) -> LLMProviderWrapper | None:
-        key = name or os.getenv("LLM_PROVIDER", self._default_llm)
-        return self._llm.get(key)
+    def get_llm(self, name: str | None = None) -> Any:
+        _warn()
+        return _new_registry().get_llm(name)
 
     def list_searches(self) -> dict[str, Any]:
-        return {n: {"description": p.info.description} for n, p in self._search.items()}
+        _warn()
+        reg = _new_registry()
+        return {s.spec.name: s for s in reg._plugins.get("search", {}).values()}
 
     def list_embeddings(self) -> dict[str, Any]:
-        return {n: {"description": p.info.description} for n, p in self._embedding.items()}
+        _warn()
+        reg = _new_registry()
+        return {s.spec.name: s for s in reg._plugins.get("embedding", {}).values()}
 
     def list_llms(self) -> dict[str, Any]:
-        return {n: {"description": p.info.description} for n, p in self._llm.items()}
+        _warn()
+        reg = _new_registry()
+        return {s.spec.name: s for s in reg._plugins.get("llm", {}).values()}
 
     def list_all(self) -> dict[str, Any]:
         return {
@@ -71,37 +79,23 @@ class ProviderRegistry:
         }
 
     def initialize_builtins(self) -> None:
+        """No-op — builtins are initialized in _register_builtin_plugins()."""
         if self._initialized:
             return
-
-        self.register_search("duckduckgo", DuckDuckGoProvider(), default=True)
-        self.register_search("bing", BingProvider())
-        self.register_search("serper", SerperProvider())
-
-        try:
-            self.register_embedding("ollama", OllamaEmbeddingProvider(), default=True)
-        except Exception as e:
-            logger.warning(f"Failed to register Ollama embedding: {e}")
-
-        try:
-            self.register_embedding("openrouter", OpenRouterEmbeddingProvider())
-        except Exception as e:
-            logger.warning(f"Failed to register OpenRouter embedding: {e}")
-
-        llm_providers = get_builtin_llm_providers()
-        for name, wrapper in llm_providers.items():
-            self.register_llm(name, wrapper, default=(name == "openrouter"))
-
         self._initialized = True
+        logger.debug("ProviderRegistry.initialize_builtins() called (delegated)")
 
     def get_default_llm_inner(self) -> Any:
+        _warn()
         wrapper = self.get_llm()
         if wrapper is None:
-            raise ValueError(f"No LLM provider available (providers: {list(self._llm.keys())})")
-        return wrapper.inner
+            raise ValueError("No LLM provider available")
+        return wrapper
 
     def get_all_llm_inner(self) -> dict[str, Any]:
-        return {n: w.inner for n, w in self._llm.items()}
+        _warn()
+        reg = _new_registry()
+        return reg._plugins.get("llm", {}).copy()
 
 
 _registry: ProviderRegistry | None = None
@@ -111,4 +105,5 @@ def get_provider_registry() -> ProviderRegistry:
     global _registry
     if _registry is None:
         _registry = ProviderRegistry()
+    _warn()
     return _registry

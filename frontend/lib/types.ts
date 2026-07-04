@@ -93,6 +93,10 @@ export interface Message {
 export interface UploadedDocument {
   document_id: string;
   filename: string;
+  original_filename?: string;
   size: number;
   status: string;
+  page_count?: number;
+  auto_tags?: string[];
+  summary?: string;
 }

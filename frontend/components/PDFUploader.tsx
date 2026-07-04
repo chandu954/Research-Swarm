@@ -5,13 +5,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   Check,
+  ExternalLink,
   FileText,
   Loader2,
   Plus,
   Trash2,
   UploadCloud,
 } from "lucide-react";
-import { uploadPDF } from "@/lib/api";
+import { uploadPDF, deleteDocument, getDocumentDownloadUrl } from "@/lib/api";
 import type { UploadedDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -84,14 +85,22 @@ export default function PDFUploader({
     );
   };
 
-  const removeDocument = (id: string) => {
-    onDocumentsChange(
-      documents.filter((document) => document.document_id !== id),
-    );
-    onSelectionChange(
-      selectedDocs.filter((documentId) => documentId !== id),
-    );
-  };
+  const removeDocument = useCallback(
+    async (id: string) => {
+      try {
+        await deleteDocument(id);
+      } catch (err) {
+        console.warn("Failed to delete document on server:", err);
+      }
+      onDocumentsChange(
+        documents.filter((document) => document.document_id !== id),
+      );
+      onSelectionChange(
+        selectedDocs.filter((documentId) => documentId !== id),
+      );
+    },
+    [documents, selectedDocs, onDocumentsChange, onSelectionChange],
+  );
 
   return (
     <section>
@@ -175,6 +184,7 @@ export default function PDFUploader({
         <AnimatePresence initial={false}>
           {documents.map((document) => {
             const selected = selectedDocs.includes(document.document_id);
+            const name = document.original_filename || document.filename;
             return (
               <motion.div
                 key={document.document_id}
@@ -208,26 +218,52 @@ export default function PDFUploader({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[11px] font-medium text-[var(--text-primary)]">
-                      {document.filename}
+                      {name}
                     </span>
                     <span className="mt-0.5 flex items-center gap-1.5 text-[9px] text-[var(--text-muted)]">
                       {formatFileSize(document.size)}
+                      {document.page_count && (
+                        <>
+                          <span>·</span>
+                          <span>{document.page_count} pages</span>
+                        </>
+                      )}
                       <span>·</span>
                       <span className="text-emerald-400">
                         {document.status === "uploaded" ? "Ready" : document.status}
                       </span>
                     </span>
+                    {document.auto_tags && document.auto_tags.length > 0 && (
+                      <span className="mt-0.5 flex flex-wrap gap-1">
+                        {document.auto_tags.slice(0, 3).map((tag: string) => (
+                          <span key={tag} className="rounded bg-white/[0.04] px-1 py-0.5 text-[8px] text-[var(--text-muted)]">
+                            {tag}
+                          </span>
+                        ))}
+                      </span>
+                    )}
                   </span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => removeDocument(document.document_id)}
-                  className="icon-button h-7 w-7 opacity-60 hover:text-rose-300 hover:opacity-100"
-                  aria-label={`Remove ${document.filename}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <a
+                    href={getDocumentDownloadUrl(document.document_id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="icon-button h-7 w-7 opacity-60 hover:text-cyan-300 hover:opacity-100"
+                    aria-label={`View ${name}`}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => removeDocument(document.document_id)}
+                    className="icon-button h-7 w-7 opacity-60 hover:text-rose-300 hover:opacity-100"
+                    aria-label={`Remove ${name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </motion.div>
             );
           })}

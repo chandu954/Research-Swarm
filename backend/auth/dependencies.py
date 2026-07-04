@@ -16,9 +16,9 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def _resolve_api_key(request: Request, session: AsyncSession) -> Optional[User]:
-    """Resolve a user from an X-API-Key header."""
-    api_key_raw = request.headers.get("X-API-Key") or request.headers.get("Authorization", "").replace("Bearer ", "")
-    if not api_key_raw or api_key_raw.startswith("eyJ"):
+    """Resolve a user from X-API-Key header (not Authorization Bearer)."""
+    api_key_raw = request.headers.get("X-API-Key")
+    if not api_key_raw:
         return None
 
     key_hash = hashlib.sha256(api_key_raw.encode()).hexdigest()
@@ -32,7 +32,8 @@ async def _resolve_api_key(request: Request, session: AsyncSession) -> Optional[
     if not api_key:
         return None
 
-    api_key.last_used_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    from datetime import datetime, timezone
+    api_key.last_used_at = datetime.now(timezone.utc)
 
     user_result = await session.execute(select(User).where(User.id == api_key.user_id))
     return user_result.scalar_one_or_none()
