@@ -1,0 +1,10 @@
+{
+  "name": "research-swarm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ResearchSwarm AI — root tooling (cleanup/seed for the local Supabase E2E account)",
+  "scripts": {
+    "cleanup:e2e": ".venv/bin/python scripts/cleanup_e2e.py",
+    "seed:e2e": ".venv/bin/python scripts/seed_e2e.py"
+  }
+}
