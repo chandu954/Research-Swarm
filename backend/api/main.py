@@ -435,6 +435,36 @@ async def run_research(
     graph = app.state.graph
     app.state.stream_manager.get_or_create_stream(task_id)
 
+    # Phase 4: mirror this run into Supabase for the workspace UI + realtime.
+    sb_session_id: Optional[str] = None
+    sb_user_id: Optional[str] = None
+    try:
+        from backend.core.supabase import (
+            create_session as sb_create_session,
+            get_profile,
+            insert_message as sb_insert_message,
+        )
+
+        sb_profile = get_profile(str(user_id))
+        if sb_profile:
+            sb_user_id = sb_profile["id"]
+            row = sb_create_session(
+                user_id=sb_user_id,
+                title=body.query[:120],
+                prompt=body.query,
+                mode=body.mode or "quick",
+                debate_enabled=bool(body.debate_mode),
+            )
+            sb_session_id = row["id"]
+            sb_insert_message(
+                session_id=sb_session_id, role="user", content=body.query
+            )
+            app.state.stream_manager.attach_persistence(
+                task_id, supabase_user_id=sb_user_id, session_id=sb_session_id
+            )
+    except Exception as exc:  # pragma: no cover - resilience path
+        logger.warning(f"[{task_id}] supabase session init skipped: {exc}")
+
     try:
         initial_state = {
             "query": body.query,
@@ -479,6 +509,15 @@ async def run_research(
         execution_time = time.time() - start_time
         app.state.stream_manager.close_stream(task_id)
 
+        if sb_session_id:
+            _finalize_supabase_run(
+                session_id=sb_session_id,
+                user_id=sb_user_id,
+                result=result or {},
+                query=body.query,
+                execution_time=execution_time,
+            )
+
         return ResearchResponse(
             task_id=task_id,
             conversation_id=conversation_id,
@@ -502,6 +541,20 @@ async def run_research(
     except Exception as e:
         logger.error(f"[{task_id}] Research failed: {e}")
         app.state.stream_manager.close_stream(task_id)
+        if sb_session_id:
+            try:
+                from backend.core.supabase import log_activity, update_session
+
+                update_session(sb_session_id, status="failed", error=str(e)[:500])
+                log_activity(
+                    user_id=sb_user_id,
+                    action="research.failed",
+                    entity_type="research_session",
+                    entity_id=sb_session_id,
+                    metadata={"query": body.query[:200]},
+                )
+            except Exception as exc:  # pragma: no cover
+                logger.warning(f"[{task_id}] supabase failure persist skipped: {exc}")
         return ResearchResponse(
             task_id=task_id,
             conversation_id=conversation_id,
@@ -510,6 +563,105 @@ async def run_research(
             errors=[str(e)],
             execution_time=time.time() - start_time,
         )
+
+
+def _finalize_supabase_run(
+    *,
+    session_id: str,
+    user_id: Optional[str],
+    result: Dict[str, Any],
+    query: str,
+    execution_time: float,
+) -> None:
+    """Persist a completed research run to Supabase (session, report, metrics).
+
+    Runs after graph execution; failures never affect the API response.
+    """
+    try:
+        from backend.core.supabase import (
+            insert_message,
+            log_activity,
+            save_report,
+            save_run_metrics,
+            update_session,
+            upsert_agent_run,
+        )
+
+        status = result.get("status", "completed")
+        answer = result.get("answer")
+        sources = result.get("sources", [])
+        agent_metrics: Dict[str, Dict[str, Any]] = result.get("agent_metrics", {})
+
+        update_session(
+            session_id,
+            status="completed" if status != "failed" else "failed",
+            sources_total=len(sources) if sources else 0,
+            error=(
+                "; ".join(str(e) for e in result.get("errors", []))[:500]
+                if status == "failed"
+                else None
+            ),
+        )
+
+        if answer:
+            insert_message(
+                session_id=session_id, role="assistant", content=answer
+            )
+
+        metrics = result.get("metrics") or {}
+        save_run_metrics(
+            session_id=session_id,
+            execution_time_ms=round(execution_time * 1000),
+            sources_found=len(sources) if sources else 0,
+            relevant_sources=metrics.get("relevant_sources", 0),
+            documents=len(result.get("document_chunks") or []),
+            chunks=metrics.get("chunks", 0),
+            prompt_tokens=metrics.get("prompt_tokens", 0),
+            completion_tokens=metrics.get("completion_tokens", 0),
+            total_tokens=result.get("token_count") or metrics.get("total_tokens", 0),
+            estimated_cost=float(metrics.get("cost_estimate", result.get("cost_estimate") or 0)),
+        )
+
+        if answer and status != "failed":
+            save_report(
+                user_id=user_id,
+                session_id=session_id,
+                title=query[:120],
+                content_md=answer,
+                sources=sources if sources else None,
+                metrics={
+                    "execution_time_ms": round(execution_time * 1000),
+                    "sources": len(sources),
+                    "token_count": result.get("token_count"),
+                },
+            )
+            log_activity(
+                user_id=user_id,
+                action="research.completed",
+                entity_type="research_session",
+                entity_id=session_id,
+                metadata={"query": query[:200], "sources": len(sources)},
+            )
+
+        for agent_key, m in agent_metrics.items():
+            if "status" not in m and not m.get("latency_ms"):
+                continue
+            latency_ms = m.get("latency_ms") or (m.get("latency") * 1000 if m.get("latency") else None)
+            status_key = "completed" if m.get("status") in ("ok", None) else (
+                "skipped" if m.get("status") == "skipped" else "failed"
+            )
+            upsert_agent_run(
+                session_id=session_id,
+                agent_key=agent_key,
+                status=status_key,
+                model=m.get("model"),
+                latency_ms=round(latency_ms) if latency_ms else None,
+                tokens=m.get("tokens"),
+                sources=m.get("result_count") or m.get("source_count") or m.get("sources"),
+                documents=m.get("chunks_retrieved"),
+            )
+    except Exception as exc:  # pragma: no cover - resilience path
+        logger.warning(f"supabase finalize skipped for {session_id}: {exc}")
 
 
 @app.get("/research/stream/{task_id}")
@@ -837,12 +989,71 @@ async def upload_document(
         await _log_audit(session, "document.uploaded", "document", doc.id,
                          {"filename": file.filename, "size": len(content)}, ctx)
 
+        _mirror_document_upload(
+            user_id=str(current_user.id),
+            document_id=str(doc.id),
+            filename=file.filename,
+            content=content,
+        )
+
         return {"document_id": doc.id, "filename": file.filename, "size": len(content), "status": "uploaded"}
     except HTTPException:
         raise
     except Exception:
         logger.exception("Upload failed")
         raise HTTPException(status_code=500, detail="Failed to upload document")
+
+
+def _mirror_document_upload(
+    *,
+    user_id: str,
+    document_id: str,
+    filename: str,
+    content: bytes,
+) -> None:
+    """Mirror an uploaded document to Supabase storage + rs_documents.
+
+    Path layout `{legacy_user_id}/{document_id}/{filename}` inside the
+    rs_documents bucket; the bucket policy scopes users to their own folder.
+    """
+    try:
+        from backend.core.supabase import (
+            get_profile,
+            get_supabase,
+            log_activity,
+            save_document,
+            update_document,
+        )
+
+        profile = get_profile(user_id)
+        if not profile:
+            return
+        sb_user_id = profile["id"]
+        storage_path = f"{sb_user_id}/{document_id}/{filename}"
+
+        get_supabase().storage.from_("rs_documents").upload(
+            storage_path,
+            content,
+            {"content-type": "application/pdf", "upsert": True},
+        )
+
+        row = save_document(
+            user_id=sb_user_id,
+            name=filename,
+            storage_path=storage_path,
+            mime_type="application/pdf",
+            size_bytes=len(content),
+        )
+        update_document(row["id"], status="ready")
+        log_activity(
+            user_id=sb_user_id,
+            action="document.uploaded",
+            entity_type="document",
+            entity_id=row["id"],
+            metadata={"name": filename},
+        )
+    except Exception as exc:  # pragma: no cover - resilience path
+        logger.warning(f"supabase document mirror skipped for {document_id}: {exc}")
 
 
 @app.get("/documents", response_model=list[DocumentResponse])

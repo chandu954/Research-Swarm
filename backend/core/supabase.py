@@ -205,14 +205,14 @@ def upsert_agent_run(
     started_at: str | None = None,
     finished_at: str | None = None,
 ) -> None:
-    """Insert, or update the open run for the same agent, atomically."""
+    """Insert, or update the existing run row for the same agent."""
     client = get_supabase()
     existing = (
         client.table("rs_agent_runs")
         .select("id")
         .eq("session_id", session_id)
         .eq("agent_key", agent_key)
-        .eq("status", "running")
+        .order("created_at", desc=True)
         .limit(1)
         .execute()
         .data
@@ -248,6 +248,7 @@ def save_run_metrics(
     chunks: int = 0,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
+    total_tokens: int | None = None,
     estimated_cost: float = 0,
 ) -> None:
     get_supabase().table("rs_run_metrics").insert(
@@ -260,7 +261,9 @@ def save_run_metrics(
             "chunks": chunks,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
+            "total_tokens": (
+                total_tokens if total_tokens is not None else prompt_tokens + completion_tokens
+            ),
             "estimated_cost": estimated_cost,
         }
     ).execute()

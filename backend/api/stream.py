@@ -12,6 +12,7 @@ import json
 import asyncio
 import queue as _queue
 import time
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Dict, Any, Optional
 from loguru import logger
 
@@ -102,6 +103,7 @@ class StreamManager:
 
     def __init__(self):
         self._queues: Dict[str, AsyncQueueAdapter] = {}
+        self._persistence: Dict[str, Dict[str, Any]] = {}
 
     def create_stream(self, task_id: str) -> AsyncQueueAdapter:
         """Create a new log queue adapter for a task stream."""
@@ -115,18 +117,92 @@ class StreamManager:
             return self.create_stream(task_id)
         return self._queues[task_id]
 
+    def attach_persistence(
+        self, task_id: str, *, supabase_user_id: str, session_id: str
+    ) -> None:
+        """Attach a Supabase session so streamed agent logs are persisted."""
+        self._persistence[task_id] = {
+            "user_id": supabase_user_id,
+            "session_id": session_id,
+        }
+
+    def get_persistence(self, task_id: str) -> Optional[Dict[str, Any]]:
+        return self._persistence.get(task_id)
+
     def push_log(self, task_id: str, log: Dict[str, Any]) -> None:
         """Push a log entry to a task's stream. Safe from any thread."""
         adapter = self._queues.get(task_id)
         if not adapter:
             return
         adapter.put(log)
+        self._mirror_to_supabase(task_id, log)
+
+    def _mirror_to_supabase(self, task_id: str, log: Dict[str, Any]) -> None:
+        """Persist agent lifecycle events to Supabase (Phase 4/5).
+
+        Runs synchronously on the caller thread; failures are swallowed so
+        streaming is never blocked by persistence.
+        """
+        ctx = self._persistence.get(task_id)
+        if not ctx:
+            return
+        try:
+            from backend.core.supabase import (
+                insert_message,
+                update_session,
+                upsert_agent_run,
+            )
+
+            agent: str = log.get("agent", "")
+            action: str = log.get("action", "")
+            status: str = log.get("status", "")
+            details: str = log.get("details") or ""
+
+            session_status_map = {
+                "planner": "planning",
+                "research_agent": "searching",
+                "document_agent": "documents",
+                "merge": "ranking",
+                "answer_agent": "writing",
+            }
+            if status == "running" and agent in session_status_map:
+                update_session(ctx["session_id"], status=session_status_map[agent])
+
+            if status in ("running", "completed", "failed"):
+                started_at = None
+                finished_at = None
+                if status == "running":
+                    started_at = datetime.now(timezone.utc).isoformat()
+                else:
+                    finished_at = datetime.now(timezone.utc).isoformat()
+                upsert_agent_run(
+                    session_id=ctx["session_id"],
+                    agent_key=agent,
+                    status=status,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                )
+
+            if action == "complete" and status == "completed":
+                update_session(ctx["session_id"], status="completed")
+            elif action in ("error", "cancelled") and status == "failed":
+                update_session(ctx["session_id"], status="failed", error=details[:500])
+
+            if action == "message" and agent == "system":
+                insert_message(
+                    session_id=ctx["session_id"],
+                    role="assistant",
+                    content=details,
+                )
+        except Exception as exc:  # pragma: no cover - resilience path
+            logger.debug(f"supabase mirror failed for {task_id}: {exc}")
 
     def close_stream(self, task_id: str) -> None:
         """Close and remove a stream."""
         adapter = self._queues.pop(task_id, None)
         if adapter:
             adapter.close()
+        self._persistence.pop(task_id, None)
 
 
 # Singleton

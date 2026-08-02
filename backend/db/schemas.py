@@ -274,6 +274,7 @@ class ResearchRequest(BaseModel):
     document_ids: list[str] = Field(default_factory=list)
     conversation_id: Optional[str] = None
     project_id: Optional[str] = None
+    mode: str = Field(default="quick", description="Research mode: quick, deep, compare, summarize, verify")
     debate_mode: bool = Field(default=False, description="Enable AI Debate Mode with multiple perspective agents")
     debate_perspectives: Optional[list[str]] = Field(default=None, description="Specific perspective IDs to include")
     llm_provider: Optional[str] = Field(default=None, description="ollama or openrouter")
