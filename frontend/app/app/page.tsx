@@ -28,6 +28,7 @@ import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConve
 import { useAuth } from "@/lib/auth";
 import { useProviderSettings } from "@/lib/useSettings";
 import { collaborationClient } from "@/lib/websocket";
+import { useRealtimeWorkspace } from "@/lib/supabase/realtime";
 import type {
   AgentMetric,
   AgentLog,
@@ -66,10 +67,11 @@ export default function ResearchWorkspace() {
   const [conversationsRefreshKey, setConversationsRefreshKey] = useState(0);
   const [inspectedSource, setInspectedSource] = useState<SourceCitation | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [supabaseSessionId, setSupabaseSessionId] = useState<string | null>(null);
   const [debateMode, setDebateMode] = useState(false);
-  const [apiError, setApiError] = useState<string | null>(null);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
   const { user, token } = useAuth();
+  const realtime = useRealtimeWorkspace(supabaseSessionId);
 
   useEffect(() => {
     listDocuments()
@@ -159,6 +161,9 @@ export default function ResearchWorkspace() {
       const taskId = crypto.randomUUID();
       const streamController = subscribeResearchLogs(taskId, {
         onLog: (log) => {
+          if (log.agent === "system" && log.action === "session" && log.details) {
+            setSupabaseSessionId(log.details);
+          }
           setLogs((prev) => {
             const idx = prev.findIndex(
               (e) => e.agent === log.agent && e.action === log.action
@@ -303,6 +308,51 @@ export default function ResearchWorkspace() {
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
+  // Phase 5: merge Supabase Realtime state with the SSE/response state so
+  // panels stay live even after the response resolves.
+  const mergedAgentMetrics = useMemo(
+    () => ({ ...realtime.agentMetrics, ...agentMetrics }),
+    [realtime.agentMetrics, agentMetrics],
+  );
+  const mergedExecutionTime = useMemo(
+    () =>
+      executionTime ??
+      (realtime.executionTimeMs != null ? realtime.executionTimeMs / 1000 : undefined),
+    [executionTime, realtime.executionTimeMs],
+  );
+  const mergedLogs = useMemo(() => {
+    const next = [...logs];
+    for (const rtLog of realtime.agentLogs) {
+      const idx = next.findIndex(
+        (l) => l.agent === rtLog.agent && l.action === rtLog.action,
+      );
+      if (idx >= 0) {
+        const existing = next[idx];
+        if (existing.status === "completed") continue;
+        next[idx] = rtLog;
+      } else {
+        next.push(rtLog);
+      }
+    }
+    return next;
+  }, [logs, realtime.agentLogs]);
+  const mergedDocuments = useMemo<UploadedDocument[]>(() => {
+    const next = [...documents];
+    for (const rtDoc of realtime.documents) {
+      if (next.some((d) => d.document_id === rtDoc.id)) continue;
+      next.push({
+        document_id: rtDoc.id,
+        filename: rtDoc.name,
+        original_filename: rtDoc.name,
+        size: rtDoc.size_bytes ?? 0,
+        status: rtDoc.status,
+        page_count: rtDoc.pages ?? undefined,
+      });
+    }
+    return next;
+  }, [documents, realtime.documents]);
+  const mergedSourceCount = sources.length || realtime.sourcesFound;
+
   const openDocumentPicker = useCallback(() => {
     pdfInputRef.current?.click();
     setSidebarOpen(false);
@@ -419,30 +469,30 @@ export default function ResearchWorkspace() {
           >
             <div className="space-y-6 p-4">
               <ExecutionTimeline
-                logs={logs}
-                agentMetrics={agentMetrics}
+                logs={mergedLogs}
+                agentMetrics={mergedAgentMetrics}
                 isRunning={isRunning}
               />
               <MetricsPanel
-                agentMetrics={agentMetrics}
-                executionTime={executionTime}
-                sourceCount={sources.length}
+                agentMetrics={mergedAgentMetrics}
+                executionTime={mergedExecutionTime}
+                sourceCount={mergedSourceCount}
                 documentCount={selectedDocs.length}
               />
               <AnalyticsDashboard
-                agentMetrics={agentMetrics}
-                logs={logs}
-                executionTime={executionTime}
-                sourceCount={sources.length}
+                agentMetrics={mergedAgentMetrics}
+                logs={mergedLogs}
+                executionTime={mergedExecutionTime}
+                sourceCount={mergedSourceCount}
                 isRunning={isRunning}
               />
               <PDFUploader
-                documents={documents}
+                documents={mergedDocuments}
                 onDocumentsChange={setDocuments}
                 selectedDocs={selectedDocs}
                 onSelectionChange={setSelectedDocs}
               />
-              <AgentLogs logs={logs} plan={plan} isRunning={isRunning} />
+              <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
               <Sources sources={sources} onInspect={setInspectedSource} />
               {lastAnswer && (
                 <KnowledgeGraph answer={lastAnswer} sources={sources} />

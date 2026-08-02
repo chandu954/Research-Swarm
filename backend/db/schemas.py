@@ -291,6 +291,7 @@ class ResearchResponse(BaseModel):
     query: str
     answer: Optional[str] = None
     sources: list[dict[str, Any]] = Field(default_factory=list)
+    supabase_session_id: Optional[str] = Field(default=None, description="Supabase research session id for realtime subscriptions")
     plan: list[dict[str, Any]] = Field(default_factory=list)
     logs: list[dict[str, Any]] = Field(default_factory=list)
     status: str = "completed"

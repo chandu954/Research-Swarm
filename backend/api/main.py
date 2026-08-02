@@ -462,6 +462,10 @@ async def run_research(
             app.state.stream_manager.attach_persistence(
                 task_id, supabase_user_id=sb_user_id, session_id=sb_session_id
             )
+            app.state.stream_manager.push_log(
+                task_id,
+                make_log("system", "session", "created", sb_session_id),
+            )
     except Exception as exc:  # pragma: no cover - resilience path
         logger.warning(f"[{task_id}] supabase session init skipped: {exc}")
 
@@ -522,6 +526,7 @@ async def run_research(
             task_id=task_id,
             conversation_id=conversation_id,
             query=body.query,
+            supabase_session_id=sb_session_id,
             answer=result.get("answer"),
             sources=result.get("sources", []),
             plan=result.get("plan", []),
