@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LogIn, Mail, Lock, Eye, EyeOff, User,
@@ -9,9 +8,10 @@ import {
   Loader2, Github, ArrowLeft, KeyRound, Send,
   ShieldCheck, ExternalLink,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth";
 import { getErrorMessage, validateEmail, validatePassword, validateName } from "@/lib/errors";
 import { api } from "@/lib/api-client";
+import { useLoginAuthFlow } from "@/lib/useLoginAuthFlow";
+import type { AuthBanner } from "@/lib/auth-state-machine";
 
 type AuthView = "login" | "register" | "forgot-password" | "reset-password" | "check-email";
 
@@ -32,12 +32,53 @@ const SOCIAL_PROVIDERS = [
   ) },
 ];
 
-const HEALTH_CHECK_RETRY_DELAY = 3000;
-const HEALTH_CHECK_MAX_RETRIES = 3;
+function AuthStatusBanner({ banner }: { banner: AuthBanner }) {
+  const styles: Record<AuthBanner["kind"], { border: string; bg: string; text: string; icon: string }> = {
+    checking: { border: "border-white/[0.06]", bg: "bg-white/[0.03]", text: "text-gray-400", icon: "text-gray-400" },
+    backend_offline: { border: "border-amber-500/20", bg: "bg-amber-500/10", text: "text-amber-300", icon: "text-amber-400" },
+    network_offline: { border: "border-amber-500/20", bg: "bg-amber-500/10", text: "text-amber-300", icon: "text-amber-400" },
+    error: { border: "border-rose-500/20", bg: "bg-rose-500/10", text: "text-rose-300", icon: "text-rose-400" },
+    success: { border: "border-emerald-500/20", bg: "bg-emerald-500/10", text: "text-emerald-300", icon: "text-emerald-400" },
+    session_expired: { border: "border-amber-500/20", bg: "bg-amber-500/10", text: "text-amber-300", icon: "text-amber-400" },
+  };
+  const s = styles[banner.kind];
+  const isAlert = banner.kind === "error" || banner.kind === "backend_offline" || banner.kind === "network_offline" || banner.kind === "session_expired";
+
+  return (
+    <motion.div
+      key={banner.kind}
+      initial={{ opacity: 0, y: -8, height: 0 }}
+      animate={{ opacity: 1, y: 0, height: "auto" }}
+      exit={{ opacity: 0, y: -8, height: 0 }}
+      transition={{ duration: 0.2 }}
+      role={isAlert ? "alert" : "status"}
+      aria-live={isAlert ? "assertive" : "polite"}
+      className={`mb-4 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 ${s.border} ${s.bg}`}
+    >
+      {banner.kind === "checking" ? (
+        <Loader2 className={`mt-0.5 h-3.5 w-3.5 animate-spin ${s.icon}`} />
+      ) : banner.kind === "success" ? (
+        <CheckCircle2 className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${s.icon}`} />
+      ) : (
+        <AlertCircle className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${s.icon}`} />
+      )}
+      <span className={`text-xs leading-5 ${s.text}`}>{banner.message}</span>
+    </motion.div>
+  );
+}
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { login, register, oauthLogin } = useAuth();
+  const {
+    banner,
+    isBlocked,
+    isSubmitting,
+    isOAuthLoading,
+    performLogin,
+    performRegister,
+    performOAuth,
+    dismissError,
+  } = useLoginAuthFlow();
+
   const [view, setView] = useState<AuthView>("login");
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -47,14 +88,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
-  const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<string | null>(null);
-  const [backendStatus, setBackendStatus] = useState<"checking" | "available" | "unavailable">("checking");
+  const [formError, setFormError] = useState("");
+  const [operationSuccess, setOperationSuccess] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const submitBtnRef = useRef<HTMLButtonElement>(null);
+
+  const inputsDisabled = isBlocked || isSubmitting || formLoading;
+  const authActionsDisabled = isBlocked || isSubmitting || formLoading;
+  const submitBusy = isSubmitting || formLoading;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -68,34 +111,6 @@ export default function LoginPage() {
   useEffect(() => { emailRef.current?.focus(); }, [view]);
 
   useEffect(() => {
-    let cancelled = false;
-    let retries = 0;
-    async function check() {
-      while (!cancelled && retries < HEALTH_CHECK_MAX_RETRIES) {
-        try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/health`, {
-            signal: AbortSignal.timeout(5000),
-          });
-          if (cancelled) return;
-          if (res.ok) {
-            setBackendStatus("available");
-            return;
-          }
-        } catch {
-          // retry
-        }
-        retries++;
-        if (!cancelled && retries < HEALTH_CHECK_MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, HEALTH_CHECK_RETRY_DELAY));
-        }
-      }
-      if (!cancelled) setBackendStatus("unavailable");
-    }
-    check();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { if (e.getModifierState("CapsLock")) setCapsLock(true); };
     const handleKeyUp = (e: KeyboardEvent) => { if (!e.getModifierState("CapsLock")) setCapsLock(false); };
     window.addEventListener("keydown", handleKeyDown);
@@ -103,7 +118,11 @@ export default function LoginPage() {
     return () => { window.removeEventListener("keydown", handleKeyDown); window.removeEventListener("keyup", handleKeyUp); };
   }, []);
 
-  const clearErrors = useCallback(() => { setError(""); setFieldErrors({}); }, []);
+  const clearFormErrors = useCallback(() => {
+    setFormError("");
+    setFieldErrors({});
+    dismissError();
+  }, [dismissError]);
 
   const validate = useCallback((): boolean => {
     const errors: FieldErrors = {};
@@ -129,55 +148,48 @@ export default function LoginPage() {
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    clearErrors();
+    if (authActionsDisabled) return;
+    clearFormErrors();
     if (!validate()) return;
 
-    setLoading(true);
     try {
       if (view === "login") {
-        await login(email.trim(), password);
-        setSuccess(true);
-        setTimeout(() => router.push("/app"), 300);
+        await performLogin(email.trim(), password);
       } else if (view === "register") {
-        await register(email.trim(), password, name.trim());
-        setSuccess(true);
-        setTimeout(() => router.push("/app"), 300);
+        await performRegister(email.trim(), password, name.trim());
       } else if (view === "forgot-password") {
+        setFormLoading(true);
         await api.post("/auth/forgot-password", { email: email.trim() }, { retryable: false });
         setView("check-email");
       } else if (view === "reset-password") {
         if (!resetToken) throw new Error("Missing reset token");
+        setFormLoading(true);
         await api.post("/auth/reset-password", { token: resetToken, password }, { retryable: false });
-        setSuccess(true);
+        setOperationSuccess(true);
         setTimeout(() => {
           setView("login");
           setPassword("");
-          setSuccess(false);
+          setOperationSuccess(false);
         }, 2000);
       }
     } catch (err: unknown) {
-      setError(getErrorMessage(err));
-      if (submitBtnRef.current) submitBtnRef.current.focus();
-    } finally {
-      setLoading(false);
-    }
-  }, [view, email, password, name, resetToken, validate, clearErrors, login, register, router]);
-
-  const handleSocialLogin = useCallback(async (provider: "google" | "github" | "microsoft") => {
-    setSocialLoading(provider);
-    setError("");
-    try {
-      await oauthLogin(provider);
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setError(`${provider.charAt(0).toUpperCase() + provider.slice(1)} authentication was cancelled.`);
+      if (view === "login" || view === "register") {
+        // Auth FSM handles banner; focus submit for accessibility
+        submitBtnRef.current?.focus();
       } else {
-        setError(getErrorMessage(err));
+        setFormError(getErrorMessage(err));
+        submitBtnRef.current?.focus();
       }
     } finally {
-      setSocialLoading(null);
+      setFormLoading(false);
     }
-  }, [oauthLogin]);
+  }, [view, email, password, name, resetToken, validate, clearFormErrors, performLogin, performRegister, authActionsDisabled]);
+
+  const handleSocialLogin = useCallback(async (provider: "google" | "github" | "microsoft") => {
+    if (authActionsDisabled) return;
+    clearFormErrors();
+    await performOAuth(provider);
+  }, [performOAuth, authActionsDisabled, clearFormErrors]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Escape") (e.currentTarget as HTMLElement).blur();
@@ -185,16 +197,18 @@ export default function LoginPage() {
 
   const switchView = useCallback((newView: AuthView) => {
     setView(newView);
-    clearErrors();
-    setError("");
-    setSuccess(false);
-  }, [clearErrors]);
+    clearFormErrors();
+    setOperationSuccess(false);
+  }, [clearFormErrors]);
 
   const viewSubtitle = view === "login" ? "Welcome back to ResearchSwarm"
     : view === "register" ? "Start your research journey"
     : view === "forgot-password" ? "We'll send you a reset link"
     : view === "reset-password" ? "Enter your new password below"
     : "We sent a reset link to your email";
+
+  const showOperationSuccess = operationSuccess && view === "reset-password" && !banner;
+  const showFormError = formError && !banner;
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0a0f] p-4" role="main">
@@ -224,53 +238,24 @@ export default function LoginPage() {
         </div>
 
         <AnimatePresence mode="wait">
-          {backendStatus === "unavailable" && (
+          {banner && <AuthStatusBanner banner={banner} />}
+          {showFormError && (
             <motion.div
-              key="backend-offline"
+              key="form-error"
               initial={{ opacity: 0, y: -8, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -8, height: 0 }}
-              transition={{ duration: 0.2 }}
-              role="alert"
-              aria-live="assertive"
-              className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3.5 py-2.5"
-            >
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
-              <span className="text-xs leading-5 text-amber-300">ResearchSwarm backend is currently offline. Please try again in a few minutes.</span>
-            </motion.div>
-          )}
-          {backendStatus === "checking" && (
-            <motion.div
-              key="backend-checking"
-              initial={{ opacity: 0, y: -8, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: "auto" }}
-              exit={{ opacity: 0, y: -8, height: 0 }}
-              transition={{ duration: 0.2 }}
-              className="mb-4 flex items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5"
-            >
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
-              <span className="text-xs text-gray-400">Connecting to ResearchSwarm...</span>
-            </motion.div>
-          )}
-          {error && backendStatus !== "unavailable" && (
-            <motion.div
-              key="error"
-              initial={{ opacity: 0, y: -8, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: "auto" }}
-              exit={{ opacity: 0, y: -8, height: 0 }}
-              transition={{ duration: 0.2 }}
               role="alert"
               aria-live="assertive"
               className="mb-4 flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3.5 py-2.5"
             >
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-rose-400" />
-              <span className="text-xs leading-5 text-rose-300">{error}</span>
+              <span className="text-xs leading-5 text-rose-300">{formError}</span>
             </motion.div>
           )}
-
-          {success && (
+          {showOperationSuccess && (
             <motion.div
-              key="success"
+              key="operation-success"
               initial={{ opacity: 0, y: -8, height: 0 }}
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={{ opacity: 0, y: -8, height: 0 }}
@@ -279,7 +264,7 @@ export default function LoginPage() {
               className="mb-4 flex items-center gap-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2.5"
             >
               <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
-              <span className="text-xs text-emerald-300">Success! Redirecting...</span>
+              <span className="text-xs text-emerald-300">Password reset successful. Returning to sign in...</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -293,11 +278,12 @@ export default function LoginPage() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 + i * 0.05, duration: 0.3 }}
                 onClick={() => handleSocialLogin(provider.id)}
-                disabled={loading || socialLoading !== null}
+                disabled={authActionsDisabled}
                 aria-label={`Continue with ${provider.label}`}
+                aria-busy={isOAuthLoading(provider.id)}
                 className="group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-gray-300 transition-all hover:border-white/[0.14] hover:bg-white/[0.06] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {socialLoading === provider.id && (
+                {isOAuthLoading(provider.id) && (
                   <span className="absolute inset-0 flex items-center justify-center bg-white/[0.04] backdrop-blur-sm">
                     <Loader2 className="h-4 w-4 animate-spin text-gray-300" />
                   </span>
@@ -332,15 +318,13 @@ export default function LoginPage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10">
               <Send className="h-6 w-6 text-emerald-400" />
             </div>
-            <p className="text-sm text-gray-300">
-              We sent a password reset link to
-            </p>
+            <p className="text-sm text-gray-300">We sent a password reset link to</p>
             <p className="mt-1 text-sm font-medium text-white">{email}</p>
             <p className="mt-3 text-xs leading-5 text-gray-500">
               Didn&apos;t receive the email? Check your spam folder or{" "}
               <button
                 type="button"
-                onClick={() => { setView("forgot-password"); setError(""); }}
+                onClick={() => { setView("forgot-password"); setFormError(""); }}
                 className="font-medium text-violet-400 hover:text-violet-300 transition-colors"
               >
                 try a different email
@@ -358,11 +342,7 @@ export default function LoginPage() {
         ) : (
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
             {view === "register" && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-              >
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
                 <label htmlFor="name" className="mb-1.5 block text-xs font-medium text-gray-400">
                   Full name <span className="text-rose-400">*</span>
                 </label>
@@ -373,39 +353,18 @@ export default function LoginPage() {
                     type="text"
                     required
                     autoComplete="name"
+                    disabled={inputsDisabled}
                     value={name}
                     onChange={(e) => { setName(e.target.value); setFieldErrors(p => ({ ...p, name: undefined })); }}
                     onKeyDown={handleKeyDown}
                     aria-invalid={!!fieldErrors.name}
-                    aria-describedby={fieldErrors.name ? "name-error" : undefined}
-                    className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-3 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] aria-[invalid=true]:border-rose-500/50"
+                    className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-3 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Your full name"
                   />
                 </div>
                 {fieldErrors.name && (
-                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} id="name-error" role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.name}</motion.p>
+                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.name}</motion.p>
                 )}
-              </motion.div>
-            )}
-
-            {view === "reset-password" && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-              >
-                <label className="mb-1.5 block text-xs font-medium text-gray-400">
-                  Email address
-                </label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-                  <input
-                    type="email"
-                    value={email}
-                    disabled
-                    className="w-full rounded-xl border border-white/[0.08] bg-white/[0.02] py-2.5 pl-10 pr-3 text-sm text-gray-500 outline-none"
-                    placeholder="you@example.com"
-                  />
-                </div>
               </motion.div>
             )}
 
@@ -422,17 +381,17 @@ export default function LoginPage() {
                   required
                   autoComplete="email"
                   inputMode="email"
+                  disabled={inputsDisabled}
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setFieldErrors(p => ({ ...p, email: undefined })); }}
                   onKeyDown={handleKeyDown}
                   aria-invalid={!!fieldErrors.email}
-                  aria-describedby={fieldErrors.email ? "email-error" : undefined}
-                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-3 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] aria-[invalid=true]:border-rose-500/50"
+                  className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-3 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="you@example.com"
                 />
               </div>
               {fieldErrors.email && (
-                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} id="email-error" role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.email}</motion.p>
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.email}</motion.p>
               )}
             </div>
 
@@ -448,18 +407,19 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     required
                     autoComplete={view === "login" ? "current-password" : "new-password"}
+                    disabled={inputsDisabled}
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); setFieldErrors(p => ({ ...p, password: undefined })); }}
                     onKeyDown={handleKeyDown}
                     aria-invalid={!!fieldErrors.password}
-                    aria-describedby={fieldErrors.password ? "password-error" : undefined}
-                    className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-10 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] aria-[invalid=true]:border-rose-500/50"
+                    className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-10 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder={view === "register" ? "Create a strong password" : "Enter your password"}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                    disabled={inputsDisabled}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-50"
                     tabIndex={-1}
                     aria-label={showPassword ? "Hide password" : "Show password"}
                   >
@@ -467,7 +427,7 @@ export default function LoginPage() {
                   </button>
                 </div>
                 {fieldErrors.password && (
-                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} id="password-error" role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.password}</motion.p>
+                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.password}</motion.p>
                 )}
                 {capsLock && (
                   <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="mt-1 text-[11px] text-amber-400">⚠ Caps Lock is on</motion.p>
@@ -479,10 +439,7 @@ export default function LoginPage() {
             )}
 
             {(view === "register" || view === "reset-password") && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-              >
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
                 <label htmlFor="confirmPassword" className="mb-1.5 block text-xs font-medium text-gray-400">
                   Confirm password <span className="text-rose-400">*</span>
                 </label>
@@ -493,11 +450,11 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     required
                     autoComplete="new-password"
+                    disabled={inputsDisabled}
                     value={confirmPassword}
                     onChange={(e) => { setConfirmPassword(e.target.value); setFieldErrors(p => ({ ...p, confirmPassword: undefined })); }}
                     onKeyDown={handleKeyDown}
-                    aria-invalid={!!fieldErrors.confirmPassword}
-                    className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-3 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] aria-[invalid=true]:border-rose-500/50"
+                    className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-3 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Repeat your password"
                   />
                 </div>
@@ -514,34 +471,30 @@ export default function LoginPage() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 rounded border-white/[0.08] bg-white/[0.04] text-violet-500 focus:ring-violet-500/50 focus:ring-offset-0"
+                    disabled={inputsDisabled}
+                    className="h-4 w-4 rounded border-white/[0.08] bg-white/[0.04] text-violet-500 focus:ring-violet-500/50 focus:ring-offset-0 disabled:opacity-50"
                   />
                   Remember me
                 </label>
                 <button
                   type="button"
                   onClick={() => switchView("forgot-password")}
-                  className="text-xs font-medium text-violet-400 transition-colors hover:text-violet-300"
+                  disabled={inputsDisabled}
+                  className="text-xs font-medium text-violet-400 transition-colors hover:text-violet-300 disabled:opacity-50"
                 >
                   Forgot password?
                 </button>
               </div>
             )}
 
-            {view === "forgot-password" && (
-              <p className="text-[11px] leading-5 text-gray-500">
-                Enter the email address associated with your account and we&apos;ll send you a link to reset your password.
-              </p>
-            )}
-
             <button
               ref={submitBtnRef}
               type="submit"
-              disabled={loading}
-              aria-busy={loading}
+              disabled={authActionsDisabled}
+              aria-busy={submitBusy}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/10 transition-all hover:opacity-90 hover:shadow-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0f]"
             >
-              {loading ? (
+              {submitBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                   <span>
@@ -553,13 +506,9 @@ export default function LoginPage() {
                 </>
               ) : (
                 <>
-                  {view === "forgot-password" ? (
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                  ) : view === "reset-password" ? (
-                    <KeyRound className="h-4 w-4" aria-hidden="true" />
-                  ) : (
-                    <LogIn className="h-4 w-4" aria-hidden="true" />
-                  )}
+                  {view === "forgot-password" ? <Send className="h-4 w-4" aria-hidden="true" />
+                    : view === "reset-password" ? <KeyRound className="h-4 w-4" aria-hidden="true" />
+                    : <LogIn className="h-4 w-4" aria-hidden="true" />}
                   <span>
                     {view === "login" ? "Sign in"
                       : view === "register" ? "Create account"
@@ -576,11 +525,7 @@ export default function LoginPage() {
           {view === "login" && (
             <p className="text-xs text-gray-500">
               Don&apos;t have an account?{" "}
-              <button
-                type="button"
-                onClick={() => switchView("register")}
-                className="font-medium text-violet-400 transition-colors hover:text-violet-300"
-              >
+              <button type="button" onClick={() => switchView("register")} disabled={inputsDisabled} className="font-medium text-violet-400 transition-colors hover:text-violet-300 disabled:opacity-50">
                 Create one
               </button>
             </p>
@@ -588,21 +533,13 @@ export default function LoginPage() {
           {view === "register" && (
             <p className="text-xs text-gray-500">
               Already have an account?{" "}
-              <button
-                type="button"
-                onClick={() => switchView("login")}
-                className="font-medium text-violet-400 transition-colors hover:text-violet-300"
-              >
+              <button type="button" onClick={() => switchView("login")} disabled={inputsDisabled} className="font-medium text-violet-400 transition-colors hover:text-violet-300 disabled:opacity-50">
                 Sign in
               </button>
             </p>
           )}
           {(view === "forgot-password" || view === "reset-password") && (
-            <button
-              type="button"
-              onClick={() => switchView("login")}
-              className="inline-flex items-center gap-1.5 text-xs text-gray-500 transition-colors hover:text-gray-300"
-            >
+            <button type="button" onClick={() => switchView("login")} disabled={inputsDisabled} className="inline-flex items-center gap-1.5 text-xs text-gray-500 transition-colors hover:text-gray-300 disabled:opacity-50">
               <ArrowLeft className="h-3 w-3" />
               Back to sign in
             </button>
@@ -616,22 +553,6 @@ export default function LoginPage() {
             {" "}and{" "}
             <a href="#" className="text-gray-500 underline underline-offset-2 hover:text-gray-300 transition-colors">Privacy Policy</a>
           </p>
-          <div className="mt-3 flex items-center justify-center gap-3 text-[10px] text-gray-600">
-            <span className="flex items-center gap-1">
-              <ShieldCheck className="h-3 w-3" />
-              Secure
-            </span>
-            <span className="h-3 w-px bg-white/[0.06]" />
-            <span className="flex items-center gap-1">
-              <KeyRound className="h-3 w-3" />
-              Encrypted
-            </span>
-            <span className="h-3 w-px bg-white/[0.06]" />
-            <span className="flex items-center gap-1">
-              <ExternalLink className="h-3 w-3" />
-              SOC2 Ready
-            </span>
-          </div>
         </div>
       </motion.div>
     </div>
