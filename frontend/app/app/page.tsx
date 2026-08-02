@@ -29,6 +29,7 @@ import { useAuth } from "@/lib/auth";
 import { useProviderSettings } from "@/lib/useSettings";
 import { collaborationClient } from "@/lib/websocket";
 import { useRealtimeWorkspace } from "@/lib/supabase/realtime";
+import { useLiveWorkspace } from "@/lib/supabase/query";
 import type {
   AgentMetric,
   AgentLog,
@@ -72,6 +73,29 @@ export default function ResearchWorkspace() {
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
   const { user, token } = useAuth();
   const realtime = useRealtimeWorkspace(supabaseSessionId);
+  const live = useLiveWorkspace();
+
+  useEffect(() => {
+    if (live.documents.length > 0) {
+      setDocuments((prev) => {
+        const seen = new Set(prev.map((d) => d.document_id));
+        const merged = [...prev];
+        for (const doc of live.documents) {
+          if (!seen.has(doc.id)) {
+            merged.push({
+              document_id: doc.id,
+              filename: doc.name,
+              size: doc.size_bytes ?? 0,
+              status: doc.status,
+              page_count: doc.pages ?? 0,
+            });
+            seen.add(doc.id);
+          }
+        }
+        return merged;
+      });
+    }
+  }, [live.documents]);
 
   useEffect(() => {
     listDocuments()
@@ -163,6 +187,7 @@ export default function ResearchWorkspace() {
         onLog: (log) => {
           if (log.agent === "system" && log.action === "session" && log.details) {
             setSupabaseSessionId(log.details);
+            live.refresh();
           }
           setLogs((prev) => {
             const idx = prev.findIndex(
@@ -237,9 +262,10 @@ export default function ResearchWorkspace() {
       } finally {
         streamController.abort();
         setIsRunning(false);
+        live.refresh();
       }
     },
-    [selectedDocs, providerSettings, debateMode, conversationId],
+    [selectedDocs, providerSettings, debateMode, conversationId, live.refresh],
   );
 
   const handleNewChat = useCallback(() => {
@@ -385,6 +411,13 @@ export default function ResearchWorkspace() {
         <Sidebar
           documents={documents}
           recentQueries={recentQueries}
+          collections={live.collections.map((c) => c.name)}
+          conversations={live.sessions.map((s) => ({
+            id: s.id,
+            query: s.title || s.prompt,
+            timestamp: s.updated_at || s.created_at,
+            turn_count: 0,
+          }))}
           onClearAll={handleClearAll}
           onNewChat={handleNewChat}
           onOpenDocuments={openDocumentPicker}
@@ -430,6 +463,8 @@ export default function ResearchWorkspace() {
               composerRef={composerRef}
               debateMode={debateMode}
               onDebateToggle={() => setDebateMode((prev) => !prev)}
+              liveSessions={live.sessions}
+              liveLastSession={live.sessions[0] ?? null}
             />
             <input
               ref={pdfInputRef}
@@ -478,6 +513,7 @@ export default function ResearchWorkspace() {
                 executionTime={mergedExecutionTime}
                 sourceCount={mergedSourceCount}
                 documentCount={selectedDocs.length}
+                lastRun={live.lastMetrics}
               />
               <AnalyticsDashboard
                 agentMetrics={mergedAgentMetrics}

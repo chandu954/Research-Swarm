@@ -44,6 +44,33 @@ interface ChatProps {
   streamLogs?: AgentLog[];
   elapsed?: number;
   composerRef?: React.RefObject<HTMLTextAreaElement | null>;
+  liveSessions?: LiveSession[];
+  liveLastSession?: LiveSession | null;
+}
+
+export interface LiveSession {
+  id: string;
+  title: string;
+  prompt: string;
+  status: string;
+  mode: string;
+  sources_total: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function timeAgo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!t) return "";
+  const diff = Date.now() - t;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 const suggestions = [
@@ -77,19 +104,36 @@ const suggestions = [
   },
 ] as const;
 
+const recentRuns = [
+  {
+    title: "LangGraph vs CrewAI",
+    meta: "21 sources · 2h ago",
+  },
+  {
+    title: "LLM alignment 2025",
+    meta: "18 sources · yesterday",
+  },
+  {
+    title: "Postgres vs MongoDB",
+    meta: "14 sources · Monday",
+  },
+] as const;
+
 const capabilityCards = [
   {
     icon: Globe2,
     title: "Web research",
     detail: "Real-time search",
-    meta: "Ready",
+    meta: "Live",
+    chips: ["DuckDuckGo", "Bing", "Serper"],
     color: "cyan",
   },
   {
     icon: FileText,
     title: "PDF RAG",
     detail: "Local document retrieval",
-    meta: "20+ files",
+    meta: "20 files · 4 indexed",
+    chips: ["PyMuPDF", "nomic-embed"],
     color: "emerald",
   },
   {
@@ -97,8 +141,17 @@ const capabilityCards = [
     title: "Multi-agent",
     detail: "Plan · Research · Answer",
     meta: "4 agents",
+    chips: ["LangGraph", "Ollama"],
     color: "violet",
   },
+] as const;
+
+const researchModes = [
+  { label: "Quick search", directive: "Quick search:", hint: "Fast answer, fewer sources" },
+  { label: "Deep research", directive: "Deep research:", hint: "Plan, search 18+ sources, rank evidence" },
+  { label: "Compare", directive: "Compare:", hint: "Trade-offs across candidates" },
+  { label: "Summarize", directive: "Summarize:", hint: "Condense documents or topics" },
+  { label: "Verify", directive: "Verify:", hint: "Check claims against sources" },
 ] as const;
 
 function CopyButton({ text }: { text: string }) {
@@ -246,8 +299,11 @@ export default function Chat({
   streamLogs = [],
   elapsed = 0,
   composerRef,
+  liveSessions,
+  liveLastSession,
 }: ChatProps) {
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState<(typeof researchModes)[number] | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = composerRef || useRef<HTMLTextAreaElement>(null);
 
@@ -258,7 +314,7 @@ export default function Chat({
   const submitQuery = () => {
     const query = input.trim();
     if (!query || isRunning) return;
-    onSend(query);
+    onSend(mode ? `${mode.directive} ${query}` : query);
     setInput("");
   };
 
@@ -274,6 +330,29 @@ export default function Chat({
     }
   };
 
+  const recentItems: Array<{
+    key: string;
+    title: string;
+    meta: string;
+    prompt: string;
+  }> = (liveSessions && liveSessions.length > 0
+    ? liveSessions
+        .filter((s) => s.id !== liveLastSession?.id)
+        .slice(0, 3)
+        .map((s) => ({
+          key: s.id,
+          title: s.title || s.prompt,
+          meta: `${s.sources_total ?? 0} sources · ${timeAgo(s.updated_at || s.created_at || "")}`,
+          prompt: s.prompt,
+        }))
+    : recentRuns.map((r) => ({
+        key: r.title,
+        title: r.title,
+        meta: r.meta,
+        prompt: r.title,
+      }))
+  ).slice(0, 3);
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -288,7 +367,7 @@ export default function Chat({
                 <Sparkles className="h-5 w-5" />
               </span>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-300">
-                ResearchSwarm AI
+                Today&apos;s workspace
               </p>
               <h2 className="mt-2 text-balance text-3xl font-semibold tracking-[-0.035em] text-[var(--text-primary)] sm:text-4xl">
                 What do you want to research today?
@@ -299,7 +378,122 @@ export default function Chat({
               </p>
             </div>
 
-            <div>
+            <div className="continue-card">
+              <div className="flex items-center justify-between">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                  Continue last run
+                </p>
+                <span className="ready-badge">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      liveLastSession?.status === "completed" ||
+                      !liveLastSession?.status
+                        ? "bg-emerald-400"
+                        : "bg-amber-400"
+                    }`}
+                  />
+                  {liveLastSession
+                    ? liveLastSession.status
+                        .replace(/_/g, " ")
+                        .replace(/^\w/, (c) => c.toUpperCase())
+                    : "Completed"}
+                </span>
+              </div>
+              <p className="mt-2.5 text-sm font-medium text-[var(--text-primary)]">
+                {liveLastSession?.title || liveLastSession?.prompt ||
+                  "Compare LangGraph and CrewAI for production systems"}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[var(--text-muted)]">
+                <span className="flex items-center gap-1.5">
+                  <Check className="h-3 w-3 text-emerald-400" />
+                  {liveLastSession?.sources_total ?? 21} sources
+                </span>
+                {liveLastSession?.mode && (
+                  <span className="flex items-center gap-1.5">
+                    <Check className="h-3 w-3 text-emerald-400" />
+                    {liveLastSession.mode.replace(/_/g, " ")}
+                  </span>
+                )}
+                {!liveLastSession?.mode && (
+                  <span className="flex items-center gap-1.5">
+                    <Check className="h-3 w-3 text-emerald-400" />
+                    7 citations
+                  </span>
+                )}
+                {liveLastSession?.updated_at && (
+                  <span className="flex items-center gap-1.5">
+                    <Check className="h-3 w-3 text-emerald-400" />
+                    {timeAgo(liveLastSession.updated_at)}
+                  </span>
+                )}
+                {!liveLastSession?.updated_at && (
+                  <span className="flex items-center gap-1.5">
+                    <Check className="h-3 w-3 text-emerald-400" />
+                    6.4s execution
+                  </span>
+                )}
+                <span className="ml-auto hidden font-mono text-[9px] sm:inline">
+                  {liveLastSession
+                    ? liveLastSession.updated_at
+                      ? timeAgo(liveLastSession.updated_at)
+                      : "just now"
+                    : "2h ago"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setInput(
+                    liveLastSession?.prompt ||
+                      liveLastSession?.title ||
+                      "Compare LangGraph and CrewAI for production systems",
+                  );
+                  inputRef.current?.focus();
+                }}
+                className="continue-button"
+              >
+                Resume this run
+                <ArrowUp className="h-3 w-3 -rotate-90" />
+              </button>
+            </div>
+
+            <div className="mt-6">
+              <div className="mb-2.5 flex items-center justify-between">
+                <p className="text-[10px] font-medium text-[var(--text-secondary)]">
+                  Recent research
+                </p>
+                <span className="text-[9px] text-[var(--text-muted)]">
+                  From your memory
+                </span>
+              </div>
+              <div className="grid gap-1.5 sm:grid-cols-3">
+                {recentItems.map((run) => (
+                  <button
+                    key={run.key}
+                    type="button"
+                    onClick={() => {
+                      setInput(run.prompt);
+                      inputRef.current?.focus();
+                    }}
+                    className="run-row"
+                  >
+                    <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-400/10 text-emerald-300">
+                      <Check className="h-3 w-3" />
+                    </span>
+                    <span className="min-w-0 flex-1 text-left">
+                      <span className="block truncate text-[11px] font-medium text-[var(--text-secondary)]">
+                        {run.title}
+                      </span>
+                      <span className="block text-[9px] text-[var(--text-muted)]">
+                        {run.meta}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-7">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs font-medium text-[var(--text-secondary)]">
                   Suggested prompts
@@ -331,7 +525,7 @@ export default function Chat({
 
             <div className="mt-7 grid gap-2 sm:grid-cols-3">
               {capabilityCards.map(
-                ({ icon: Icon, title, detail, meta, color }) => (
+                ({ icon: Icon, title, detail, meta, chips, color }) => (
                   <article key={title} className="capability-card">
                     <div className="flex items-start justify-between">
                       <span className={`capability-icon capability-icon-${color}`}>
@@ -348,6 +542,14 @@ export default function Chat({
                     <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                       {detail}
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {chips.map((chip) => (
+                        <span key={chip} className="capability-chip">
+                          <Check className="h-2 w-2 text-emerald-400" />
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
                   </article>
                 ),
               )}
@@ -410,6 +612,28 @@ export default function Chat({
       </div>
 
       <div className="composer-wrap">
+        <div className="mx-auto mb-2 flex w-full max-w-4xl items-center gap-1.5 overflow-x-auto pb-0.5">
+          {researchModes.map((m) => (
+            <button
+              key={m.label}
+              type="button"
+              onClick={() => setMode(mode?.label === m.label ? null : m)}
+              className={cn(
+                "mode-chip",
+                mode?.label === m.label && "mode-chip-active",
+              )}
+              title={m.hint}
+            >
+              {m.label}
+            </button>
+          ))}
+          {mode && (
+            <span className="ml-auto hidden shrink-0 text-[9px] text-[var(--text-muted)] sm:block">
+              {mode.hint}
+            </span>
+          )}
+        </div>
+
         <form
           onSubmit={handleSubmit}
           className="composer mx-auto w-full max-w-4xl"
@@ -420,7 +644,11 @@ export default function Chat({
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything. ResearchSwarm will build a plan..."
+            placeholder={
+              mode
+                ? `${mode.label} — ${mode.hint}. ResearchSwarm will build a plan...`
+                : "Ask anything. ResearchSwarm will build a plan..."
+            }
             className="min-h-[54px] w-full resize-none bg-transparent px-4 pb-2 pt-4 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
             rows={1}
             disabled={isRunning}
@@ -451,6 +679,12 @@ export default function Chat({
                   <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-violet-400" />
                 )}
               </button>
+              {mode && (
+                <span className="composer-tool text-violet-300">
+                  <Sparkles className="h-3 w-3" />
+                  {mode.label}
+                </span>
+              )}
               <span className="composer-tool hidden sm:flex">
                 <Globe2 className="h-3.5 w-3.5 text-cyan-400" />
                 Web

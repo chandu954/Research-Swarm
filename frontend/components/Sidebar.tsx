@@ -29,6 +29,7 @@ interface SidebarProps {
   documents: UploadedDocument[];
   recentQueries?: string[];
   collections?: string[];
+  conversations?: Conversation[];
   onClearAll: () => void;
   onNewChat: () => void;
   onOpenDocuments?: () => void;
@@ -52,6 +53,7 @@ interface Conversation {
   query?: string;
   timestamp?: string;
   turn_count?: number;
+  demo?: boolean;
 }
 
 const navItems = [
@@ -61,10 +63,20 @@ const navItems = [
   { icon: Star, label: "Pinned", active: false },
 ];
 
+const demoConversations = [
+  { query: "LangGraph vs CrewAI", meta: "2h ago · 21 sources" },
+  { query: "LLM alignment 2025", meta: "yesterday · 18 sources" },
+  { query: "Postgres vs MongoDB", meta: "Monday · 14 sources" },
+  { query: "Local LLM stack survey", meta: "Jul 28 · 9 sources" },
+];
+
+const demoCollections = ["Research papers", "AI agents", "Vector DBs", "Benchmarks"];
+
 export default function Sidebar({
   documents,
   recentQueries = [],
   collections = [],
+  conversations: liveConversations,
   onClearAll,
   onNewChat,
   onOpenDocuments,
@@ -133,14 +145,25 @@ export default function Sidebar({
   }, [renameValue]);
 
   const displayConversations =
-    conversations.length > 0
-      ? conversations
-      : recentQueries.map((q, i) => ({
-          id: `local-${i}`,
-          query: q,
-          timestamp: "",
-          turn_count: 0,
-        }));
+    liveConversations && liveConversations.length > 0
+      ? liveConversations
+      : conversations.length > 0
+        ? conversations
+        : recentQueries.length > 0
+        ? recentQueries.map((q, i) => ({
+            id: `local-${i}`,
+            query: q,
+            timestamp: "",
+            turn_count: 0,
+            demo: false,
+          }))
+        : demoConversations.map((d, i) => ({
+            id: `demo-${i}`,
+            query: d.query,
+            timestamp: d.meta,
+            turn_count: 0,
+            demo: true,
+          }));
 
   const filtered = searchQuery
     ? displayConversations.filter((c) =>
@@ -224,6 +247,30 @@ export default function Sidebar({
         </div>
       )}
 
+      {collections.length === 0 && (
+        <div className="mt-6 px-2">
+          <div className="mb-2 flex items-center gap-2">
+            <Layers className="h-3 w-3 text-[var(--text-muted)]" />
+            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+              Collections
+            </p>
+            <span className="sidebar-count">4</span>
+          </div>
+          <div className="space-y-0.5">
+            {demoCollections.map((collection) => (
+              <button
+                key={collection}
+                type="button"
+                className="conversation-item group"
+              >
+                <span className="conversation-dot bg-violet-400/40" />
+                <span className="truncate">{collection}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-1">
         <div className="mb-2 flex items-center justify-between px-2">
           <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
@@ -287,11 +334,18 @@ export default function Sidebar({
                       </span>
                       {conv.timestamp && (
                         <span className="block text-[8px] text-[var(--text-muted)]">
-                          {new Date(conv.timestamp).toLocaleDateString()}
-                          {conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
+                          {conv.demo
+                            ? conv.timestamp
+                            : new Date(conv.timestamp).toLocaleDateString()}
+                          {!conv.demo && conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
                         </span>
                       )}
                     </span>
+                    {conv.demo && (
+                      <span className="rounded bg-white/[0.04] px-1 py-0.5 text-[7px] uppercase tracking-wide text-[var(--text-muted)]">
+                        Sample
+                      </span>
+                    )}
                   </button>
                 )}
                 {menuConvId === conv.id && (
