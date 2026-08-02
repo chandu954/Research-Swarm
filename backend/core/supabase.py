@@ -277,6 +277,7 @@ def save_report(
     content_md: str,
     sources: list[dict[str, Any]] | None = None,
     metrics: dict[str, Any] | None = None,
+    storage_path: str | None = None,
 ) -> dict[str, Any]:
     row = (
         get_supabase()
@@ -290,12 +291,37 @@ def save_report(
                 "status": "ready",
                 "sources": sources or [],
                 "metrics": metrics or {},
+                "storage_path": storage_path,
             }
         )
         .execute()
         .data
     )
     return row[0]
+
+
+def upload_report_file(
+    *,
+    user_id: str,
+    report_id: str,
+    filename: str,
+    content: str | bytes,
+    content_type: str = "text/markdown",
+) -> str | None:
+    """Upload a generated report to the rs_reports bucket.
+
+    Returns the storage path (folder-scoped to the user id for RLS).
+    """
+    from storage3.types import FileOptions
+
+    storage_path = f"{user_id}/{report_id}/{filename}"
+    data = content.encode() if isinstance(content, str) else content
+    get_supabase().storage.from_("rs_reports").upload(
+        storage_path,
+        data,
+        FileOptions(content_type=content_type, upsert="true"),
+    )
+    return storage_path
 
 
 def log_activity(
@@ -348,3 +374,9 @@ def update_document(document_id: str, **fields: Any) -> None:
     get_supabase().table("rs_documents").update(fields).eq(
         "id", document_id
     ).execute()
+
+
+def set_report_storage_path(report_id: str, storage_path: str) -> None:
+    get_supabase().table("rs_reports").update(
+        {"storage_path": storage_path}
+    ).eq("id", report_id).execute()

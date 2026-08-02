@@ -588,7 +588,9 @@ def _finalize_supabase_run(
             log_activity,
             save_report,
             save_run_metrics,
+            set_report_storage_path,
             update_session,
+            upload_report_file,
             upsert_agent_run,
         )
 
@@ -628,7 +630,13 @@ def _finalize_supabase_run(
         )
 
         if answer and status != "failed":
-            save_report(
+            from backend.core.supabase import (
+                log_activity,
+                save_report,
+                upload_report_file,
+            )
+
+            report = save_report(
                 user_id=user_id,
                 session_id=session_id,
                 title=query[:120],
@@ -640,6 +648,17 @@ def _finalize_supabase_run(
                     "token_count": result.get("token_count"),
                 },
             )
+            try:
+                storage_path = upload_report_file(
+                    user_id=user_id,
+                    report_id=report["id"],
+                    filename=f"{query[:60].strip().replace(' ', '-')[:60]}.md",
+                    content=answer,
+                )
+                if storage_path:
+                    set_report_storage_path(report["id"], storage_path)
+            except Exception as exc:  # pragma: no cover - resilience path
+                logger.warning(f"report storage upload skipped: {exc}")
             log_activity(
                 user_id=user_id,
                 action="research.completed",
@@ -1036,10 +1055,12 @@ def _mirror_document_upload(
         sb_user_id = profile["id"]
         storage_path = f"{sb_user_id}/{document_id}/{filename}"
 
+        from storage3.types import FileOptions
+
         get_supabase().storage.from_("rs_documents").upload(
             storage_path,
             content,
-            {"content-type": "application/pdf", "upsert": True},
+            FileOptions(content_type="application/pdf", upsert="true"),
         )
 
         row = save_document(
