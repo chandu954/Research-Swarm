@@ -487,12 +487,18 @@ export async function uploadPDF(file: File) {
    ─────────────────────────────────────────── */
 
 export interface DocumentInfo {
-  document_id: string;
+  id?: string;
+  document_id?: string;
   filename: string;
+  name?: string;
   original_filename?: string;
-  size: number;
-  status: string;
+  size?: number;
+  size_bytes?: number;
+  status?: string;
   page_count?: number;
+  pages?: number;
+  summary?: string;
+  auto_tags?: string[];
   created_at?: string;
 }
 

@@ -588,6 +588,7 @@ def _finalize_supabase_run(
             log_activity,
             save_report,
             save_run_metrics,
+            set_report_status,
             set_report_storage_path,
             update_session,
             upload_report_file,
@@ -659,6 +660,10 @@ def _finalize_supabase_run(
                     set_report_storage_path(report["id"], storage_path)
             except Exception as exc:  # pragma: no cover - resilience path
                 logger.warning(f"report storage upload skipped: {exc}")
+                try:
+                    set_report_status(report["id"], "failed")
+                except Exception as status_exc:  # pragma: no cover
+                    logger.warning(f"report status update failed: {status_exc}")
             log_activity(
                 user_id=user_id,
                 action="research.completed",
@@ -1615,7 +1620,7 @@ async def workspace_ws(workspace_id: str, ws: WebSocket):
                 return
         break  # only one iteration needed
 
-    await ws.accept()
+    await ws.accept(subprotocol="research-swarm")
 
     mgr = get_workspace_manager()
     room = mgr.get_or_create(workspace_id)

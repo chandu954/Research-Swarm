@@ -28,6 +28,7 @@ import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConve
 import { useAuth } from "@/lib/auth";
 import { useProviderSettings } from "@/lib/useSettings";
 import { collaborationClient } from "@/lib/websocket";
+import { useTenant } from "@/lib/tenant";
 import { useRealtimeWorkspace } from "@/lib/supabase/realtime";
 import { useLiveWorkspace } from "@/lib/supabase/query";
 import type {
@@ -72,6 +73,7 @@ export default function ResearchWorkspace() {
   const [debateMode, setDebateMode] = useState(false);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
   const { user, token } = useAuth();
+  const { currentWorkspace } = useTenant();
   const realtime = useRealtimeWorkspace(supabaseSessionId);
   const live = useLiveWorkspace();
 
@@ -100,14 +102,26 @@ export default function ResearchWorkspace() {
   useEffect(() => {
     listDocuments()
       .then((existingDocuments) => {
-        setDocuments(existingDocuments || []);
+        const mapped = (Array.isArray(existingDocuments) ? existingDocuments : []).map(
+          (doc): UploadedDocument => ({
+            document_id: doc.id ?? doc.document_id ?? "",
+            filename: doc.filename ?? doc.name ?? "",
+            original_filename: doc.original_filename ?? doc.filename ?? "",
+            size: doc.size_bytes ?? doc.size ?? 0,
+            status: doc.status ?? "ready",
+            page_count: doc.page_count ?? doc.pages ?? undefined,
+            summary: doc.summary,
+            auto_tags: doc.auto_tags ?? [],
+          }),
+        );
+        setDocuments(mapped);
       })
       .catch((err) => console.warn("Failed to load documents:", err));
   }, []);
 
   useEffect(() => {
-    if (!token) return;
-    collaborationClient.connect("default", token, {
+    if (!token || !currentWorkspace) return;
+    collaborationClient.connect(currentWorkspace.id, token, {
       onResearchStart: (payload) => {
         if (payload.userId !== user?.id) {
           setLogs((prev) => [...prev, {
@@ -132,7 +146,7 @@ export default function ResearchWorkspace() {
       },
     });
     return () => collaborationClient.disconnect();
-  }, [token]);
+  }, [token, currentWorkspace?.id]);
 
   useEffect(() => {
     if (!isRunning) {

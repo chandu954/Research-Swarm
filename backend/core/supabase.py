@@ -380,3 +380,9 @@ def set_report_storage_path(report_id: str, storage_path: str) -> None:
     get_supabase().table("rs_reports").update(
         {"storage_path": storage_path}
     ).eq("id", report_id).execute()
+
+
+def set_report_status(report_id: str, status: str) -> None:
+    get_supabase().table("rs_reports").update({"status": status}).eq(
+        "id", report_id
+    ).execute()

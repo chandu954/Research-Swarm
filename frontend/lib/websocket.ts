@@ -40,6 +40,8 @@ export class CollaborationClient {
   private currentWorkspaceId: string | null = null;
   private currentToken: string | null = null;
   private isDisconnecting = false;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 3;
 
   connect(workspaceId: string, token: string, callbacks: WSCallback) {
     this.disconnect();
@@ -47,6 +49,7 @@ export class CollaborationClient {
     this.currentToken = token;
     this.callbacks = callbacks;
     this.isDisconnecting = false;
+    this.reconnectAttempts = 0;
     this._connect();
   }
 
@@ -76,6 +79,7 @@ export class CollaborationClient {
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = null;
         }
+        this.reconnectAttempts = 0;
       };
       this.ws.onmessage = (event) => {
         try {
@@ -84,13 +88,19 @@ export class CollaborationClient {
         } catch { /* skip malformed */ }
       };
       this.ws.onerror = (err) => this.callbacks.onError?.(err);
-      this.ws.onclose = () => {
-        if (!this.isDisconnecting) {
-          this.reconnectTimer = setTimeout(() => this._connect(), 5000);
+      this.ws.onclose = (event) => {
+        // Policy rejections (4xxx) or a handshake that never opened won't
+        // succeed on retry — stop after a few attempts to avoid console spam.
+        if (this.isDisconnecting) return;
+        if ((event && event.code >= 4000 && event.code < 5000) || this.reconnectAttempts >= this.maxReconnectAttempts) {
+          return;
         }
+        this.reconnectAttempts += 1;
+        this.reconnectTimer = setTimeout(() => this._connect(), 5000);
       };
     } catch (err) {
-      if (!this.isDisconnecting) {
+      if (!this.isDisconnecting && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectAttempts += 1;
         this.reconnectTimer = setTimeout(() => this._connect(), 5000);
       }
     }
@@ -136,8 +146,16 @@ export class CollaborationClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.ws?.close();
+    const ws = this.ws;
     this.ws = null;
+    if (!ws) return;
+    if (ws.readyState === WebSocket.CONNECTING) {
+      // Let the handshake settle first so the browser doesn't log a
+      // "closed before the connection is established" warning.
+      ws.onopen = () => ws.close();
+    } else {
+      ws.close();
+    }
   }
 }
 

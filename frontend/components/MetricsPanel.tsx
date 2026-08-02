@@ -52,7 +52,7 @@ export default function MetricsPanel({
       value: hasRun
         ? formatExecutionTime(executionTime)
         : lastRun?.execution_time_ms != null
-          ? formatExecutionTime(lastRun.execution_time_ms)
+          ? formatExecutionTime(lastRun.execution_time_ms / 1000)
           : SAMPLE_RUN.execution,
       icon: Timer,
       color: "violet",
@@ -107,7 +107,9 @@ export default function MetricsPanel({
             ? model
               ? `Model · ${model}`
               : "This run's performance"
-            : "Sample · run a research to see yours"}
+            : lastRun
+              ? "Last run · from memory"
+              : "Sample · run a research to see yours"}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
