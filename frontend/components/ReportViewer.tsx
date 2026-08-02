@@ -54,11 +54,19 @@ function CitationChip({
     <span className="group relative inline-block whitespace-nowrap">
       <span
         data-citation={index}
-        className="mx-0.5 inline-flex h-4 min-w-4 cursor-pointer items-center justify-center rounded-[5px] border border-[var(--accent-violet)]/40 bg-[var(--accent-violet)]/10 px-1 align-[2px] text-[10px] font-semibold leading-none text-[var(--accent-violet)] transition-colors group-hover:border-[var(--accent-violet)] group-hover:bg-[var(--accent-violet)]/20"
+        role="link"
+        tabIndex={0}
+        aria-label={`Source ${index}: ${source?.title ?? "unknown source"}`}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && source?.url) {
+            window.open(source.url, "_blank", "noopener,noreferrer");
+          }
+        }}
+        className="mx-0.5 inline-flex h-4 min-w-4 cursor-pointer items-center justify-center rounded-[5px] border border-[var(--accent-violet)]/40 bg-[var(--accent-violet)]/10 px-1 align-[2px] text-[10px] font-semibold leading-none text-[var(--accent-violet)] outline-none transition-colors group-hover:border-[var(--accent-violet)] group-hover:bg-[var(--accent-violet)]/20 group-focus-within:border-[var(--accent-violet)] group-focus-within:bg-[var(--accent-violet)]/20"
       >
         {index}
       </span>
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-72 -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]/95 p-3 shadow-2xl backdrop-blur-xl group-hover:block">
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-72 -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]/95 p-3 shadow-2xl backdrop-blur-xl group-hover:block group-focus-within:block">
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[var(--accent-violet)]">
           Source {index}
         </span>
