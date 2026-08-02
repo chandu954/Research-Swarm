@@ -20,6 +20,8 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    supabase_access_token: Optional[str] = None
+    supabase_refresh_token: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):

@@ -7,6 +7,7 @@ backend go through the service role so RLS never blocks agent writes.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -83,8 +84,10 @@ def _bridge_password(legacy_user_id: str) -> str:
 
     Never stored anywhere: derived from the legacy JWT user id and the
     server secret so a browser session can always be minted on demand.
+    SHA-256 keeps it under bcrypt's 72-byte limit regardless of id length.
     """
-    return f"rs-bridge::{legacy_user_id}::{_BRIDGE_SECRET}"
+    raw = f"rs-bridge::{legacy_user_id}::{_BRIDGE_SECRET}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def ensure_supabase_user(
@@ -114,7 +117,7 @@ def ensure_supabase_user(
             "user_metadata": user_metadata or {},
         }
     )
-    return {"id": str(created.id), "email": created.email}
+    return {"id": str(created.user.id), "email": created.user.email}
 
 
 def create_browser_session(

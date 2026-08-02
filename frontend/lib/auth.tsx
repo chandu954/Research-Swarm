@@ -2,6 +2,20 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { api, API_URL, TOKEN_KEY, REFRESH_KEY, ApiClientError } from "./api-client";
+import { clearSupabaseSession, storeSupabaseSession } from "./supabase/session";
+
+interface TokenPair {
+  access_token: string;
+  refresh_token: string;
+  supabase_access_token?: string | null;
+  supabase_refresh_token?: string | null;
+}
+
+async function persistBridgeTokens(data: TokenPair) {
+  if (data.supabase_access_token && data.supabase_refresh_token) {
+    await storeSupabaseSession(data.supabase_access_token, data.supabase_refresh_token);
+  }
+}
 
 export interface AuthUser {
   id: string;
@@ -77,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data);
     } catch (e) {
       if (e instanceof ApiClientError && e.status === 401) {
+        void clearSupabaseSession();
         clearAuth();
         setUser(null);
         setToken(null);
@@ -88,28 +103,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetchUser(); }, [fetchUser]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const data = await api.post<{ access_token: string; refresh_token: string }>(
+    const data = await api.post<TokenPair>(
       "/auth/login",
       { email, password },
       { retryable: false },
     );
     setStoredToken(data.access_token);
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
+    await persistBridgeTokens(data);
     await fetchUser();
   }, [setStoredToken, fetchUser]);
 
   const register = useCallback(async (email: string, password: string, name: string) => {
-    const data = await api.post<{ access_token: string; refresh_token: string }>(
+    const data = await api.post<TokenPair>(
       "/auth/register",
       { email, password, name },
       { retryable: false },
     );
     setStoredToken(data.access_token);
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
+    await persistBridgeTokens(data);
     await fetchUser();
   }, [setStoredToken, fetchUser]);
 
   const logout = useCallback(() => {
+    void clearSupabaseSession();
     clearAuth();
     setToken(null);
     setUser(null);
@@ -138,6 +156,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (e.data?.access_token) {
           setStoredToken(e.data.access_token);
           if (e.data.refresh_token) localStorage.setItem(REFRESH_KEY, e.data.refresh_token);
+          if (e.data.supabase_access_token && e.data.supabase_refresh_token) {
+            void persistBridgeTokens(e.data);
+          }
           fetchUser();
           window.removeEventListener("message", handler);
           clearInterval(checkClosed);
@@ -164,13 +185,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const rt = getStoredRefresh();
     if (!rt) return false;
     try {
-      const data = await api.post<{ access_token: string; refresh_token: string }>(
+      const data = await api.post<TokenPair>(
         "/auth/refresh",
         { refresh_token: rt },
         { retryable: false },
       );
       setStoredToken(data.access_token);
       if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+      await persistBridgeTokens(data);
       return true;
     } catch {
       clearAuth();

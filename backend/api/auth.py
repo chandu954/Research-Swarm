@@ -40,11 +40,46 @@ from backend.auth.dependencies import get_current_user
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _build_tokens(user: User) -> TokenResponse:
-    return TokenResponse(
+async def _build_tokens(user: User) -> TokenResponse:
+    """Build JWT tokens and bridge the user's identity to Supabase.
+
+    The Supabase identity is provisioned in the background so RLS, realtime
+    and storage have an `auth.uid()` for this user — without a re-login.
+    Persistence failures never break the primary JWT auth flow.
+    """
+    tokens = TokenResponse(
         access_token=create_access_token(user.id, {"name": user.name}),
         refresh_token=create_refresh_token(user.id),
     )
+    try:
+        from backend.core.supabase import (
+            create_browser_session,
+            ensure_supabase_user,
+            upsert_profile,
+        )
+
+        sb_user = ensure_supabase_user(
+            email=user.email,
+            legacy_user_id=str(user.id),
+            user_metadata={
+                "name": user.name,
+                "avatar_url": user.avatar_url or "",
+            },
+        )
+        upsert_profile(
+            supabase_user_id=sb_user["id"],
+            legacy_user_id=str(user.id),
+            email=user.email,
+            name=user.name,
+            avatar_url=user.avatar_url,
+        )
+        session = create_browser_session(user.email, str(user.id))
+        if session and session["access_token"]:
+            tokens.supabase_access_token = session["access_token"]
+            tokens.supabase_refresh_token = session["refresh_token"]
+    except Exception as exc:  # pragma: no cover - resilience path
+        print(f"[supabase-bridge] skipped for {user.email}: {exc}")
+    return tokens
 
 
 async def _create_session(user: User, request: Request, session: AsyncSession) -> str:
@@ -138,7 +173,7 @@ async def register(
     await _create_default_organization(session, user)
     await _create_session(user, request, session)
 
-    return _build_tokens(user)
+    return await _build_tokens(user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -164,7 +199,7 @@ async def login(
     await session.flush()
     await _create_session(user, request, session)
 
-    return _build_tokens(user)
+    return await _build_tokens(user)
 
 
 class RefreshRequest(BaseModel):
@@ -186,7 +221,7 @@ async def refresh(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
-    return _build_tokens(user)
+    return await _build_tokens(user)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -223,7 +258,9 @@ def _oauth_callback_html(tokens: TokenResponse, error: str = "") -> HTMLResponse
           if (window.opener) {{
             window.opener.postMessage({{
               access_token: {json.dumps(tokens.access_token)},
-              refresh_token: {json.dumps(tokens.refresh_token)}
+              refresh_token: {json.dumps(tokens.refresh_token)},
+              supabase_access_token: {json.dumps(tokens.supabase_access_token)},
+              supabase_refresh_token: {json.dumps(tokens.supabase_refresh_token)}
             }}, "{app_url}");
             window.close();
           }} else {{
@@ -269,7 +306,7 @@ async def _handle_oauth_callback(
         db_session=session,
     )
     await _create_session(user, request, session)
-    return _oauth_callback_html(_build_tokens(user))
+    return _oauth_callback_html(await _build_tokens(user))
 
 
 # ── Google OAuth ────────────────────────────────────────────────
