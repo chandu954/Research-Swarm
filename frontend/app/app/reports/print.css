@@ -1,0 +1,36 @@
+/* Print/PDF export styles — scoped to the report viewer page (Phase 8). */
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  .report-print-area {
+    max-width: none !important;
+    padding: 0 !important;
+    color: #111 !important;
+  }
+
+  .report-print-area .prose-custom {
+    color: #1a1a1a;
+  }
+
+  .report-print-area .prose-custom :where(h1, h2, h3, h4) {
+    color: #111;
+  }
+
+  .report-print-area :where(a) {
+    color: #4338ca;
+    text-decoration: underline;
+  }
+
+  .report-print-area .hidden,
+  .report-print-area aside {
+    display: none !important;
+  }
+
+  .report-print-area [class*="hover:block"] {
+    display: none !important;
+  }
+}

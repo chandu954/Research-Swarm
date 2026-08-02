@@ -23,6 +23,7 @@ import Topbar from "@/components/Topbar";
 import KnowledgeGraph from "@/components/KnowledgeGraph";
 import ReportGenerator from "@/components/ReportGenerator";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
+import ReportsPanel from "@/components/ReportsPanel";
 import SourceInspector from "@/components/SourceInspector";
 import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConversation, ApiClientError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -542,6 +543,7 @@ export default function ResearchWorkspace() {
                 selectedDocs={selectedDocs}
                 onSelectionChange={setSelectedDocs}
               />
+              <ReportsPanel reports={live.reports} />
               <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
               <Sources sources={sources} onInspect={setInspectedSource} />
               {lastAnswer && (

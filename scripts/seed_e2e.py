@@ -187,20 +187,35 @@ def insert_reports(sid: str) -> list[str]:
         SEED_REPORT_TITLES[0]: (
             "## RAG vs Fine-tuning\n\n"
             "We compare retrieval-augmented generation with supervised fine-tuning "
-            "across accuracy, freshness, and maintenance cost for domain Q&A.",
+            "across accuracy, freshness, and maintenance cost for domain Q&A.\n\n"
+            "Retrieval-augmented generation keeps answers current without retraining, "
+            "because knowledge is injected at query time from external corpora [Source 1]. "
+            "Fine-tuning can match or exceed RAG on narrow, stable domains, but requires "
+            "re-running the training pipeline every time the underlying facts change [Source 2]. "
+            "Hybrid deployments—fine-tuned routing with retrieval fallback—reduce "
+            "latency while preserving freshness [Source 1, 2].",
             [{"url": "https://arxiv.org/abs/2005.11401", "title": "RAG paper"}, {"url": "https://example.com/rag-vs-ft", "title": "Benchmark"}],
         ),
         SEED_REPORT_TITLES[1]: (
             "## Agent Evaluation Frameworks\n\n"
             "A survey of offline and online evaluation harnesses for multi-agent "
-            "research systems, with recommendations for CI integration.",
+            "research systems, with recommendations for CI integration.\n\n"
+            "Offline evaluation measures citation accuracy and answer grounding, which "
+            "correlates with user-rated trustworthiness [Source 1]. Online harnesses "
+            "score live research runs on source coverage and hallucination rate [Source 2]. "
+            "For CI, snapshot-based regression suites are the cheapest signal; "
+            "human review gates remain the gold standard [Source 1].",
             [{"url": "https://example.com/agent-eval", "title": "Agent eval survey"}, {"url": "https://example.com/harness", "title": "Harness docs"}],
         ),
         SEED_REPORT_TITLES[2]: (
             "## RAG System Design\n\n"
             "End-to-end design notes: chunking strategy, hybrid retrieval, "
-            "re-ranking, and citation-aware answer synthesis.",
-            [{"url": "https://example.com/rag-design", "title": "Design doc"}],
+            "re-ranking, and citation-aware answer synthesis.\n\n"
+            "Semantic chunking with overlap improves retrieval precision on long "
+            "documents [Source 1]. Hybrid retrieval combines dense and keyword "
+            "signals to preserve rare-term recall [Source 1, 2]. Re-ranking with "
+            "cross-encoders lifts top-k precision and reduces citation errors [Source 2].",
+            [{"url": "https://example.com/rag-design", "title": "Design doc"}, {"url": "https://example.com/retrieval", "title": "Hybrid retrieval notes"}],
         ),
     }
     for title, (content, sources) in bodies.items():

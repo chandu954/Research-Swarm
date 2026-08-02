@@ -196,7 +196,6 @@ export function authFlowReducer(state: AuthFlowState, action: AuthFlowAction): A
 
     case "AUTH_START":
       if (!isAuthInteractive(state) && state.status !== "checking_backend") {
-        if (state.status === "checking_backend") return state;
         if (!canTransitionFrom(state.status, action.type)) return state;
       }
       if (state.status === "backend_offline" || state.status === "network_offline" || state.status === "checking_backend") {

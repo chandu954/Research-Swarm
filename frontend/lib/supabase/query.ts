@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "./client";
 import { hasSupabaseSession } from "./session";
+import type { SourceCitation } from "@/lib/types";
 
 export interface LiveSession {
   id: string;
@@ -142,4 +143,36 @@ export function useLiveWorkspace(): LiveWorkspace {
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
   return { ready, sessions, collections, documents, reports, lastMetrics, refresh };
+}
+
+export interface ReportDetail {
+  id: string;
+  title: string;
+  status: string;
+  content_md: string;
+  sources: SourceCitation[];
+  metrics?: {
+    execution_time_ms?: number | null;
+    sources?: number | null;
+    token_count?: number | null;
+    [key: string]: unknown;
+  } | null;
+  storage_path?: string | null;
+  format?: string | null;
+  is_pinned?: boolean | null;
+  is_favorite?: boolean | null;
+  session_id?: string | null;
+  created_at?: string | null;
+}
+
+export async function getReportById(id: string): Promise<ReportDetail | null> {
+  if (!hasSupabaseSession()) return null;
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("rs_reports")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as unknown as ReportDetail;
 }
