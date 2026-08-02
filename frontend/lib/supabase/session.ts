@@ -38,11 +38,16 @@ function readSbCookie(): { accessToken: string | null; refreshToken: string | nu
     if (idx < 0) continue;
     const name = cookie.slice(0, idx);
     if (!name.startsWith("sb-") || !name.endsWith("-auth-token")) continue;
+    const raw = decodeURIComponent(cookie.slice(idx + 1));
+    // @supabase/ssr persists the session as `base64-<base64 JSON>`; also
+    // tolerate a plain JSON payload for older/manual setups.
     try {
-      const value = JSON.parse(decodeURIComponent(cookie.slice(idx + 1)));
+      const parsed = raw.startsWith("base64-")
+        ? JSON.parse(atob(raw.slice("base64-".length)))
+        : JSON.parse(raw);
       return {
-        accessToken: value.access_token ?? null,
-        refreshToken: value.refresh_token ?? null,
+        accessToken: parsed.access_token ?? null,
+        refreshToken: parsed.refresh_token ?? null,
       };
     } catch {
       // not a session cookie — keep scanning

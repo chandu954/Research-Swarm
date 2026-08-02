@@ -33,7 +33,7 @@ export default function Topbar({
     : "U";
 
   return (
-    <header className="flex h-12 items-center justify-between border-b border-white/[0.06] bg-[var(--surface)]/80 px-3 backdrop-blur-xl">
+    <header className="relative z-40 flex h-12 items-center justify-between border-b border-white/[0.06] bg-[var(--surface)]/80 px-3 backdrop-blur-xl">
       <div className="flex items-center gap-2">
         <button
           onClick={onToggleSidebar}
@@ -72,6 +72,14 @@ export default function Topbar({
       </div>
 
       <div className="flex items-center gap-1.5">
+        <span className="hidden h-6 items-center gap-1.5 rounded-full border border-emerald-400/15 bg-emerald-500/[0.06] px-2.5 text-[9px] font-medium text-emerald-300 lg:flex">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          </span>
+          Local runtime · connected
+        </span>
+
         <button
           onClick={onOpenPalette}
           className="flex h-8 items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-[11px] text-[var(--text-muted)] transition-colors hover:border-white/[0.12] hover:text-[var(--text-secondary)]"

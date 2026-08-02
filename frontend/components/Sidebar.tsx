@@ -72,6 +72,20 @@ const demoConversations = [
 
 const demoCollections = ["Research papers", "AI agents", "Vector DBs", "Benchmarks"];
 
+function timeAgo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!t) return "";
+  const diff = Date.now() - t;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 export default function Sidebar({
   documents,
   recentQueries = [],
@@ -336,7 +350,7 @@ export default function Sidebar({
                         <span className="block text-[8px] text-[var(--text-muted)]">
                           {conv.demo
                             ? conv.timestamp
-                            : new Date(conv.timestamp).toLocaleDateString()}
+                            : timeAgo(conv.timestamp) || new Date(conv.timestamp).toLocaleDateString()}
                           {!conv.demo && conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
                         </span>
                       )}
