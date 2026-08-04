@@ -35,22 +35,34 @@ export type WSCallback = {
 
 export class CollaborationClient {
   private ws: WebSocket | null = null;
-  private callbacks: WSCallback = {};
+  private subscribers = new Set<WSCallback>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private currentWorkspaceId: string | null = null;
   private currentToken: string | null = null;
-  private isDisconnecting = false;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 3;
 
+  // The client is a module-level singleton shared by every panel that needs
+  // workspace events (main page, chat sidebar, presence). Each subscriber
+  // registers its own callbacks; the socket lifecycle is driven by the first
+  // subscriber to join and the last to leave, so closing one panel can never
+  // tear down the event stream the other panels depend on.
   connect(workspaceId: string, token: string, callbacks: WSCallback) {
-    this.disconnect();
-    this.currentWorkspaceId = workspaceId;
-    this.currentToken = token;
-    this.callbacks = callbacks;
-    this.isDisconnecting = false;
-    this.reconnectAttempts = 0;
-    this._connect();
+    const isFirst = this.subscribers.size === 0;
+    this.subscribers.add(callbacks);
+    if (isFirst) {
+      this.currentWorkspaceId = workspaceId;
+      this.currentToken = token;
+      this.reconnectAttempts = 0;
+      this._connect();
+    }
+  }
+
+  disconnect(callbacks?: WSCallback) {
+    if (callbacks) this.subscribers.delete(callbacks);
+    else this.subscribers.clear();
+    if (this.subscribers.size > 0) return;
+    this._teardownSocket();
   }
 
   send(type: string, payload?: Record<string, unknown>) {
@@ -87,11 +99,15 @@ export class CollaborationClient {
           this._route(msg);
         } catch { /* skip malformed */ }
       };
-      this.ws.onerror = (err) => this.callbacks.onError?.(err);
+      this.ws.onerror = (err) => {
+        for (const callbacks of this.subscribers) callbacks.onError?.(err);
+      };
       this.ws.onclose = (event) => {
+        // A deliberate teardown nulls out `ws` before closing, so a close
+        // event arriving afterwards is ignored.
+        if (!this.ws) return;
         // Policy rejections (4xxx) or a handshake that never opened won't
         // succeed on retry — stop after a few attempts to avoid console spam.
-        if (this.isDisconnecting) return;
         if ((event && event.code >= 4000 && event.code < 5000) || this.reconnectAttempts >= this.maxReconnectAttempts) {
           return;
         }
@@ -99,7 +115,7 @@ export class CollaborationClient {
         this.reconnectTimer = setTimeout(() => this._connect(), 5000);
       };
     } catch (err) {
-      if (!this.isDisconnecting && this.reconnectAttempts < this.maxReconnectAttempts) {
+      if (this.subscribers.size > 0 && this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts += 1;
         this.reconnectTimer = setTimeout(() => this._connect(), 5000);
       }
@@ -107,39 +123,40 @@ export class CollaborationClient {
   }
 
   private _route(msg: { type: string; payload?: unknown; users?: PresenceUser[]; messages?: ChatMessage[] }) {
-    switch (msg.type) {
-      case "presence":
-        this.callbacks.onPresence?.(msg.users || []);
-        break;
-      case "chat:message":
-        this.callbacks.onChatMessage?.(msg.payload as ChatMessage);
-        break;
-      case "chat:history":
-        this.callbacks.onChatHistory?.((msg.payload as { messages: ChatMessage[] })?.messages || []);
-        break;
-      case "typing":
-        this.callbacks.onTyping?.((msg.payload as { typingUsers: TypingUser[] })?.typingUsers || []);
-        break;
-      case "research:start":
-        this.callbacks.onResearchStart?.(msg.payload as { userId: string; userName: string; taskId: string; query: string });
-        break;
-      case "research:log":
-        this.callbacks.onResearchLog?.(msg.payload as { taskId: string; log: unknown });
-        break;
-      case "research:complete":
-        this.callbacks.onResearchComplete?.(msg.payload as { taskId: string; userId: string });
-        break;
-      case "document:added":
-        this.callbacks.onDocumentAdded?.(msg.payload as { document: unknown });
-        break;
-      case "document:removed":
-        this.callbacks.onDocumentRemoved?.(msg.payload as { documentId: string });
-        break;
+    for (const callbacks of this.subscribers) {
+      switch (msg.type) {
+        case "presence":
+          callbacks.onPresence?.(msg.users || []);
+          break;
+        case "chat:message":
+          callbacks.onChatMessage?.(msg.payload as ChatMessage);
+          break;
+        case "chat:history":
+          callbacks.onChatHistory?.((msg.payload as { messages: ChatMessage[] })?.messages || []);
+          break;
+        case "typing":
+          callbacks.onTyping?.((msg.payload as { typingUsers: TypingUser[] })?.typingUsers || []);
+          break;
+        case "research:start":
+          callbacks.onResearchStart?.(msg.payload as { userId: string; userName: string; taskId: string; query: string });
+          break;
+        case "research:log":
+          callbacks.onResearchLog?.(msg.payload as { taskId: string; log: unknown });
+          break;
+        case "research:complete":
+          callbacks.onResearchComplete?.(msg.payload as { taskId: string; userId: string });
+          break;
+        case "document:added":
+          callbacks.onDocumentAdded?.(msg.payload as { document: unknown });
+          break;
+        case "document:removed":
+          callbacks.onDocumentRemoved?.(msg.payload as { documentId: string });
+          break;
+      }
     }
   }
 
-  disconnect() {
-    this.isDisconnecting = true;
+  private _teardownSocket() {
     this.currentWorkspaceId = null;
     this.currentToken = null;
     if (this.reconnectTimer) {

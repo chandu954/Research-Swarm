@@ -393,9 +393,11 @@ export async function runResearch(
   streamTaskId?: string,
   conversationId?: string,
   debateMode?: boolean,
+  signal?: AbortSignal,
 ): Promise<ResearchResult> {
   return api.post<ResearchResult>("/research", researchBody(query, documentIds, providerSettings, streamTaskId, conversationId, debateMode), {
     timeout: RESEARCH_TIMEOUT_MS,
+    signal,
   });
 }
 

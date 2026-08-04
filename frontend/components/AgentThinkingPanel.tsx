@@ -16,10 +16,10 @@ import {
 } from "lucide-react";
 import type { AgentLog } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useElapsed } from "@/lib/useElapsed";
 import {
   AGENT_MAP,
   AGENT_ORDER,
-  colorStyles,
   bgStyles,
 } from "@/lib/agents";
 import AgentInspector from "./AgentInspector";
@@ -28,7 +28,6 @@ import AgentDAG from "./AgentDAG";
 interface AgentThinkingPanelProps {
   logs: AgentLog[];
   isRunning: boolean;
-  elapsed: number;
 }
 
 function ThinkingDots() {
@@ -46,10 +45,11 @@ function ThinkingDots() {
   );
 }
 
-export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentThinkingPanelProps) {
+export default function AgentThinkingPanel({ logs, isRunning }: AgentThinkingPanelProps) {
   const [viewMode, setViewMode] = useState<"cards" | "timeline" | "graph">("cards");
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [inspectedAgent, setInspectedAgent] = useState<string | null>(null);
+  const elapsed = useElapsed(isRunning);
 
   const activeAgents = AGENT_ORDER.filter((key) => {
     const agentLogs = logs.filter((l) => l.agent === key);
@@ -70,15 +70,6 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
     if (agentLogs.length === 0) return "Waiting...";
     const last = agentLogs[agentLogs.length - 1];
     return last.details || last.action?.replace(/_/g, " ") || "Working...";
-  };
-
-  const getThinkingMessage = (key: string, status: string): string => {
-    if (status === "completed") return "Complete";
-    if (status === "failed") return "Failed";
-    const thoughts = AGENT_MAP[key]?.thinking;
-    if (!thoughts) return "Working...";
-    const logCount = logs.filter((l) => l.agent === key).length;
-    return thoughts[Math.min(logCount, thoughts.length - 1)];
   };
 
   const completedCount = activeAgents.filter((a) => getAgentStatus(a) === "completed").length;
@@ -106,6 +97,26 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
     return stats;
   }, [logs]);
 
+  const currentOperation = useMemo(() => {
+    const runningLog = [...logs].reverse().find((l) => l.status === "running");
+    if (runningLog?.details) return runningLog.details;
+    if (runningLog) return AGENT_MAP[runningLog.agent]?.label ?? "Working...";
+    const lastLog = logs[logs.length - 1];
+    if (lastLog?.details) return lastLog.details;
+    if (lastLog) return AGENT_MAP[lastLog.agent]?.label ?? "Finalizing...";
+    return "Coordinating agents...";
+  }, [logs]);
+
+  const etaText = useMemo(() => {
+    if (!isRunning) return `Finished in ${formatTime(elapsed)}`;
+    if (progress >= 8) {
+      const total = elapsed / (progress / 100);
+      const remaining = Math.max(0, total - elapsed);
+      return `~${formatTime(remaining)} remaining`;
+    }
+    return `${Math.floor(elapsed)}s elapsed`;
+  }, [isRunning, progress, elapsed]);
+
   if (!isRunning && completedCount === 0) return null;
 
   return (
@@ -122,13 +133,25 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
               {isRunning && (
                 <span className="absolute inset-0 animate-ping rounded-full bg-cyan-400/20" />
               )}
-              <Loader2 className={cn("h-4 w-4", isRunning ? "animate-spin text-cyan-400" : "text-emerald-400")} />
+              {isRunning ? (
+                <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+              ) : (
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/15">
+                  <Check className="h-3 w-3 text-emerald-400" />
+                </span>
+              )}
             </span>
             <span className="text-sm font-medium text-[var(--text-primary)]">
               {isRunning ? "AI agents working" : "Research complete"}
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {!isRunning && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400">
+                <Check className="h-2.5 w-2.5" />
+                Verified
+              </span>
+            )}
             <span className="flex items-center gap-1 text-[10px] tabular-nums text-[var(--text-muted)]">
               <Clock className="h-3 w-3" />
               {formatTime(elapsed)}
@@ -174,6 +197,25 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
             className="h-full rounded-full bg-gradient-to-r from-violet-500 via-cyan-400 to-emerald-400"
           />
         </div>
+        <div className="mt-2.5 flex items-center justify-between gap-3 text-[9px]">
+          <span className="flex min-w-0 items-center gap-1.5 text-[var(--text-secondary)]">
+            <span className="relative flex h-1.5 w-1.5 flex-shrink-0">
+              {isRunning && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400/50" />
+              )}
+              <span
+                className={cn(
+                  "relative inline-flex h-1.5 w-1.5 rounded-full",
+                  isRunning ? "bg-violet-400" : "bg-emerald-400",
+                )}
+              />
+            </span>
+            <span className="truncate">{currentOperation}</span>
+          </span>
+          <span className="flex-shrink-0 tabular-nums text-[var(--text-muted)]">
+            {etaText}
+          </span>
+        </div>
       </div>
 
       {viewMode === "cards" ? (
@@ -184,8 +226,6 @@ export default function AgentThinkingPanel({ logs, isRunning, elapsed }: AgentTh
               const Icon = AGENT_MAP[key]?.icon || BrainCircuit;
               const color = AGENT_MAP[key]?.color || "violet";
               const details = getAgentDetails(key);
-              const thinkingMsg = getThinkingMessage(key, status);
-              const cs = colorStyles[color] || colorStyles.violet;
               const bs = bgStyles[color] || bgStyles.violet;
               const stats = agentLogStats[key];
               const gradient = AGENT_MAP[key]?.gradient || "from-gray-600 to-gray-600";

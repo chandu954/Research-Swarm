@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -25,6 +25,7 @@ import {
   Scale,
   Search,
   Sparkles,
+  Square,
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,11 +43,11 @@ interface ChatProps {
   documents: UploadedDocument[];
   onSend: (query: string) => void;
   onAttach: () => void;
+  onCancel?: () => void;
   isRunning: boolean;
   debateMode?: boolean;
   onDebateToggle?: () => void;
   streamLogs?: AgentLog[];
-  elapsed?: number;
   composerRef?: React.RefObject<HTMLTextAreaElement | null>;
   liveSessions?: LiveSession[];
   liveLastSession?: LiveSession | null;
@@ -110,21 +111,6 @@ const suggestions = [
   },
 ] as const;
 
-const recentRuns = [
-  {
-    title: "LangGraph vs CrewAI",
-    meta: "21 sources · 2h ago",
-  },
-  {
-    title: "LLM alignment 2025",
-    meta: "18 sources · yesterday",
-  },
-  {
-    title: "Postgres vs MongoDB",
-    meta: "14 sources · Monday",
-  },
-] as const;
-
 const researchModes = [
   { label: "Deep Research", directive: "Deep research:", hint: "Plan, search many sources, rank evidence", icon: Sparkles },
   { label: "Compare", directive: "Compare:", hint: "Trade-offs across candidates", icon: Scale },
@@ -150,6 +136,30 @@ const rotatingPlaceholders = [
   "Generate a literature review",
   "Track the latest AI agent frameworks",
 ] as const;
+
+function SessionDivider({ timestamp }: { timestamp: number }) {
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const isToday = new Date().toDateString() === date.toDateString();
+  const label = isToday
+    ? `New research · ${time}`
+    : `New research · ${date.toLocaleDateString([], { month: "short", day: "numeric" })} · ${time}`;
+
+  return (
+    <div
+      role="separator"
+      aria-label={label}
+      className="mb-8 flex items-center gap-3"
+    >
+      <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[color-mix(in_srgb,var(--border)_70%,transparent)]" />
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.1em] text-[var(--text-muted)]">
+        <Sparkles className="h-2.5 w-2.5 text-violet-400" />
+        {label}
+      </span>
+      <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[color-mix(in_srgb,var(--border)_70%,transparent)]" />
+    </div>
+  );
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -292,6 +302,7 @@ interface ComposerProps {
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onAttach: () => void;
+  onCancel?: () => void;
   onDebateToggle?: () => void;
   debateMode?: boolean;
   isRunning: boolean;
@@ -317,6 +328,7 @@ function Composer({
   onSubmit,
   onKeyDown,
   onAttach,
+  onCancel,
   onDebateToggle,
   debateMode = false,
   isRunning,
@@ -474,6 +486,20 @@ function Composer({
               )}
             </button>
           )}
+          {isRunning && onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className={cn(
+                "inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors",
+                "border border-white/[0.08] hover:border-rose-400/40 hover:text-rose-300",
+              )}
+              aria-label="Cancel research"
+            >
+              <Square className="h-3 w-3 fill-current" />
+              Cancel
+            </button>
+          )}
           <button
             type="submit"
             disabled={!input.trim() || isRunning}
@@ -497,11 +523,11 @@ export default function Chat({
   documents,
   onSend,
   onAttach,
+  onCancel,
   isRunning,
   debateMode = false,
   onDebateToggle,
   streamLogs = [],
-  elapsed = 0,
   composerRef,
   liveSessions,
   liveLastSession,
@@ -564,13 +590,7 @@ export default function Chat({
           prompt: s.prompt,
           status: s.status,
         }))
-    : recentRuns.map((r) => ({
-        key: r.title,
-        title: r.title,
-        meta: r.meta,
-        prompt: r.title,
-        status: "completed",
-      }))
+    : []
   ).slice(0, 3);
 
   const recentCollections = collections.slice(0, 4);
@@ -602,6 +622,7 @@ export default function Chat({
     onSubmit: handleSubmit,
     onKeyDown: handleKeyDown,
     onAttach,
+    onCancel,
     onDebateToggle,
     debateMode,
     isRunning,
@@ -733,45 +754,51 @@ export default function Chat({
                 </span>
               </div>
               <div className="mt-2">
-                {recentItems.map((run, index) => (
-                  <motion.button
-                    key={run.key}
-                    type="button"
-                    onClick={() => {
-                      setInput(run.prompt);
-                      inputRef.current?.focus();
-                    }}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2, delay: index * 0.05 }}
-                    whileHover={{ y: -1 }}
-                    whileTap={{ scale: 0.995 }}
-                    className="group flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--surface-hover)_45%,transparent)] hover:shadow-[0_6px_20px_rgb(0_0_0/0.12)]"
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 flex-shrink-0 rounded-full",
-                        run.status === "completed"
-                          ? "bg-emerald-400/80"
-                          : run.status === "running"
-                            ? "animate-pulse bg-amber-400"
-                            : run.status === "failed"
-                              ? "bg-rose-400/80"
-                              : "bg-[var(--text-muted)]",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-primary)]">
-                      {run.title}
-                    </span>
-                    <span className="shrink-0 truncate text-xs text-[var(--text-muted)]">
-                      {run.meta}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-secondary)] opacity-0 transition-all duration-150 group-hover:-translate-x-0.5 group-hover:opacity-100">
-                      Resume
-                      <ArrowUp className="h-3 w-3 -rotate-90" />
-                    </span>
-                  </motion.button>
-                ))}
+                {recentItems.length === 0 ? (
+                  <p className="rounded-xl px-3 py-2.5 text-sm text-[var(--text-muted)]">
+                    No research yet — your sessions will appear here.
+                  </p>
+                ) : (
+                  recentItems.map((run, index) => (
+                    <motion.button
+                      key={run.key}
+                      type="button"
+                      onClick={() => {
+                        setInput(run.prompt);
+                        inputRef.current?.focus();
+                      }}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.995 }}
+                      className="group flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--surface-hover)_45%,transparent)] hover:shadow-[0_6px_20px_rgb(0_0_0/0.12)]"
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 flex-shrink-0 rounded-full",
+                          run.status === "completed"
+                            ? "bg-emerald-400/80"
+                            : run.status === "running"
+                              ? "animate-pulse bg-amber-400"
+                              : run.status === "failed"
+                                ? "bg-rose-400/80"
+                                : "bg-[var(--text-muted)]",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-primary)]">
+                        {run.title}
+                      </span>
+                      <span className="shrink-0 truncate text-xs text-[var(--text-muted)]">
+                        {run.meta}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-secondary)] opacity-0 transition-all duration-150 group-hover:-translate-x-0.5 group-hover:opacity-100">
+                        Resume
+                        <ArrowUp className="h-3 w-3 -rotate-90" />
+                      </span>
+                    </motion.button>
+                  ))
+                )}
               </div>
             </div>
 
@@ -886,18 +913,21 @@ export default function Chat({
           >
             <AnimatePresence initial={false}>
               {messages.map((message, i) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  isLatest={i === messages.length - 1 && !isRunning}
-                />
+                <Fragment key={message.id}>
+                  {message.role === "user" && i > 0 && (
+                    <SessionDivider timestamp={message.timestamp} />
+                  )}
+                  <ChatMessage
+                    message={message}
+                    isLatest={i === messages.length - 1 && !isRunning}
+                  />
+                </Fragment>
               ))}
             </AnimatePresence>
             {isRunning && streamLogs.length > 0 && (
               <AgentThinkingPanel
                 logs={streamLogs}
                 isRunning={isRunning}
-                elapsed={elapsed}
               />
             )}
             {!isRunning && (() => {

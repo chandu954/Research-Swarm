@@ -6,7 +6,6 @@ import {
   MessageSquarePlus,
   FolderOpen,
   Upload,
-  FileDown,
   Settings,
   Search,
   Command,
@@ -32,7 +31,6 @@ interface CommandPaletteProps {
   onNewChat: () => void;
   onFocusComposer: () => void;
   onOpenDocuments: () => void;
-  onExportReport?: () => void;
   onOpenSettings?: () => void;
 }
 
@@ -42,7 +40,6 @@ export default function CommandPalette({
   onNewChat,
   onFocusComposer,
   onOpenDocuments,
-  onExportReport,
   onOpenSettings,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
@@ -54,7 +51,6 @@ export default function CommandPalette({
     { id: "new", label: "New Research", description: "Start a fresh research session", icon: MessageSquarePlus, shortcut: "⌘N", action: () => { onNewChat(); onClose(); } },
     { id: "focus", label: "Focus Composer", description: "Jump to the message input", icon: Search, shortcut: "⌘K", action: () => { onFocusComposer(); onClose(); } },
     { id: "documents", label: "Upload Documents", description: "Add PDFs to the workspace", icon: Upload, shortcut: "⌘U", action: () => { onOpenDocuments(); onClose(); } },
-    { id: "export", label: "Export Report", description: "Download report as Markdown or HTML", icon: FileDown, shortcut: "⌘E", action: () => { onExportReport?.(); onClose(); } },
     { id: "settings", label: "Settings", description: "Configure LLM provider and models", icon: Settings, shortcut: "⌘,", action: () => { onOpenSettings?.(); onClose(); } },
   ];
 

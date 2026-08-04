@@ -1,34 +1,18 @@
 "use client";
 
-import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
-import { motion } from "framer-motion";
+import { Moon } from "lucide-react";
 
+// Light mode is disabled until the hardcoded white-alpha surfaces scattered
+// across components are migrated to theme tokens. Forcing dark mode here keeps
+// users from landing in a half-broken light theme.
 export default function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  if (!mounted) return <div className="h-8 w-8" />;
-
-  const isDark = theme === "dark";
-
   return (
-    <button
-      type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="icon-button h-8 w-8"
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+    <span
+      className="icon-button h-8 w-8 cursor-default opacity-60"
+      title="Dark mode only — light theme coming soon"
+      aria-label="Dark mode only"
     >
-      <motion.span
-        key={isDark ? "dark" : "light"}
-        initial={{ opacity: 0, rotate: -90, scale: 0.5 }}
-        animate={{ opacity: 1, rotate: 0, scale: 1 }}
-        transition={{ duration: 0.2 }}
-      >
-        {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-      </motion.span>
-    </button>
+      <Moon className="h-4 w-4" />
+    </span>
   );
 }

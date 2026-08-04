@@ -32,6 +32,7 @@ import { collaborationClient } from "@/lib/websocket";
 import { useTenant } from "@/lib/tenant";
 import { useRealtimeWorkspace } from "@/lib/supabase/realtime";
 import { useLiveWorkspace } from "@/lib/supabase/query";
+import { useElapsed } from "@/lib/useElapsed";
 import type {
   AgentMetric,
   AgentLog,
@@ -40,6 +41,18 @@ import type {
   SourceCitation,
   UploadedDocument,
 } from "@/lib/types";
+
+// Self-contained elapsed timer for the workflow header. Owns its own 250ms
+// tick so the rest of the workspace tree is never re-rendered while running.
+function ResearchProgressTimer() {
+  const elapsed = useElapsed(true);
+  return (
+    <div className="mt-2.5 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+      <span>Research in progress</span>
+      <span className="font-mono">{Math.floor(elapsed)}s</span>
+    </div>
+  );
+}
 
 interface ConversationMessageResponse {
   id?: string;
@@ -61,7 +74,6 @@ export default function ResearchWorkspace() {
   const [sources, setSources] = useState<SourceCitation[]>([]);
   const [agentMetrics, setAgentMetrics] = useState<Record<string, AgentMetric>>({});
   const [executionTime, setExecutionTime] = useState<number>();
-  const [elapsed, setElapsed] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -122,8 +134,8 @@ export default function ResearchWorkspace() {
 
   useEffect(() => {
     if (!token || !currentWorkspace) return;
-    collaborationClient.connect(currentWorkspace.id, token, {
-      onResearchStart: (payload) => {
+    const callbacks = {
+      onResearchStart: (payload: { userId: string; userName: string; taskId: string; query: string }) => {
         if (payload.userId !== user?.id) {
           setLogs((prev) => [...prev, {
             agent: "collaboration",
@@ -134,7 +146,7 @@ export default function ResearchWorkspace() {
           }]);
         }
       },
-      onResearchComplete: (payload) => {
+      onResearchComplete: (payload: { taskId: string; userId: string }) => {
         if (payload.userId !== user?.id) {
           setLogs((prev) => [...prev, {
             agent: "collaboration",
@@ -145,33 +157,10 @@ export default function ResearchWorkspace() {
           }]);
         }
       },
-    });
-    return () => collaborationClient.disconnect();
-  }, [token, currentWorkspace?.id]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      setElapsed(0);
-      return;
-    }
-    const start = Date.now();
-    const interval = setInterval(() => {
-      setElapsed((Date.now() - start) / 1000);
-    }, 250);
-    return () => clearInterval(interval);
-  }, [isRunning]);
-
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen((open) => !open);
-      }
     };
-
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, []);
+    collaborationClient.connect(currentWorkspace.id, token, callbacks);
+    return () => collaborationClient.disconnect(callbacks);
+  }, [token, currentWorkspace?.id]);
 
   const handleSend = useCallback(
     async (query: string) => {
@@ -217,6 +206,9 @@ export default function ResearchWorkspace() {
           });
         },
       });
+      streamAbortRef.current = streamController;
+      const abortController = new AbortController();
+      researchAbortRef.current = abortController;
 
       try {
         const result = await runResearch(
@@ -226,6 +218,7 @@ export default function ResearchWorkspace() {
           taskId,
           conversationId || undefined,
           debateMode,
+          abortController.signal,
         );
 
         setPlan(result.plan || []);
@@ -260,22 +253,36 @@ export default function ResearchWorkspace() {
           },
         ]);
       } catch (error) {
-        const msg = error instanceof ApiClientError
-          ? `**${error.message}**\n\n> ${error.code === "OFFLINE" ? "The backend may be offline. Check your connection." : error.code === "TIMEOUT" ? "The research took too long. Try a simpler query." : error.code === "UNAUTHORIZED" ? "Your session expired. Please sign in again." : ""}`
-          : error instanceof Error
-            ? `**Error**: ${error.message}`
-            : "**Error**: An unexpected error occurred. Please try again.";
-        setMessages((current) => [
-          ...current.filter((message) => message.id !== thinkingMessage.id),
-          {
-            id: `${Date.now()}-error`,
-            role: "assistant",
-            content: msg,
-            timestamp: Date.now(),
-          },
-        ]);
+        if (error instanceof ApiClientError && error.code === "ABORTED") {
+          setMessages((current) => [
+            ...current.filter((message) => message.id !== thinkingMessage.id),
+            {
+              id: `${Date.now()}-cancelled`,
+              role: "assistant",
+              content: "**Research cancelled.** The workspace is idle and ready for a new query.",
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          const msg = error instanceof ApiClientError
+            ? `**${error.message}**\n\n> ${error.code === "OFFLINE" ? "The backend may be offline. Check your connection." : error.code === "TIMEOUT" ? "The research took too long. Try a simpler query." : error.code === "UNAUTHORIZED" ? "Your session expired. Please sign in again." : ""}`
+            : error instanceof Error
+              ? `**Error**: ${error.message}`
+              : "**Error**: An unexpected error occurred. Please try again.";
+          setMessages((current) => [
+            ...current.filter((message) => message.id !== thinkingMessage.id),
+            {
+              id: `${Date.now()}-error`,
+              role: "assistant",
+              content: msg,
+              timestamp: Date.now(),
+            },
+          ]);
+        }
       } finally {
         streamController.abort();
+        streamAbortRef.current = null;
+        researchAbortRef.current = null;
         setIsRunning(false);
         live.refresh();
       }
@@ -290,7 +297,6 @@ export default function ResearchWorkspace() {
     setSources([]);
     setAgentMetrics({});
     setExecutionTime(undefined);
-    setElapsed(0);
     setConversationId(null);
     setSidebarOpen(false);
   }, []);
@@ -304,7 +310,6 @@ export default function ResearchWorkspace() {
     setSelectedDocs([]);
     setAgentMetrics({});
     setExecutionTime(undefined);
-    setElapsed(0);
     setConversationId(null);
   }, []);
 
@@ -348,6 +353,13 @@ export default function ResearchWorkspace() {
 
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const researchAbortRef = useRef<AbortController | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+
+  const handleCancelResearch = useCallback(() => {
+    researchAbortRef.current?.abort();
+    streamAbortRef.current?.abort();
+  }, []);
 
   // Phase 5: merge Supabase Realtime state with the SSE/response state so
   // panels stay live even after the response resolves.
@@ -409,6 +421,31 @@ export default function ResearchWorkspace() {
     composerRef.current?.focus();
     setPaletteOpen(false);
   }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!event.metaKey && !event.ctrlKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      } else if (key === "n") {
+        event.preventDefault();
+        setPaletteOpen(false);
+        handleNewChat();
+      } else if (key === "u") {
+        event.preventDefault();
+        openDocumentPicker();
+      } else if (key === ",") {
+        event.preventDefault();
+        setPaletteOpen(false);
+        setSettingsOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [handleNewChat, openDocumentPicker]);
 
   return (
     <main className="workspace-shell flex h-screen overflow-hidden">
@@ -477,9 +514,9 @@ export default function ResearchWorkspace() {
               documents={documents}
               onSend={handleSend}
               onAttach={openDocumentPicker}
+              onCancel={handleCancelResearch}
               isRunning={isRunning}
               streamLogs={logs}
-              elapsed={elapsed}
               composerRef={composerRef}
               debateMode={debateMode}
               onDebateToggle={() => setDebateMode((prev) => !prev)}
@@ -544,12 +581,7 @@ export default function ResearchWorkspace() {
                   {phase}
                 </span>
               </div>
-              {phase === "running" && (
-                <div className="mt-2.5 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-                  <span>Research in progress</span>
-                  <span className="font-mono">{Math.floor(elapsed)}s</span>
-                </div>
-              )}
+              {phase === "running" && <ResearchProgressTimer />}
             </div>
 
             <div className="space-y-5 p-4">

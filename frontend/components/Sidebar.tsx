@@ -50,17 +50,7 @@ interface Conversation {
   query?: string;
   timestamp?: string;
   turn_count?: number;
-  demo?: boolean;
 }
-
-const demoCollections = ["Research papers", "AI agents", "Vector DBs", "Benchmarks"];
-
-const demoConversations = [
-  { query: "LangGraph vs CrewAI", meta: "2h ago · 21 sources" },
-  { query: "LLM alignment 2025", meta: "yesterday · 18 sources" },
-  { query: "Postgres vs MongoDB", meta: "Monday · 14 sources" },
-  { query: "Local LLM stack survey", meta: "Jul 28 · 9 sources" },
-];
 
 function timeAgo(iso: string): string {
   const t = new Date(iso).getTime();
@@ -193,20 +183,13 @@ export default function Sidebar({
       : conversations.length > 0
         ? conversations
         : recentQueries.length > 0
-        ? recentQueries.map((q, i) => ({
-            id: `local-${i}`,
-            query: q,
-            timestamp: "",
-            turn_count: 0,
-            demo: false,
-          }))
-        : demoConversations.map((d, i) => ({
-            id: `demo-${i}`,
-            query: d.query,
-            timestamp: d.meta,
-            turn_count: 0,
-            demo: true,
-          }));
+          ? recentQueries.map((q, i) => ({
+              id: `local-${i}`,
+              query: q,
+              timestamp: "",
+              turn_count: 0,
+            }))
+          : [];
 
   const filtered = searchQuery
     ? displayConversations.filter((c) =>
@@ -214,11 +197,10 @@ export default function Sidebar({
       )
     : displayConversations;
 
-  const collectionItems =
-    collections.length > 0 ? collections : demoCollections;
+  const collectionItems = collections.length > 0 ? collections : [];
 
   return (
-    <div className="flex h-full flex-col p-3">
+    <div role="navigation" aria-label="Workspace navigation" className="flex h-full flex-col p-3">
       <div className="flex items-center justify-between px-2 py-2">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600">
@@ -266,16 +248,22 @@ export default function Sidebar({
               className="overflow-hidden"
             >
               <div className="space-y-0.5 pb-1 pt-0.5">
-                {collectionItems.map((collection) => (
-                  <button
-                    key={collection}
-                    type="button"
-                    className="conversation-item pl-5"
-                  >
-                    <span className="conversation-dot bg-violet-400/40" />
-                    <span className="truncate">{collection}</span>
-                  </button>
-                ))}
+                {collectionItems.length === 0 ? (
+                  <p className="px-2 py-2 pl-5 text-[10px] text-[var(--text-muted)]">
+                    No collections yet. They appear once research is saved.
+                  </p>
+                ) : (
+                  collectionItems.map((collection) => (
+                    <button
+                      key={collection}
+                      type="button"
+                      className="conversation-item pl-5"
+                    >
+                      <span className="conversation-dot bg-violet-400/40" />
+                      <span className="truncate">{collection}</span>
+                    </button>
+                  ))
+                )}
               </div>
             </motion.div>
           )}
@@ -362,18 +350,11 @@ export default function Sidebar({
                             </span>
                             {conv.timestamp && (
                               <span className="block text-[8px] text-[var(--text-muted)]">
-                                {conv.demo
-                                  ? conv.timestamp
-                                  : timeAgo(conv.timestamp) || new Date(conv.timestamp).toLocaleDateString()}
-                                {!conv.demo && conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
+                                {timeAgo(conv.timestamp) || new Date(conv.timestamp).toLocaleDateString()}
+                                {conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
                               </span>
                             )}
                           </span>
-                          {conv.demo && (
-                            <span className="rounded bg-white/[0.04] px-1 py-0.5 text-[7px] uppercase tracking-wide text-[var(--text-muted)]">
-                              Sample
-                            </span>
-                          )}
                         </button>
                       )}
                       {menuConvId === conv.id && (

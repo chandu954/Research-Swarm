@@ -17,10 +17,9 @@ export function PresenceIndicator({ workspaceId, token }: Props) {
 
   useEffect(() => {
     if (!workspaceId || !token) return;
-    collaborationClient.connect(workspaceId, token, {
-      onPresence: setUsers,
-    });
-    return () => collaborationClient.disconnect();
+    const cbs = { onPresence: setUsers };
+    collaborationClient.connect(workspaceId, token, cbs);
+    return () => collaborationClient.disconnect(cbs);
   }, [workspaceId, token]);
 
   if (!workspaceId) return null;
