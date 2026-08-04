@@ -20,7 +20,13 @@ import SettingsPanel from "@/components/Settings";
 import Sidebar from "@/components/Sidebar";
 import Sources from "@/components/Sources";
 import Topbar from "@/components/Topbar";
-import KnowledgeGraph from "@/components/KnowledgeGraph";
+import dynamic from "next/dynamic";
+import { KnowledgeGraphSkeleton } from "@/components/Skeletons";
+
+const KnowledgeGraph = dynamic(() => import("@/components/KnowledgeGraph"), {
+  ssr: false,
+  loading: () => <KnowledgeGraphSkeleton />,
+});
 import ReportGenerator from "@/components/ReportGenerator";
 import ReportsPanel from "@/components/ReportsPanel";
 import SourceInspector from "@/components/SourceInspector";

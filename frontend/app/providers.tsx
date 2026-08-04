@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { useEffect, useState } from "react";
 import { AuthProvider } from "@/lib/auth";
 import { TenantProvider } from "@/lib/tenant";
+import { ConfirmProvider } from "@/lib/confirm-context";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -19,7 +20,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     >
       <AuthProvider>
         <TenantProvider>
-          {mounted ? children : <div style={{ visibility: "hidden" }}>{children}</div>}
+          <ConfirmProvider>
+            {mounted ? children : <div style={{ visibility: "hidden" }}>{children}</div>}
+          </ConfirmProvider>
         </TenantProvider>
       </AuthProvider>
     </ThemeProvider>

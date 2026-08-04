@@ -1727,3 +1727,39 @@ button.composer-tool:hover {
   background: rgb(139 92 246 / 0.1);
   color: #c4b5fd;
 }
+/* ── Shared export control (ReportGenerator + ReportViewer) ── */
+
+.export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.export-button:hover {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--text-primary);
+}
+
+/* ── Shared confirmation dialog ── */
+
+.confirm-overlay {
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.confirm-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-elevated);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.45);
+}

@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Settings2, ChevronDown, Check, RefreshCw, Puzzle, Key } from "lucide-react";
 import type { ProviderSettings } from "@/lib/useSettings";
+import { useFocusTrap } from "@/lib/useFocusTrap";
+import { useReducedMotion } from "@/lib/useReducedMotion";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -220,6 +222,7 @@ function PluginSection() {
                     />
                     <button
                       onClick={() => configure(p.name)}
+                      aria-label={`Configure ${p.name} API key`}
                       className="px-2 py-1.5 rounded text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                     >
                       <Key className="w-3 h-3" />
@@ -253,6 +256,20 @@ export default function Settings({ open, onClose, settings, onSettingsChange }: 
   const { models: allModels, loading: modelsLoading, refresh: refreshModels } = useModelList(
     settings.provider
   );
+  const panelRef = useFocusTrap(open);
+  const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
 
   const dynamicModels: Record<string, string[]> = {};
   if (allModels.length > 0) {
@@ -289,9 +306,14 @@ export default function Settings({ open, onClose, settings, onSettingsChange }: 
             style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
           />
           <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
             initial={{ opacity: 0, x: 300 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 300 }}
+            transition={reducedMotion ? { duration: 0 } : undefined}
             className="fixed right-0 top-0 bottom-0 w-[380px] z-50 overflow-y-auto"
             style={{
               backgroundColor: 'var(--surface)',
@@ -302,12 +324,13 @@ export default function Settings({ open, onClose, settings, onSettingsChange }: 
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
                   <Settings2 className="w-5 h-5 text-primary" />
-                  <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  <h2 id="settings-title" className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
                     Settings
                   </h2>
                 </div>
                 <button
                   onClick={onClose}
+                  aria-label="Close settings"
                   className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
                   style={{ color: 'var(--text-muted)' }}
                 >
@@ -371,6 +394,7 @@ export default function Settings({ open, onClose, settings, onSettingsChange }: 
                     </p>
                     <button
                       onClick={refreshModels}
+                      aria-label="Refresh model list"
                       className="p-1 rounded transition-colors"
                       style={{ color: 'var(--text-muted)' }}
                       title="Refresh model list"

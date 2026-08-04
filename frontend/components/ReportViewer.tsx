@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -8,10 +9,7 @@ import {
   Check,
   ChevronDown,
   Copy,
-  ExternalLink,
-  FileDown,
   FileText,
-  Printer,
 } from "lucide-react";
 import type { Components } from "react-markdown";
 import type { ReportDetail } from "@/lib/supabase/query";
@@ -24,7 +22,15 @@ import {
   extractCitedIndices,
 } from "@/lib/report-citations";
 import { getTrustScore } from "@/lib/trust-scores";
+import type { ExportReportDocument } from "@/lib/export-report";
+import ExportMenu from "./ExportMenu";
+import { PanelSkeleton } from "./Skeletons";
 import { cn } from "@/lib/utils";
+
+const ReportSourceSidebar = dynamic(() => import("./ReportSourceSidebar"), {
+  ssr: false,
+  loading: () => <PanelSkeleton height={240} />,
+});
 
 const EVIDENCE_STYLES: Record<string, string> = {
   Strong: "text-emerald-400",
@@ -126,71 +132,6 @@ function SectionCard({
   );
 }
 
-function SourceRow({
-  index,
-  source,
-  cited,
-  evidence,
-}: {
-  index: number;
-  source: SourceCitation;
-  cited: boolean;
-  evidence?: number | null;
-}) {
-  const score = evidence ?? sourceEvidenceScore(source);
-  const authority = score != null ? score : getTrustScore(source.url, source.title).authority / 10;
-
-  return (
-    <li
-      className={cn(
-        "rounded-lg border border-[var(--border)] p-3 transition-colors",
-        cited && "border-[var(--accent-violet)]/40 bg-[var(--accent-violet)]/5",
-      )}
-    >
-      <div className="flex items-start gap-2.5">
-        <span
-          className={cn(
-            "mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border px-1 text-[10px] font-semibold",
-            cited
-              ? "border-[var(--accent-violet)] bg-[var(--accent-violet)]/15 text-[var(--accent-violet)]"
-              : "border-[var(--border)] text-[var(--text-tertiary)]",
-          )}
-        >
-          {index}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium leading-snug text-[var(--text-primary)]">
-            {source.title}
-          </p>
-          <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
-            <span>{source.provider ?? getTrustScore(source.url, source.title).domain}</span>
-            {source.url && (
-              <a
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-0.5 text-[var(--accent-violet)] hover:underline"
-              >
-                open <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-            )}
-          </div>
-          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-[var(--bg)]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[var(--accent-violet)] to-cyan-400"
-              style={{ width: `${Math.round((authority / 10) * 100)}%` }}
-            />
-          </div>
-          <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--text-tertiary)]">
-            <span>evidence</span>
-            <span>{authority.toFixed(1)}/10</span>
-          </div>
-        </div>
-      </div>
-    </li>
-  );
-}
-
 export default function ReportViewer({ report }: { report: ReportDetail }) {
   const [copied, setCopied] = useState(false);
 
@@ -246,17 +187,17 @@ export default function ReportViewer({ report }: { report: ReportDetail }) {
     window.setTimeout(() => setCopied(false), 1500);
   }, []);
 
-  const handleDownloadMarkdown = useCallback(() => {
-    const blob = new Blob([report.content_md], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${report.title.replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-") || "report"}.md`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }, [report.content_md, report.title]);
-
   const metrics = report.metrics ?? {};
+
+  const exportDocument = useMemo<ExportReportDocument>(
+    () => ({
+      title: report.title,
+      markdown: report.content_md,
+      sources,
+      metadata: metrics,
+    }),
+    [report.title, report.content_md, sources, metrics],
+  );
 
   return (
     <div className="report-print-area mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
@@ -280,20 +221,7 @@ export default function ReportViewer({ report }: { report: ReportDetail }) {
             )}
             {copied ? "Copied" : "Copy link"}
           </button>
-          <button
-            onClick={handleDownloadMarkdown}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-          >
-            <FileDown className="h-3.5 w-3.5" />
-            Markdown
-          </button>
-          <button
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-          >
-            <Printer className="h-3.5 w-3.5" />
-            PDF
-          </button>
+          <ExportMenu document={exportDocument} />
         </div>
       </div>
 
@@ -343,31 +271,7 @@ export default function ReportViewer({ report }: { report: ReportDetail }) {
           ))}
         </article>
 
-        <aside className="print:hidden">
-          <div className="sticky top-6">
-            <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-              Sources
-              <span className="rounded-full bg-[var(--accent-violet)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent-violet)]">
-                {sources.length}
-              </span>
-            </h2>
-            {sources.length === 0 ? (
-              <p className="text-xs text-[var(--text-tertiary)]">No sources recorded for this report.</p>
-            ) : (
-              <ul className="space-y-2.5">
-                {sources.map((source, i) => (
-                  <SourceRow
-                    key={i}
-                    index={i + 1}
-                    source={source}
-                    cited={evidence.cited.includes(i + 1)}
-                    evidence={evidence.perSource[i] ?? null}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-        </aside>
+        <ReportSourceSidebar sources={sources} evidence={evidence} />
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { useMemo } from "react";
+import { motion } from "framer-motion";
 import {
   BookOpen,
   ExternalLink,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import type { SourceCitation } from "@/lib/types";
 import { getTrustScore, authorityStars, getConfidence, getHallucinationRisk } from "@/lib/trust-scores";
+import { useWindowedList } from "@/lib/useWindowedList";
 
 interface SourcesProps {
   sources: SourceCitation[];
@@ -69,6 +71,19 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
     ? Math.round(allConfidence.reduce((a, b) => a + b, 0) / allConfidence.length)
     : 0;
 
+  const items = useMemo(
+    () => [
+      ...webSources.map((source) => ({ kind: "web" as const, source })),
+      ...documentSources.map((source) => ({ kind: "document" as const, source })),
+    ],
+    [webSources, documentSources],
+  );
+
+  // Fixed row height keeps the windowed list's scroll math exact so long
+  // source lists never render blank rows.
+  const { containerRef, virtualize, start, end, topPad, bottomPad, onScroll } =
+    useWindowedList(items, 92);
+
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
@@ -118,16 +133,21 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
           </p>
         </div>
       ) : (
-        <div className="max-h-[420px] space-y-4 overflow-y-auto rounded-xl border border-[var(--border)] bg-white/[0.015] p-2">
-          <AnimatePresence initial={false}>
-            {webSources.map((source) => {
-              const score = getTrustScore(source.url, source.title);
-              return (
+        <div
+          ref={containerRef}
+          onScroll={onScroll}
+          className="max-h-[420px] overflow-y-auto rounded-xl border border-[var(--border)] bg-white/[0.015]"
+        >
+          <div className="space-y-4 p-2" style={{ paddingTop: topPad + 8, paddingBottom: bottomPad + 8 }}>
+            {items.slice(start, end).map(({ kind, source }) =>
+              kind === "web" ? (
                 <motion.div
                   key={`web-${source.url || source.title}`}
                   initial={{ opacity: 0, x: -6 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="group flex cursor-pointer items-start gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--surface-hover)]"
+                  className={`group flex cursor-pointer items-start gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--surface-hover)] ${
+                    virtualize ? "h-[76px] overflow-hidden" : ""
+                  }`}
                   onClick={() => onInspect?.(source)}
                 >
                   <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
@@ -139,7 +159,7 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
                         {source.title}
                       </span>
                       <span className="flex-shrink-0 text-[7px] text-yellow-500/60">
-                        {authorityStars(score.authority)}
+                        {authorityStars(getTrustScore(source.url, source.title).authority)}
                       </span>
                       {source.provider && (
                         <span className="inline-flex items-center rounded-sm bg-white/5 px-1 py-0.5 text-[7px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
@@ -151,7 +171,7 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
                       {source.url}
                     </span>
                     <span className="flex items-center gap-2">
-                      <TrustBadge score={score} />
+                      <TrustBadge score={getTrustScore(source.url, source.title)} />
                       {source.hybrid_score != null && (
                         <span className="text-[7px] text-[var(--text-muted)]">
                           rel: {source.hybrid_score.toFixed(3)}
@@ -161,17 +181,14 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
                   </span>
                   <ExternalLink className="mt-1 h-3 w-3 flex-shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
                 </motion.div>
-              );
-            })}
-
-            {documentSources.map((source) => {
-              const score = getTrustScore(undefined, source.title);
-              return (
+              ) : (
                 <motion.div
                   key={`document-${source.title}-${source.relevance || ""}`}
                   initial={{ opacity: 0, x: -6 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="flex cursor-pointer items-start gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--surface-hover)]"
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-lg p-2 transition-colors hover:bg-[var(--surface-hover)] ${
+                    virtualize ? "h-[76px] overflow-hidden" : ""
+                  }`}
                   onClick={() => onInspect?.(source)}
                 >
                   <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
@@ -186,12 +203,12 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
                         {source.relevance}
                       </span>
                     )}
-                    <TrustBadge score={score} />
+                    <TrustBadge score={getTrustScore(undefined, source.title)} />
                   </span>
                 </motion.div>
-              );
-            })}
-          </AnimatePresence>
+              ),
+            )}
+          </div>
         </div>
       )}
     </section>

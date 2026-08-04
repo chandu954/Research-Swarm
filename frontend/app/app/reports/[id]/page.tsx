@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, FileQuestion } from "lucide-react";
 import { getReportById, type ReportDetail } from "@/lib/supabase/query";
 import ReportViewer from "@/components/ReportViewer";
+import { ReportSkeleton } from "@/components/Skeletons";
 import "../print.css";
 
 export default function ReportPage() {
@@ -45,18 +46,7 @@ export default function ReportPage() {
       }}
     >
       {loading ? (
-        <div className="mx-auto max-w-3xl px-6 py-10">
-          <div className="animate-pulse space-y-3">
-            <div className="h-3 w-40 rounded bg-[var(--border)]" />
-            <div className="h-8 w-3/4 rounded bg-[var(--border)]" />
-            <div className="h-3 w-52 rounded bg-[var(--border)]" />
-            <div className="pt-4 space-y-2">
-              <div className="h-3 w-full rounded bg-[var(--border)]" />
-              <div className="h-3 w-11/12 rounded bg-[var(--border)]" />
-              <div className="h-3 w-4/5 rounded bg-[var(--border)]" />
-            </div>
-          </div>
-        </div>
+        <ReportSkeleton />
       ) : missing || !report ? (
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
           <FileQuestion className="h-10 w-10 text-[var(--text-tertiary)]" />

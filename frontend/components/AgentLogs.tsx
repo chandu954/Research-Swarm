@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Bot,
   Check,
@@ -13,6 +13,7 @@ import {
 import type { AgentLog, ExecutionStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AGENT_MAP } from "@/lib/agents";
+import { useWindowedList } from "@/lib/useWindowedList";
 
 const COLOR_TEXT: Record<string, string> = {
   violet: "text-violet-400",
@@ -50,6 +51,16 @@ export default function AgentLogs({
   isRunning,
 }: AgentLogsProps) {
   const visiblePlan = plan.length > 0 ? plan : previewPlan;
+
+  const {
+    containerRef,
+    virtualize,
+    start,
+    end,
+    topPad,
+    bottomPad,
+    onScroll,
+  } = useWindowedList(logs, 54);
 
   return (
     <section className="space-y-6">
@@ -140,15 +151,21 @@ export default function AgentLogs({
           )}
         </div>
 
-        <div className="max-h-[320px] overflow-y-auto rounded-xl border border-white/[0.06] bg-white/[0.02] px-3">
+        <div
+          ref={containerRef}
+          onScroll={onScroll}
+          className="max-h-[320px] overflow-y-auto rounded-xl border border-white/[0.06] bg-white/[0.02] px-3"
+        >
           {logs.length === 0 ? (
             <div className="flex items-center gap-2 py-4 text-[10px] text-[var(--text-muted)]">
               <Circle className="h-2.5 w-2.5" />
               Activity will stream here in real time.
             </div>
           ) : (
-            <AnimatePresence initial={false}>
-              {logs.map((log) => {
+            <div
+              style={{ paddingTop: topPad, paddingBottom: bottomPad }}
+            >
+              {logs.slice(start, end).map((log) => {
                 const config =
                   AGENT_MAP[log.agent as keyof typeof AGENT_MAP] ||
                   AGENT_MAP.planner;
@@ -159,7 +176,9 @@ export default function AgentLogs({
                     key={`${log.timestamp}-${log.agent}-${log.action}`}
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="flex gap-2.5 border-b border-white/[0.05] py-3 last:border-0"
+                    className={`flex gap-2.5 border-b border-white/[0.05] py-3 last:border-0 ${
+                      virtualize ? "h-[53px] overflow-hidden" : ""
+                    }`}
                   >
                     <Icon
                       className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", agentColor)}
@@ -183,7 +202,7 @@ export default function AgentLogs({
                   </motion.div>
                 );
               })}
-            </AnimatePresence>
+            </div>
           )}
         </div>
       </div>

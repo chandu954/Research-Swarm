@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -11,6 +11,7 @@ import {
   Bot,
   BrainCircuit,
   Check,
+  ChevronDown,
   Copy,
   Eraser,
   FileCheck2,
@@ -187,7 +188,15 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function ChatMessage({ message, isLatest }: { message: Message; isLatest: boolean }) {
+// Memoized: a message's rendered output depends only on its own content, so
+// updates to other messages / stream logs must not re-render it.
+const ChatMessage = memo(function ChatMessage({
+  message,
+  isLatest,
+}: {
+  message: Message;
+  isLatest: boolean;
+}) {
   const isUser = message.role === "user";
   const isThinking =
     message.content === "..." || message.content === "Thinking...";
@@ -293,7 +302,7 @@ function ChatMessage({ message, isLatest }: { message: Message; isLatest: boolea
       </div>
     </motion.article>
   );
-}
+});
 
 interface ComposerProps {
   variant: "hero" | "bar";
@@ -540,11 +549,31 @@ export default function Chat({
   const [mode, setMode] = useState<(typeof researchModes)[number] | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = composerRef || useRef<HTMLTextAreaElement>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const jumpedAtRef = useRef(0);
+
+  // Follow new content only while the user is pinned to the bottom; once they
+  // scroll up, stop pulling the viewport away from what they are reading.
+  const handleScroll = () => {
+    if (performance.now() - jumpedAtRef.current < 400) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    setIsNearBottom((prev) => (prev === near ? prev : near));
+  };
 
   useEffect(() => {
+    if (!isNearBottom) return;
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamLogs]);
+  }, [messages, streamLogs, isNearBottom]);
+
+  const jumpToLatest = () => {
+    jumpedAtRef.current = performance.now();
+    setIsNearBottom(true);
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
     if (mode || isRunning || messages.length > 0 || input.length > 0) return;
@@ -635,7 +664,11 @@ export default function Chat({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="relative min-h-0 flex-1 overflow-y-auto"
+      >
         {messages.length === 0 ? (
           <motion.section
             initial={{ opacity: 0, y: 10 }}
@@ -943,6 +976,17 @@ export default function Chat({
             })()}
             <div ref={endRef} />
           </section>
+        )}
+
+        {!isNearBottom && messages.length > 0 && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-3 py-1.5 text-[10px] font-medium text-[var(--text-secondary)] shadow-lg transition-colors hover:border-[var(--accent-violet)]/40 hover:text-[var(--text-primary)]"
+          >
+            <ChevronDown className="mr-1 inline h-3 w-3" />
+            Jump to latest
+          </button>
         )}
       </div>
 

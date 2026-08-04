@@ -18,6 +18,7 @@ import type { UploadedDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { listConversations, deleteConversation, updateConversation } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useConfirm } from "@/lib/confirm-context";
 import ThemeToggle from "./ThemeToggle";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
@@ -117,6 +118,7 @@ export default function Sidebar({
   refreshKey,
 }: SidebarProps) {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -150,7 +152,14 @@ export default function Sidebar({
 
   const handleDelete = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this conversation?")) return;
+    const ok = await confirm({
+      title: "Delete conversation?",
+      description: "This conversation and its messages will be permanently removed.",
+      confirmLabel: "Delete",
+      destructive: true,
+      icon: Trash2,
+    });
+    if (!ok) return;
     try {
       await deleteConversation(id);
       setConversations((prev) => prev.filter((c) => c.id !== id));
@@ -158,7 +167,7 @@ export default function Sidebar({
       console.warn("Failed to delete conversation:", err);
     }
     setMenuConvId(null);
-  }, []);
+  }, [confirm]);
 
   const handleRename = useCallback(async (id: string) => {
     const newTitle = renameValue.trim();
@@ -441,7 +450,17 @@ export default function Sidebar({
         </button>
         <button
           type="button"
-          onClick={onClearAll}
+          onClick={async () => {
+            const ok = await confirm({
+              title: "Clear workspace?",
+              description:
+                "All conversations, reports, and uploaded documents in this workspace will be permanently deleted. This action cannot be undone.",
+              confirmLabel: "Clear workspace",
+              destructive: true,
+              icon: Trash2,
+            });
+            if (ok) onClearAll();
+          }}
           className="sidebar-nav-item hover:!text-rose-300"
         >
           <Trash2 className="h-4 w-4" />
