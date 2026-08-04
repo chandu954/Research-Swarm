@@ -931,8 +931,8 @@ html.light {
   z-index: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgb(255 255 255 / 0.008) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 0.008) 1px, transparent 1px);
+    linear-gradient(rgb(255 255 255 / 0.007) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.007) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 72%);
 }
@@ -1266,7 +1266,7 @@ button.message-action:hover {
 
 .composer {
   overflow: hidden;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: 15px;
   background: var(--surface-elevated);
   box-shadow:
@@ -1440,7 +1440,7 @@ button.composer-tool:hover {
 
 .upload-zone {
   display: flex;
-  min-height: 96px;
+  min-height: 84px;
   cursor: pointer;
   flex-direction: column;
   align-items: center;
@@ -1565,6 +1565,22 @@ button.composer-tool:hover {
   50% {
     opacity: 1;
   }
+}
+
+@keyframes step-glow {
+  0%,
+  100% {
+    border-color: rgb(34 211 238 / 0.14);
+    background: rgb(34 211 238 / 0.04);
+  }
+  50% {
+    border-color: rgb(34 211 238 / 0.38);
+    background: rgb(34 211 238 / 0.085);
+  }
+}
+
+.agent-step-pulse {
+  animation: step-glow 1.8s ease-in-out infinite;
 }
 
 @media (max-width: 767px) {

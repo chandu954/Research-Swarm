@@ -58,11 +58,11 @@ export default function Topbar({
       <div className="flex items-center gap-1.5">
         <button
           onClick={onOpenPalette}
-          className="flex h-8 items-center gap-2 rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_35%,transparent)] px-3 text-[11px] text-[var(--text-muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
+          className="flex h-9 w-56 items-center gap-2 rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_35%,transparent)] px-3 text-[11px] text-[var(--text-muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
         >
           <Search className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Search</span>
-          <kbd className="ml-1 hidden rounded border border-[var(--border)] bg-[var(--surface)] px-1 font-mono text-[9px] sm:inline">
+          <kbd className="ml-auto hidden rounded border border-[var(--border)] bg-[var(--surface)] px-1 font-mono text-[9px] sm:inline">
             ⌘K
           </kbd>
         </button>
@@ -72,40 +72,63 @@ export default function Topbar({
         <div className="relative">
           <button
             onClick={() => setProfileOpen((o) => !o)}
-            className="flex h-8 items-center gap-1.5 rounded-lg pl-1.5 pr-2 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
+            className="flex h-9 items-center gap-2 rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_25%,transparent)] pl-2 pr-2.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
           >
-            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 text-[8px] font-semibold text-white">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-[9px] font-semibold text-white">
               {initials}
+            </span>
+            <span className="hidden max-w-[90px] truncate lg:inline">
+              {user?.name?.split(" ")[0] || "Profile"}
             </span>
             <ChevronDown className="h-3 w-3 text-[var(--text-muted)]" />
           </button>
           <AnimatePresence>
             {profileOpen && (
               <motion.div
-                initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                initial={{ opacity: 0, y: -4, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                exit={{ opacity: 0, y: -4, scale: 0.97 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] py-1 shadow-2xl"
+                className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
               >
-                <div className="border-b border-[var(--border)] px-3 py-2">
-                  <p className="text-xs font-medium text-[var(--text-primary)]">{user?.name}</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">{user?.email}</p>
+                <div className="flex items-center gap-3 border-b border-[var(--border)] px-3.5 py-3">
+                  <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-bold text-white">
+                    {initials}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                      {user?.name || "Guest"}
+                    </p>
+                    <p className="truncate text-[10px] text-[var(--text-muted)]">
+                      {user?.email}
+                    </p>
+                  </div>
                 </div>
-                <button
-                  onClick={onOpenSettings}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
-                >
-                  <Settings2 className="h-3.5 w-3.5" />
-                  Settings
-                </button>
-                <button
-                  onClick={() => { logout(); router.push("/login"); }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-[11px] text-rose-400 transition-colors hover:bg-[var(--surface-hover)]"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  Sign out
-                </button>
+                <div className="p-1.5">
+                  <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      onOpenSettings();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                  >
+                    <Settings2 className="h-4 w-4 text-[var(--text-muted)]" />
+                    Settings
+                  </button>
+                </div>
+                <div className="border-t border-[var(--border)] p-1.5">
+                  <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      logout();
+                      router.push("/login");
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-rose-400 transition-colors hover:bg-[color-mix(in_srgb,#f43f5e_8%,transparent)]"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

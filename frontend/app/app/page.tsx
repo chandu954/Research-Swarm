@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { motion } from "framer-motion";
 import {
   PanelLeft,
   Scale,
@@ -485,6 +485,7 @@ export default function ResearchWorkspace() {
               onDebateToggle={() => setDebateMode((prev) => !prev)}
               liveSessions={live.sessions}
               liveLastSession={live.sessions[0] ?? null}
+              collections={live.collections}
             />
             <input
               ref={pdfInputRef}
@@ -553,7 +554,7 @@ export default function ResearchWorkspace() {
             <div className="space-y-5 p-4">
               {phase === "idle" && (
                 <div className="unified-panel">
-                  <WorkflowOverview bare />
+                  <WorkflowOverview bare lastSession={live.sessions[0] ?? null} />
                   <ReportsPanel
                     reports={live.reports}
                     onStartResearch={focusComposer}
@@ -569,13 +570,12 @@ export default function ResearchWorkspace() {
               )}
 
               {phase === "running" && (
-                <>
+                <div className="unified-panel">
                   <ExecutionTimeline
                     logs={mergedLogs}
                     agentMetrics={mergedAgentMetrics}
                     isRunning={isRunning}
                   />
-                  <Sources sources={sources} onInspect={setInspectedSource} />
                   <MetricsPanel
                     agentMetrics={mergedAgentMetrics}
                     executionTime={mergedExecutionTime}
@@ -583,27 +583,37 @@ export default function ResearchWorkspace() {
                     documentCount={selectedDocs.length}
                     lastRun={live.lastMetrics}
                   />
+                  <Sources sources={sources} onInspect={setInspectedSource} />
                   <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
-                </>
+                </div>
               )}
 
               {phase === "completed" && (
                 <>
-                  <MetricsPanel
-                    agentMetrics={mergedAgentMetrics}
-                    executionTime={mergedExecutionTime}
-                    sourceCount={mergedSourceCount}
-                    documentCount={selectedDocs.length}
-                    lastRun={live.lastMetrics}
-                  />
-                  <Sources sources={sources} onInspect={setInspectedSource} />
+                  <div className="unified-panel">
+                    <MetricsPanel
+                      agentMetrics={mergedAgentMetrics}
+                      executionTime={mergedExecutionTime}
+                      sourceCount={mergedSourceCount}
+                      documentCount={selectedDocs.length}
+                      lastRun={live.lastMetrics}
+                    />
+                    <Sources sources={sources} onInspect={setInspectedSource} />
+                    <ReportsPanel
+                      reports={live.reports}
+                      onStartResearch={focusComposer}
+                      bare
+                    />
+                  </div>
                   {lastAnswer && (
-                    <KnowledgeGraph answer={lastAnswer} sources={sources} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <KnowledgeGraph answer={lastAnswer} sources={sources} />
+                    </motion.div>
                   )}
-                  <ReportsPanel
-                    reports={live.reports}
-                    onStartResearch={focusComposer}
-                  />
                 </>
               )}
             </div>

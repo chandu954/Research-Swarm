@@ -97,7 +97,15 @@ export default function Sources({ sources, onInspect }: SourcesProps) {
             </span>
           )}
           {sources.length > 0 && (
-            <span className="latency-badge">{sources.length} total</span>
+            <motion.span
+              key={sources.length}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2 }}
+              className="latency-badge"
+            >
+              {sources.length} total
+            </motion.span>
           )}
         </div>
       </div>

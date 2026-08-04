@@ -100,7 +100,7 @@ function AgentStep({
         className={cn(
           "mb-3 min-w-0 flex-1 rounded-xl border px-3 py-2.5 transition-colors",
           isActive
-            ? "border-cyan-400/20 bg-cyan-500/[0.055]"
+            ? "agent-step-pulse border-cyan-400/20 bg-cyan-500/[0.055]"
             : "border-white/[0.06] bg-white/[0.022]",
         )}
       >
