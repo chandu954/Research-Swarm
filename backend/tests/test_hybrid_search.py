@@ -18,9 +18,11 @@ class TestHybridSearchWeb:
     @patch("backend.search.aggregator.aggregate_search")
     def test_hybrid_search_empty_fallback(self, mock_agg):
         mock_agg.return_value = []
-        # When aggregator returns empty, should fall through to search_web
-        # We mock search_web to also return empty
-        with patch("backend.tools.search.search_web", return_value=[]):
+        # When the aggregator returns empty, hybrid_search_web falls back to
+        # the plugin-registry search provider; with no provider configured
+        # it must return an empty list without hitting the network.
+        with patch("backend.tools.search.get_plugin_registry") as mock_registry:
+            mock_registry.return_value.get_search.return_value = None
             result = hybrid_search_web("nothing", max_results=5)
             assert result == []
 

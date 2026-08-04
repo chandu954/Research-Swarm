@@ -108,7 +108,7 @@ class TestResearchGraph:
         assert len(result["web_results"]) > 0
 
     def test_merge_node(self):
-        """Merge node should pass through silently."""
+        """Merge node should summarize evidence in state."""
         state: AgentState = {
             "query": "test",
             "conversation_id": None,
@@ -125,7 +125,10 @@ class TestResearchGraph:
             "execution_start": None,
         }
         result = _run_merge_node(state)
-        assert result == {}
+        assert result["has_evidence"] is True
+        assert result["evidence_summary"]["web_count"] == 1
+        assert result["evidence_summary"]["has_web_sources"] is True
+        assert result["evidence_summary"]["has_documents"] is False
 
 
 class TestAgentState:

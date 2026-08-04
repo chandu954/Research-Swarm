@@ -15,7 +15,7 @@ class TestPlanner:
         assert planner is not None
         assert planner.llm is not None
 
-    @patch("backend.agents.planner.get_llm_provider")
+    @patch("backend.agents.planner.get_llm_provider_instance")
     def test_planner_returns_valid_plan(self, mock_get_provider, sample_plan_result):
         """Planner should parse valid JSON from the LLM."""
         mock_provider = MagicMock()
@@ -33,7 +33,7 @@ class TestPlanner:
         assert result.steps[-1]["agent"] == "answer_agent"
         assert result.reasoning != ""
 
-    @patch("backend.agents.planner.get_llm_provider")
+    @patch("backend.agents.planner.get_llm_provider_instance")
     def test_planner_handles_malformed_json(self, mock_get_provider):
         """Planner should handle JSON embedded in text."""
         mock_provider = MagicMock()
@@ -45,7 +45,7 @@ class TestPlanner:
         assert len(result.steps) >= 1
         assert result.steps[0]["agent"] == "research_agent"
 
-    @patch("backend.agents.planner.get_llm_provider")
+    @patch("backend.agents.planner.get_llm_provider_instance")
     def test_planner_handles_non_json_output(self, mock_get_provider):
         """Planner should fall back when LLM returns non-JSON."""
         mock_provider = MagicMock()
@@ -57,7 +57,7 @@ class TestPlanner:
         assert len(result.steps) >= 1
         assert result.steps[-1]["agent"] == "answer_agent"
 
-    @patch("backend.agents.planner.get_llm_provider")
+    @patch("backend.agents.planner.get_llm_provider_instance")
     def test_planner_fallback_on_ollama_error(self, mock_get_provider):
         """Planner should produce a fallback plan when Ollama fails."""
         mock_provider = MagicMock()

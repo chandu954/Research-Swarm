@@ -16,6 +16,28 @@ from backend.agents.memory import ConversationMemory
 from backend.tools.registry import ToolRegistry, get_registry, reset_registry
 
 
+@pytest.fixture(autouse=True)
+def plugin_registry_ready():
+    """Keep the plugin registry populated for direct agent construction.
+
+    Unit tests (planner, graph) construct agents directly and never run the
+    FastAPI lifespan, so without this the LLM registry is empty and every
+    ``Planner()`` construction raises "Unknown LLM provider: ollama".
+
+    Registry tests intentionally call ``reset_plugin_registry()`` mid-session,
+    so this fixture runs before every test and repopulates the registry only
+    when it has been emptied.
+    """
+    import asyncio
+    from backend.core.registry import get_plugin_registry
+
+    if get_plugin_registry().list("llm"):
+        return
+    from backend.api.main import _register_builtin_plugins
+
+    asyncio.run(_register_builtin_plugins())
+
+
 @pytest.fixture
 def tool_registry() -> ToolRegistry:
     reset_registry()
