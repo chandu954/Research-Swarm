@@ -107,12 +107,12 @@ export default function PDFUploader({
       <div className="mb-3 flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-emerald-400" />
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+            <FileText className="h-[18px] w-[18px] text-emerald-400" />
+            <h2 className="text-[13px] font-semibold tracking-tight text-[var(--text-primary)]">
               Documents
             </h2>
           </div>
-          <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+          <p className="mt-1 text-xs text-[var(--text-muted)]">
             {documents.length > 0
               ? `${selectedDocs.length} of ${documents.length} selected`
               : "Add evidence to your research"}
@@ -172,41 +172,6 @@ export default function PDFUploader({
           </>
         )}
       </label>
-
-      {documents.length === 0 && (
-        <div className="mt-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-              Recent files
-            </p>
-            <span className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[7px] uppercase tracking-wide text-[var(--text-muted)]">
-              Sample library
-            </span>
-          </div>
-          <div className="space-y-1.5">
-            {[
-              { name: "paper-alignment-2025.pdf", meta: "indexed · 8 pages", ready: true },
-              { name: "rag-survey.pdf", meta: "indexed · 24 pages", ready: true },
-              { name: "notes.md", meta: "ready · 2.1 KB", ready: true },
-            ].map((file) => (
-              <div key={file.name} className="document-row">
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03] text-emerald-300">
-                  <FileText className="h-3.5 w-3.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[11px] font-medium text-[var(--text-primary)]">
-                    {file.name}
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-1 text-[9px] text-[var(--text-muted)]">
-                    <span className="text-emerald-400">✓</span>
-                    {file.meta}
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {uploadError && (
         <div className="mt-2 flex gap-2 rounded-lg border border-rose-400/15 bg-rose-500/[0.05] p-2 text-[10px] text-rose-300">

@@ -67,14 +67,6 @@ export default function Topbar({
           </kbd>
         </button>
 
-        <button
-          onClick={onOpenSettings}
-          className="icon-button h-8 w-8"
-          aria-label="Settings"
-        >
-          <Settings2 className="h-4 w-4" />
-        </button>
-
         <ThemeToggle />
 
         <div className="relative">

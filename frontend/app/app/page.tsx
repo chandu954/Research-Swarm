@@ -421,7 +421,7 @@ export default function ResearchWorkspace() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[264px] border-r transition-transform duration-220 ease-out lg:static lg:block ${
+        className={`fixed inset-y-0 left-0 z-40 w-[240px] border-r transition-transform duration-220 ease-out lg:static lg:block ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
         style={{
@@ -552,11 +552,12 @@ export default function ResearchWorkspace() {
 
             <div className="space-y-5 p-4">
               {phase === "idle" && (
-                <>
-                  <WorkflowOverview />
+                <div className="unified-panel">
+                  <WorkflowOverview bare />
                   <ReportsPanel
                     reports={live.reports}
                     onStartResearch={focusComposer}
+                    bare
                   />
                   <PDFUploader
                     documents={mergedDocuments}
@@ -564,7 +565,7 @@ export default function ResearchWorkspace() {
                     selectedDocs={selectedDocs}
                     onSelectionChange={setSelectedDocs}
                   />
-                </>
+                </div>
               )}
 
               {phase === "running" && (

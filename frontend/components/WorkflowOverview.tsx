@@ -1,6 +1,7 @@
 "use client";
 
 import { ClipboardList, FileCheck2, FileText, Globe2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const steps = [
   {
@@ -29,26 +30,26 @@ const steps = [
   },
 ] as const;
 
-export default function WorkflowOverview() {
+export default function WorkflowOverview({ bare = false }: { bare?: boolean }) {
   return (
-    <div className="card-glass p-4">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+    <div className={cn(!bare && "card-glass p-4")}>
+      <p className="text-[13px] font-semibold tracking-tight text-[var(--text-primary)]">
         How it works
       </p>
-      <div className="mt-3 space-y-3">
+      <div className="mt-3 space-y-2.5">
         {steps.map(({ icon: Icon, color, title, detail }, i) => (
           <div key={title} className="flex gap-3">
             <span className={`agent-step-icon agent-step-icon-${color}`}>
-              <Icon className="h-4 w-4" />
+              <Icon className="h-[18px] w-[18px]" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 text-xs font-medium text-[var(--text-primary)]">
-                <span className="font-mono text-[9px] text-[var(--text-muted)]">
+              <p className="flex items-center gap-2 text-[13px] font-medium text-[var(--text-primary)]">
+                <span className="font-mono text-[10px] text-[var(--text-muted)]">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 {title}
               </p>
-              <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--text-muted)]">
+              <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
                 {detail}
               </p>
             </div>

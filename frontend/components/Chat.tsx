@@ -12,8 +12,10 @@ import {
   Check,
   Copy,
   Eraser,
+  FileCheck2,
   FileSearch,
   FileText,
+  FolderOpen,
   Gauge,
   Github,
   Globe2,
@@ -120,19 +122,27 @@ const recentRuns = [
 ] as const;
 
 const researchModes = [
-  { label: "Deep Research", directive: "Deep research:", hint: "Plan, search many sources, rank evidence", icon: Sparkles, color: "violet" },
-  { label: "Compare", directive: "Compare:", hint: "Trade-offs across candidates", icon: Scale, color: "cyan" },
-  { label: "Think Longer", directive: "Think longer:", hint: "Extra depth per source", icon: BrainCircuit, color: "emerald" },
-  { label: "GitHub", directive: "GitHub:", hint: "Focus on repositories", icon: Github, color: "orange" },
+  { label: "Deep Research", directive: "Deep research:", hint: "Plan, search many sources, rank evidence", icon: Sparkles },
+  { label: "Compare", directive: "Compare:", hint: "Trade-offs across candidates", icon: Scale },
+  { label: "Think Longer", directive: "Think longer:", hint: "Extra depth per source", icon: BrainCircuit },
+  { label: "GitHub", directive: "GitHub:", hint: "Focus on repositories", icon: Github },
 ] as const;
 
 const capabilities = [
-  "Web search",
-  "PDF analysis",
-  "GitHub research",
-  "Local files",
-  "Multi-agent planning",
-  "Cited reports",
+  { label: "Web search", icon: Globe2, tint: "bg-cyan-400/10 text-cyan-400" },
+  { label: "PDF analysis", icon: FileText, tint: "bg-emerald-400/10 text-emerald-400" },
+  { label: "GitHub research", icon: Github, tint: "bg-orange-400/10 text-orange-400" },
+  { label: "Local files", icon: FolderOpen, tint: "bg-amber-400/10 text-amber-400" },
+  { label: "Multi-agent planning", icon: BrainCircuit, tint: "bg-violet-400/10 text-violet-400" },
+  { label: "Cited reports", icon: FileCheck2, tint: "bg-blue-400/10 text-blue-400" },
+] as const;
+
+const rotatingPlaceholders = [
+  "Ask a research question…",
+  "Compare LangGraph vs CrewAI",
+  "Analyze uploaded PDFs",
+  "Review a GitHub repository",
+  "Research a startup",
 ] as const;
 
 function CopyButton({ text }: { text: string }) {
@@ -283,6 +293,15 @@ interface ComposerProps {
   mode: (typeof researchModes)[number] | null;
   setMode: (mode: (typeof researchModes)[number] | null) => void;
   attachHint?: string;
+  placeholder: string;
+}
+
+function GroupLabel({ children }: { children: string }) {
+  return (
+    <span className="mr-1.5 hidden text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)] lg:inline">
+      {children}
+    </span>
+  );
 }
 
 function Composer({
@@ -299,12 +318,13 @@ function Composer({
   mode,
   setMode,
   attachHint,
+  placeholder,
 }: ComposerProps) {
   const isHero = variant === "hero";
 
   const actionClass = (active = false) =>
     cn(
-      "inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] transition-colors duration-150",
+      "inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors duration-150",
       active
         ? "bg-violet-500/12 text-violet-300"
         : "text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]",
@@ -315,64 +335,124 @@ function Composer({
       onSubmit={onSubmit}
       className={cn("composer", isHero ? "composer-hero" : "mx-auto w-full max-w-4xl")}
     >
-      <textarea
-        id="research-composer"
-        ref={inputRef}
-        value={input}
-        onChange={(event) => setInput(event.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder={
-          mode
-            ? `${mode.label} — ${mode.hint}. ResearchSwarm will build a plan...`
-            : "Research anything — models, papers, companies, code..."
-        }
-        className={cn(
-          "w-full resize-none bg-transparent text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]",
-          isHero
-            ? "min-h-[120px] px-5 pb-3 pt-5 text-base"
-            : "min-h-[54px] px-4 pb-2 pt-4 text-sm",
-        )}
-        rows={isHero ? 2 : 1}
-        disabled={isRunning}
-        aria-label="Research question"
-      />
-      <div className="flex items-center gap-3 border-t border-white/[0.05] px-3 py-2.5">
-        <div
+      <div className="relative">
+        <textarea
+          id="research-composer"
+          ref={inputRef}
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={onKeyDown}
           className={cn(
-            "min-w-0 flex-1",
-            isHero ? "grid grid-cols-3 gap-1 sm:grid-cols-6" : "flex flex-wrap items-center gap-1",
+            "w-full resize-none bg-transparent text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]",
+            isHero
+              ? "min-h-[92px] px-5 pb-2 pt-4 text-base"
+              : "min-h-[52px] px-4 pb-1.5 pt-3.5 text-sm",
           )}
-        >
-          <button
-            type="button"
-            onClick={onAttach}
-            className={actionClass()}
-            title={attachHint}
-            aria-label={attachHint || "Attach documents"}
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-            <span>Attach</span>
-          </button>
-          <span className={cn(actionClass(), "cursor-default")}>
-            <Globe2 className="h-3.5 w-3.5 text-cyan-400" />
-            <span>Web</span>
-          </span>
-          {researchModes.map((m) => (
-            <button
-              key={m.label}
-              type="button"
-              onClick={() => setMode(mode?.label === m.label ? null : m)}
-              className={actionClass(mode?.label === m.label)}
-              title={m.hint}
-              aria-pressed={mode?.label === m.label}
+          rows={isHero ? 1 : 1}
+          disabled={isRunning}
+          aria-label="Research question"
+        />
+        {!input && !isRunning && (
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={placeholder}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.18 }}
+              className={cn(
+                "pointer-events-none absolute text-[var(--text-muted)]",
+                isHero ? "left-5 top-4 text-base" : "left-4 top-3.5 text-sm",
+              )}
             >
-              <m.icon className="h-3.5 w-3.5" />
-              <span>{m.label}</span>
+              {placeholder}
+            </motion.span>
+          </AnimatePresence>
+        )}
+      </div>
+      <div className="flex items-center gap-3 border-t border-white/[0.05] px-3 py-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="flex items-center">
+            <GroupLabel>Files</GroupLabel>
+            <button
+              type="button"
+              onClick={onAttach}
+              className={actionClass()}
+              title={attachHint}
+              aria-label={attachHint || "Attach documents"}
+            >
+              <Paperclip className="h-3.5 w-3.5" />
+              <span>Attach</span>
             </button>
-          ))}
+          </div>
+
+          <div className="flex items-center border-l border-white/[0.05] pl-4">
+            <GroupLabel>Research</GroupLabel>
+            <span className={cn(actionClass(), "cursor-default")}>
+              <Globe2 className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Web</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setMode(mode?.label === "Deep Research" ? null : researchModes[0])}
+              className={actionClass(mode?.label === "Deep Research")}
+              title={researchModes[0].hint}
+              aria-pressed={mode?.label === "Deep Research"}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Deep</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode(mode?.label === "Compare" ? null : researchModes[1])}
+              className={actionClass(mode?.label === "Compare")}
+              title={researchModes[1].hint}
+              aria-pressed={mode?.label === "Compare"}
+            >
+              <Scale className="h-3.5 w-3.5" />
+              <span>Compare</span>
+            </button>
+          </div>
+
+          <div className="flex items-center border-l border-white/[0.05] pl-4">
+            <GroupLabel>Models</GroupLabel>
+            <button
+              type="button"
+              onClick={() => setMode(mode?.label === "Think Longer" ? null : researchModes[2])}
+              className={actionClass(mode?.label === "Think Longer")}
+              title={researchModes[2].hint}
+              aria-pressed={mode?.label === "Think Longer"}
+            >
+              <BrainCircuit className="h-3.5 w-3.5" />
+              <span>Think Longer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode(mode?.label === "GitHub" ? null : researchModes[3])}
+              className={actionClass(mode?.label === "GitHub")}
+              title={researchModes[3].hint}
+              aria-pressed={mode?.label === "GitHub"}
+            >
+              <Github className="h-3.5 w-3.5" />
+              <span>GitHub</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5">
+          {input && (
+            <button
+              type="button"
+              onClick={() => {
+                setInput("");
+                inputRef.current?.focus();
+              }}
+              className={actionClass()}
+              aria-label="Clear question"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </button>
+          )}
           {onDebateToggle && (
             <button
               type="button"
@@ -391,7 +471,7 @@ function Composer({
           <button
             type="submit"
             disabled={!input.trim() || isRunning}
-            className={cn("composer-submit", isHero && "h-9 w-9")}
+            className={cn("composer-submit", isHero && "h-8 w-8")}
             aria-label={isRunning ? "Research in progress" : "Start research"}
           >
             {isRunning ? (
@@ -423,12 +503,21 @@ export default function Chat({
   const { user } = useAuth();
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<(typeof researchModes)[number] | null>(null);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = composerRef || useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamLogs]);
+
+  useEffect(() => {
+    if (mode || isRunning || messages.length > 0) return;
+    const id = setInterval(() => {
+      setPlaceholderIdx((i) => (i + 1) % rotatingPlaceholders.length);
+    }, 3200);
+    return () => clearInterval(id);
+  }, [mode, isRunning, messages.length]);
 
   const submitQuery = () => {
     const query = input.trim();
@@ -482,6 +571,11 @@ export default function Chat({
       ? `${documents.length} document${documents.length === 1 ? "" : "s"} ready`
       : "Attach PDFs to include";
 
+  const lastSession = liveLastSession;
+  const placeholder = mode
+    ? `${mode.label} — ${mode.hint}. ResearchSwarm will build a plan...`
+    : rotatingPlaceholders[placeholderIdx % rotatingPlaceholders.length];
+
   const composerProps = {
     input,
     setInput,
@@ -495,6 +589,7 @@ export default function Chat({
     mode,
     setMode,
     attachHint,
+    placeholder,
   };
 
   return (
@@ -505,39 +600,88 @@ export default function Chat({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-5 py-10 sm:px-8 lg:py-12"
+            className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-5 py-6 sm:px-8"
           >
             <div className="text-center">
-              <p className="text-xs font-medium text-[var(--text-muted)]">
+              <p className="text-[11px] font-medium text-[var(--text-muted)]">
                 ResearchSwarm
               </p>
-              <motion.h2
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.05 }}
-                className="mt-2 text-balance text-5xl font-semibold tracking-[-0.045em] text-[var(--text-primary)] sm:text-6xl"
-              >
-                {greeting}, {firstName}
-              </motion.h2>
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.1 }}
-                className="mx-auto mt-4 max-w-xl text-base leading-6 text-[var(--text-muted)]"
-              >
-                One question is enough — the swarm plans, searches, and connects
-                the evidence for you.
-              </motion.p>
+              {lastSession ? (
+                <>
+                  <motion.h2
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="mt-1.5 text-[42px] font-bold leading-[1.08] tracking-[-0.04em] text-[var(--text-primary)] sm:text-[48px]"
+                  >
+                    Continue your research
+                  </motion.h2>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.05 }}
+                    className="mx-auto mt-3 max-w-lg text-sm text-[var(--text-muted)]"
+                  >
+                    Last session:{" "}
+                    <span className="font-medium text-[var(--text-secondary)]">
+                      {lastSession.title || lastSession.prompt || "Untitled"}
+                    </span>
+                    {" · "}
+                    {lastSession.sources_total ?? 0} sources ·{" "}
+                    {timeAgo(lastSession.updated_at || lastSession.created_at || "")}
+                  </motion.p>
+                  <motion.button
+                    type="button"
+                    onClick={() => {
+                      setInput(
+                        lastSession.prompt ||
+                          lastSession.title ||
+                          "Compare LangGraph and CrewAI for production systems",
+                      );
+                      inputRef.current?.focus();
+                    }}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="continue-button mt-4"
+                  >
+                    Resume this run
+                    <ArrowUp className="h-3 w-3 -rotate-90" />
+                  </motion.button>
+                </>
+              ) : (
+                <>
+                  <motion.h2
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="mt-1.5 text-[42px] font-bold leading-[1.08] tracking-[-0.04em] text-[var(--text-primary)] sm:text-[48px]"
+                  >
+                    {greeting}, {firstName}
+                  </motion.h2>
+                  <motion.p
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.05 }}
+                    className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--text-muted)]"
+                  >
+                    One question is enough — the swarm plans, searches, and connects
+                    the evidence for you.
+                  </motion.p>
+                </>
+              )}
             </div>
 
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.15 }}
-              className="mt-9 w-full"
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="mt-6 w-full"
             >
               <Composer variant="hero" {...composerProps} />
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
                 {suggestions.map(({ label, prompt, icon: Icon, color }) => (
                   <motion.button
                     key={label}
@@ -548,7 +692,7 @@ export default function Chat({
                     whileTap={{ scale: 0.98 }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--purple)_18%,var(--border))] bg-[color-mix(in_srgb,var(--surface-hover)_32%,transparent)] px-3.5 py-2 text-xs text-[var(--text-secondary)] transition-colors",
+                      "inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--purple)_18%,var(--border))] bg-[color-mix(in_srgb,var(--surface-hover)_32%,transparent)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors",
                       "hover:border-[color-mix(in_srgb,var(--purple)_38%,var(--border))] hover:text-[var(--text-primary)] disabled:opacity-50",
                     )}
                   >
@@ -559,81 +703,11 @@ export default function Chat({
                   </motion.button>
                 ))}
               </div>
-              <p className="mt-4 text-center text-[11px] text-[var(--text-muted)]">
-                Enter to send · Shift + Enter for a new line · Research can make mistakes
-              </p>
             </motion.div>
 
-            {liveLastSession && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.2 }}
-                className="continue-card relative mt-9 overflow-hidden p-5"
-              >
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-violet-500/[0.09] via-transparent to-transparent" />
-                <div className="pointer-events-none absolute -top-10 right-0 h-32 w-32 rounded-full bg-violet-500/[0.07] blur-3xl" />
-                <div className="relative flex items-center justify-between gap-3">
-                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                    Continue research
-                  </p>
-                  <span className="ready-badge flex items-center gap-1.5">
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        liveLastSession.status === "completed" ||
-                        !liveLastSession.status
-                          ? "bg-emerald-400"
-                          : "bg-amber-400"
-                      }`}
-                    />
-                    {liveLastSession.status
-                      ? liveLastSession.status.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
-                      : "Completed"}
-                  </span>
-                </div>
-                <p className="relative mt-3 text-[17px] font-medium leading-snug text-[var(--text-primary)]">
-                  {liveLastSession.title || liveLastSession.prompt ||
-                    "Compare LangGraph and CrewAI for production systems"}
-                </p>
-                <div className="relative mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--text-muted)]">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="h-3 w-3 text-emerald-400" />
-                    {liveLastSession.sources_total ?? 21} sources
-                  </span>
-                  {liveLastSession.mode && (
-                    <span className="flex items-center gap-1.5">
-                      <Check className="h-3 w-3 text-emerald-400" />
-                      {liveLastSession.mode.replace(/_/g, " ")}
-                    </span>
-                  )}
-                  {liveLastSession.updated_at && (
-                    <span className="flex items-center gap-1.5">
-                      <Check className="h-3 w-3 text-emerald-400" />
-                      {timeAgo(liveLastSession.updated_at)}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInput(
-                      liveLastSession.prompt ||
-                        liveLastSession.title ||
-                        "Compare LangGraph and CrewAI for production systems",
-                    );
-                    inputRef.current?.focus();
-                  }}
-                  className="continue-button relative mt-4"
-                >
-                  Resume this run
-                  <ArrowUp className="h-3 w-3 -rotate-90" />
-                </button>
-              </motion.div>
-            )}
-
-            <div className="mt-10">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-base font-semibold tracking-tight text-[var(--text-primary)]">
+            <div className="mt-16">
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
                   Recent research
                 </p>
                 <span className="text-xs text-[var(--text-muted)]">
@@ -649,20 +723,19 @@ export default function Chat({
                       setInput(run.prompt);
                       inputRef.current?.focus();
                     }}
-                    whileHover={{ x: 3 }}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.995 }}
                     transition={{ duration: 0.15 }}
-                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--surface-hover)_45%,transparent)]"
+                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--surface-hover)_45%,transparent)] hover:shadow-[0_6px_20px_rgb(0_0_0/0.12)]"
                   >
-                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400/70" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-medium text-[var(--text-primary)]">
-                        {run.title}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-[var(--text-muted)]">
-                        {run.meta}
-                      </span>
+                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400/80" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-primary)]">
+                      {run.title}
                     </span>
-                    <span className="flex items-center gap-1 text-xs text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100">
+                    <span className="hidden shrink-0 text-xs text-[var(--text-muted)] sm:block">
+                      {run.meta}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-secondary)] opacity-0 transition-opacity group-hover:opacity-100">
                       Resume
                       <ArrowUp className="h-3 w-3 -rotate-90" />
                     </span>
@@ -677,22 +750,22 @@ export default function Chat({
               transition={{ duration: 0.25, delay: 0.05 }}
               className="card-glass mt-10 p-5"
             >
-              <p className="text-base font-semibold tracking-tight text-[var(--text-primary)]">
+              <p className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
                 Capabilities
               </p>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
                 Everything the swarm can draw on
               </p>
               <div className="mt-4 grid grid-cols-1 gap-1 sm:grid-cols-2">
-                {capabilities.map((capability) => (
+                {capabilities.map(({ label, icon: Icon, tint }) => (
                   <div
-                    key={capability}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-[var(--text-secondary)]"
+                    key={label}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[var(--text-secondary)]"
                   >
-                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
-                      <Check className="h-3 w-3" />
+                    <span className={cn("flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg", tint)}>
+                      <Icon className="h-3.5 w-3.5" />
                     </span>
-                    {capability}
+                    {label}
                   </div>
                 ))}
               </div>
@@ -740,9 +813,6 @@ export default function Chat({
       {messages.length === 0 ? null : (
         <div className="composer-wrap">
           <Composer variant="bar" {...composerProps} />
-          <p className="mt-2 text-center text-[10px] text-[var(--text-muted)]">
-            Enter to send · Shift + Enter for a new line · Research can make mistakes
-          </p>
         </div>
       )}
     </div>
