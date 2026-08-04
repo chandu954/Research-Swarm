@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Command, Search, Sparkles, Menu, Settings2,
-  UserRound, ChevronDown, LogOut, Network, Globe2,
+  Search, Sparkles, Menu, Settings2,
+  ChevronDown, LogOut,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "./ThemeToggle";
@@ -15,14 +15,12 @@ interface TopbarProps {
   onToggleSidebar: () => void;
   onOpenSettings: () => void;
   onOpenPalette: () => void;
-  provider: string;
 }
 
 export default function Topbar({
   onToggleSidebar,
   onOpenSettings,
   onOpenPalette,
-  provider,
 }: TopbarProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -33,7 +31,7 @@ export default function Topbar({
     : "U";
 
   return (
-    <header className="relative z-40 flex h-12 items-center justify-between border-b border-white/[0.06] bg-[var(--surface)]/80 px-3 backdrop-blur-xl">
+    <header className="relative z-40 flex h-12 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/80 px-3 backdrop-blur-xl">
       <div className="flex items-center gap-2">
         <button
           onClick={onToggleSidebar}
@@ -50,43 +48,21 @@ export default function Topbar({
           <span className="hidden text-sm font-semibold text-[var(--text-primary)] sm:block">
             ResearchSwarm
           </span>
-          <span className="hidden rounded-md border border-violet-400/20 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-violet-300 sm:inline">
-            v3
-          </span>
         </div>
 
         <div className="ml-2 hidden md:block w-48">
           <OrgSwitcher />
         </div>
-
-        <div className="ml-2 hidden items-center gap-1.5 md:flex">
-          <span className="tech-badge">
-            <Network className="h-3 w-3 text-violet-400" />
-            LangGraph
-          </span>
-          <span className="tech-badge">
-            <Globe2 className="h-3 w-3 text-cyan-400" />
-            {provider === "openrouter" ? "OpenRouter" : "Ollama"}
-          </span>
-        </div>
       </div>
 
       <div className="flex items-center gap-1.5">
-        <span className="hidden h-6 items-center gap-1.5 rounded-full border border-emerald-400/15 bg-emerald-500/[0.06] px-2.5 text-[9px] font-medium text-emerald-300 lg:flex">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          </span>
-          Local runtime · connected
-        </span>
-
         <button
           onClick={onOpenPalette}
-          className="flex h-8 items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-[11px] text-[var(--text-muted)] transition-colors hover:border-white/[0.12] hover:text-[var(--text-secondary)]"
+          className="flex h-8 items-center gap-2 rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_35%,transparent)] px-3 text-[11px] text-[var(--text-muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
         >
           <Search className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Search</span>
-          <kbd className="ml-1 hidden rounded border border-white/[0.06] bg-white/[0.04] px-1 font-mono text-[9px] sm:inline">
+          <kbd className="ml-1 hidden rounded border border-[var(--border)] bg-[var(--surface)] px-1 font-mono text-[9px] sm:inline">
             ⌘K
           </kbd>
         </button>
@@ -104,7 +80,7 @@ export default function Topbar({
         <div className="relative">
           <button
             onClick={() => setProfileOpen((o) => !o)}
-            className="flex h-8 items-center gap-1.5 rounded-lg pl-1.5 pr-2 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-white/[0.04]"
+            className="flex h-8 items-center gap-1.5 rounded-lg pl-1.5 pr-2 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
           >
             <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 text-[8px] font-semibold text-white">
               {initials}
@@ -117,22 +93,23 @@ export default function Topbar({
                 initial={{ opacity: 0, y: -4, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-white/[0.08] bg-[var(--surface)] py-1 shadow-2xl"
+                transition={{ duration: 0.15 }}
+                className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] py-1 shadow-2xl"
               >
-                <div className="border-b border-white/[0.06] px-3 py-2">
+                <div className="border-b border-[var(--border)] px-3 py-2">
                   <p className="text-xs font-medium text-[var(--text-primary)]">{user?.name}</p>
                   <p className="text-[10px] text-[var(--text-muted)]">{user?.email}</p>
                 </div>
                 <button
                   onClick={onOpenSettings}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-white/[0.04]"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
                 >
                   <Settings2 className="h-3.5 w-3.5" />
                   Settings
                 </button>
                 <button
                   onClick={() => { logout(); router.push("/login"); }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-[11px] text-rose-400 transition-colors hover:bg-white/[0.04]"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-[11px] text-rose-400 transition-colors hover:bg-[var(--surface-hover)]"
                 >
                   <LogOut className="h-3.5 w-3.5" />
                   Sign out

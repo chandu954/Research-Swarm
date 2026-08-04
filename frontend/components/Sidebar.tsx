@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
+  ChevronDown,
   FileText,
   FolderOpen,
   Layers,
@@ -18,6 +20,7 @@ import { listConversations, deleteConversation, updateConversation } from "@/lib
 import { useAuth } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 
 interface SidebarProps {
   documents: UploadedDocument[];
@@ -73,6 +76,43 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+function SectionHeader({
+  icon: Icon,
+  label,
+  count,
+  open,
+  onToggle,
+}: {
+  icon: LucideIcon;
+  label: string;
+  count?: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--surface-hover)]"
+      aria-expanded={open}
+    >
+      <Icon className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+      <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+        {label}
+      </span>
+      {count !== undefined && (
+        <span className="sidebar-count">{count}</span>
+      )}
+      <ChevronDown
+        className={cn(
+          "ml-auto h-3.5 w-3.5 text-[var(--text-muted)] transition-transform duration-200",
+          open && "rotate-180",
+        )}
+      />
+    </button>
+  );
+}
+
 export default function Sidebar({
   documents,
   recentQueries = [],
@@ -93,6 +133,8 @@ export default function Sidebar({
   const [menuConvId, setMenuConvId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [collectionsOpen, setCollectionsOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(true);
 
   const fetchConversations = useCallback(() => {
     setLoading(true);
@@ -206,30 +248,42 @@ export default function Sidebar({
         </span>
       </button>
 
-      <div className="mt-6 px-2">
-        <div className="mb-2 flex items-center gap-2">
-          <Layers className="h-3 w-3 text-[var(--text-muted)]" />
-          <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-            Collections
-          </p>
-          <span className="sidebar-count">{collectionItems.length}</span>
-        </div>
-        <div className="space-y-0.5">
-          {collectionItems.map((collection) => (
-            <button
-              key={collection}
-              type="button"
-              className="conversation-item group"
+      <div className="mt-5 space-y-1">
+        <SectionHeader
+          icon={Layers}
+          label="Collections"
+          count={collectionItems.length}
+          open={collectionsOpen}
+          onToggle={() => setCollectionsOpen((open) => !open)}
+        />
+        <AnimatePresence initial={false}>
+          {collectionsOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
             >
-              <span className="conversation-dot bg-violet-400/40" />
-              <span className="truncate">{collection}</span>
-            </button>
-          ))}
-        </div>
+              <div className="space-y-0.5 pb-1 pt-0.5">
+                {collectionItems.map((collection) => (
+                  <button
+                    key={collection}
+                    type="button"
+                    className="conversation-item pl-5"
+                  >
+                    <span className="conversation-dot bg-violet-400/40" />
+                    <span className="truncate">{collection}</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <button
           type="button"
           onClick={onOpenDocuments}
-          className="sidebar-nav-item mt-2"
+          className="sidebar-nav-item"
         >
           <FolderOpen className="h-4 w-4" />
           Documents
@@ -237,153 +291,162 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-1">
-        <div className="mb-2 flex items-center justify-between px-2">
-          <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-            Recent research
-          </p>
-          <Search className="h-3 w-3 text-[var(--text-muted)]" />
-        </div>
+      <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
+        <SectionHeader
+          icon={Search}
+          label="Recent research"
+          open={recentOpen}
+          onToggle={() => setRecentOpen((open) => !open)}
+        />
+        <AnimatePresence initial={false}>
+          {recentOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="relative mb-2 mt-1 px-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search conversations..."
+                  className="w-full rounded-lg border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_35%,transparent)] py-1.5 pl-7 pr-2 text-[10px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-violet-400/30"
+                />
+              </div>
 
-        <div className="relative mb-2 px-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-muted)]" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search conversations..."
-            className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-1.5 pl-7 pr-2 text-[10px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-violet-400/30"
-          />
-        </div>
-
-        <div className="space-y-0.5">
-          {loading ? (
-            <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">
-              Loading conversations...
-            </p>
-          ) : filtered.length === 0 ? (
-            <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">
-              {searchQuery
-                ? "No matching conversations"
-                : "No conversations yet. Start a new research."}
-            </p>
-          ) : (
-            filtered.map((conv) => (
-              <div key={conv.id} className="relative group/conversation">
-                {renamingId === conv.id ? (
-                  <input
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleRename(conv.id);
-                      if (e.key === "Escape") setRenamingId(null);
-                    }}
-                    onBlur={() => handleRename(conv.id)}
-                    className="w-full rounded-lg border border-violet-400/30 bg-white/[0.03] px-3 py-2 text-[11px] text-[var(--text-primary)] outline-none"
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
+              <div className="space-y-0.5">
+                {loading ? (
+                  <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">
+                    Loading conversations...
+                  </p>
+                ) : filtered.length === 0 ? (
+                  <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">
+                    {searchQuery
+                      ? "No matching conversations"
+                      : "No conversations yet. Start a new research."}
+                  </p>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => onSelectConversation?.(conv.id)}
-                    className={cn(
-                      "conversation-item group w-full text-left",
-                      activeConversationId === conv.id && "bg-violet-500/10 border-l-2 border-violet-400",
-                    )}
-                    title={conv.query}
-                  >
-                    <span className="conversation-dot bg-white/15" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[11px] text-[var(--text-secondary)]">
-                        {conv.query || "Untitled"}
-                      </span>
-                      {conv.timestamp && (
-                        <span className="block text-[8px] text-[var(--text-muted)]">
-                          {conv.demo
-                            ? conv.timestamp
-                            : timeAgo(conv.timestamp) || new Date(conv.timestamp).toLocaleDateString()}
-                          {!conv.demo && conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
-                        </span>
+                  filtered.map((conv) => (
+                    <div key={conv.id} className="relative group/conversation">
+                      {renamingId === conv.id ? (
+                        <input
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRename(conv.id);
+                            if (e.key === "Escape") setRenamingId(null);
+                          }}
+                          onBlur={() => handleRename(conv.id)}
+                          className="w-full rounded-lg border border-violet-400/30 bg-white/[0.03] px-3 py-2 text-[11px] text-[var(--text-primary)] outline-none"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onSelectConversation?.(conv.id)}
+                          className={cn(
+                            "conversation-item group w-full text-left",
+                            activeConversationId === conv.id && "bg-violet-500/10 border-l-2 border-violet-400",
+                          )}
+                          title={conv.query}
+                        >
+                          <span className="conversation-dot bg-white/15" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[11px] text-[var(--text-secondary)]">
+                              {conv.query || "Untitled"}
+                            </span>
+                            {conv.timestamp && (
+                              <span className="block text-[8px] text-[var(--text-muted)]">
+                                {conv.demo
+                                  ? conv.timestamp
+                                  : timeAgo(conv.timestamp) || new Date(conv.timestamp).toLocaleDateString()}
+                                {!conv.demo && conv.turn_count ? ` · ${conv.turn_count} turns` : ""}
+                              </span>
+                            )}
+                          </span>
+                          {conv.demo && (
+                            <span className="rounded bg-white/[0.04] px-1 py-0.5 text-[7px] uppercase tracking-wide text-[var(--text-muted)]">
+                              Sample
+                            </span>
+                          )}
+                        </button>
                       )}
-                    </span>
-                    {conv.demo && (
-                      <span className="rounded bg-white/[0.04] px-1 py-0.5 text-[7px] uppercase tracking-wide text-[var(--text-muted)]">
-                        Sample
-                      </span>
-                    )}
-                  </button>
-                )}
-                {menuConvId === conv.id && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setMenuConvId(null)} />
-                    <div className="absolute right-0 top-0 z-50 w-32 rounded-lg border border-white/[0.08] bg-[var(--surface-elevated)] py-1 shadow-xl">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRenamingId(conv.id);
-                          setRenameValue(conv.query || "");
-                          setMenuConvId(null);
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-white/[0.04]"
-                      >
-                        <Pencil className="h-3 w-3" />
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => handleDelete(conv.id, e)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-rose-400 hover:bg-white/[0.04]"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Delete
-                      </button>
+                      {menuConvId === conv.id && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setMenuConvId(null)} />
+                          <div className="absolute right-0 top-0 z-50 w-32 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-xl">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRenamingId(conv.id);
+                                setRenameValue(conv.query || "");
+                                setMenuConvId(null);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-white/[0.04]"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDelete(conv.id, e)}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-rose-400 hover:bg-white/[0.04]"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                      {menuConvId !== conv.id && renamingId !== conv.id && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuConvId(menuConvId === conv.id ? null : conv.id);
+                          }}
+                          className="absolute right-1 top-1/2 z-10 hidden -translate-y-1/2 rounded p-0.5 text-[var(--text-muted)] opacity-0 hover:bg-white/[0.06] hover:text-[var(--text-secondary)] group-hover/conversation:opacity-100 group-hover/conversation:block"
+                          aria-label="Conversation actions"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+                            <circle cx="8" cy="3" r="1.5" />
+                            <circle cx="8" cy="8" r="1.5" />
+                            <circle cx="8" cy="13" r="1.5" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
-                  </>
-                )}
-                {menuConvId !== conv.id && renamingId !== conv.id && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuConvId(menuConvId === conv.id ? null : conv.id);
-                    }}
-                    className="absolute right-1 top-1/2 z-10 hidden -translate-y-1/2 rounded p-0.5 text-[var(--text-muted)] opacity-0 hover:bg-white/[0.06] hover:text-[var(--text-secondary)] group-hover/conversation:opacity-100 group-hover/conversation:block"
-                    aria-label="Conversation actions"
-                  >
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
-                      <circle cx="8" cy="3" r="1.5" />
-                      <circle cx="8" cy="8" r="1.5" />
-                      <circle cx="8" cy="13" r="1.5" />
-                    </svg>
-                  </button>
+                  ))
                 )}
               </div>
-            ))
-          )}
-        </div>
 
-        {documents.length > 0 && (
-          <div className="mt-6">
-            <div className="mb-2 px-2">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                Recent documents
-              </p>
-            </div>
-            <div className="space-y-0.5">
-              {documents.slice(0, 5).map((document) => (
-                <button
-                  type="button"
-                  key={document.document_id}
-                  className="conversation-item"
-                >
-                  <FileText className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
-                  <span className="truncate">{document.original_filename || document.filename}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+              {documents.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-1.5 px-2 text-[11px] font-semibold text-[var(--text-secondary)]">
+                    Recent files
+                  </p>
+                  <div className="space-y-0.5">
+                    {documents.slice(0, 5).map((document) => (
+                      <button
+                        type="button"
+                        key={document.document_id}
+                        className="conversation-item"
+                      >
+                        <FileText className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
+                        <span className="truncate">{document.original_filename || document.filename}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="border-t border-[var(--border)] pt-3">

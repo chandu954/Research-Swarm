@@ -454,7 +454,6 @@ export default function ResearchWorkspace() {
           onToggleSidebar={() => setSidebarOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenPalette={() => setPaletteOpen(true)}
-          provider={providerSettings.provider}
         />
 
         <div className="relative flex min-h-0 flex-1">
@@ -555,7 +554,10 @@ export default function ResearchWorkspace() {
               {phase === "idle" && (
                 <>
                   <WorkflowOverview />
-                  <ReportsPanel reports={live.reports} />
+                  <ReportsPanel
+                    reports={live.reports}
+                    onStartResearch={focusComposer}
+                  />
                   <PDFUploader
                     documents={mergedDocuments}
                     onDocumentsChange={setDocuments}
@@ -572,18 +574,13 @@ export default function ResearchWorkspace() {
                     agentMetrics={mergedAgentMetrics}
                     isRunning={isRunning}
                   />
+                  <Sources sources={sources} onInspect={setInspectedSource} />
                   <MetricsPanel
                     agentMetrics={mergedAgentMetrics}
                     executionTime={mergedExecutionTime}
                     sourceCount={mergedSourceCount}
                     documentCount={selectedDocs.length}
                     lastRun={live.lastMetrics}
-                  />
-                  <PDFUploader
-                    documents={mergedDocuments}
-                    onDocumentsChange={setDocuments}
-                    selectedDocs={selectedDocs}
-                    onSelectionChange={setSelectedDocs}
                   />
                   <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
                 </>
@@ -602,8 +599,10 @@ export default function ResearchWorkspace() {
                   {lastAnswer && (
                     <KnowledgeGraph answer={lastAnswer} sources={sources} />
                   )}
-                  <ReportsPanel reports={live.reports} />
-                  <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
+                  <ReportsPanel
+                    reports={live.reports}
+                    onStartResearch={focusComposer}
+                  />
                 </>
               )}
             </div>

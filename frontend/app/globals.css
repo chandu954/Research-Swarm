@@ -70,7 +70,9 @@ html.dark {
   --text-primary: #f4f5f8;
   --text-secondary: #aeb4c2;
   --text-muted: #6b7280;
+  --text-tertiary: #5b6270;
   --scrollbar: #2b3142;
+  --accent-violet: #8b5cf6;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -94,7 +96,9 @@ html.light {
   --text-primary: #11131a;
   --text-secondary: #525866;
   --text-muted: #8a91a0;
+  --text-tertiary: #9aa1af;
   --scrollbar: #cbd0db;
+  --accent-violet: #7c3aed;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -913,9 +917,24 @@ html.light {
 }
 
 .workspace-shell {
+  position: relative;
   background:
-    radial-gradient(circle at 52% -20%, rgb(91 33 182 / 0.07), transparent 28%),
+    radial-gradient(circle at 72% -12%, rgb(124 58 237 / 0.1), transparent 36%),
+    radial-gradient(circle at 8% 112%, rgb(37 99 235 / 0.05), transparent 42%),
     var(--bg);
+}
+
+.workspace-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.014) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.014) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 72%);
 }
 
 .workspace-bg {
@@ -1131,15 +1150,14 @@ html.light {
   width: 100%;
   align-items: center;
   gap: 9px;
-  border: 1px solid var(--border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-hover) 40%, transparent);
+  background: color-mix(in srgb, var(--surface-hover) 42%, transparent);
   padding: 8px;
-  transition: border-color 160ms ease;
+  transition: background-color 160ms ease;
 }
 
 .profile-card:hover {
-  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
 }
 
 .suggestion-card {
@@ -1170,15 +1188,15 @@ html.light {
 }
 
 .capability-card {
-  border: 1px solid var(--border);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface) 64%, transparent);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
   padding: 12px;
-  transition: border-color 170ms ease;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.08);
+  transition: background-color 170ms ease;
 }
 
 .capability-card:hover {
-  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-hover) 55%, transparent);
 }
 
 .capability-icon {
@@ -1423,8 +1441,8 @@ button.composer-tool:hover {
 }
 
 .upload-zone:hover {
-  border-color: rgb(52 211 153 / 0.3);
-  background: rgb(16 185 129 / 0.035);
+  border-color: rgb(52 211 153 / 0.35);
+  background: rgb(16 185 129 / 0.045);
 }
 
 .upload-zone small {
@@ -1442,10 +1460,15 @@ button.composer-tool:hover {
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-hover) 25%, transparent);
+  background: color-mix(in srgb, var(--surface-hover) 26%, transparent);
   padding: 7px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.06);
+  transition: background-color 160ms ease;
+}
+
+.document-row:hover {
+  background: color-mix(in srgb, var(--surface-hover) 45%, transparent);
 }
 
 .command-palette {

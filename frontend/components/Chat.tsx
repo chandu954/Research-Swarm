@@ -15,6 +15,7 @@ import {
   FileSearch,
   FileText,
   Gauge,
+  Github,
   Globe2,
   Loader2,
   Paperclip,
@@ -118,39 +119,20 @@ const recentRuns = [
   },
 ] as const;
 
-const capabilityCards = [
-  {
-    icon: Globe2,
-    title: "Web research",
-    detail: "Real-time search",
-    meta: "Live",
-    chips: ["DuckDuckGo", "Bing", "Serper"],
-    color: "cyan",
-  },
-  {
-    icon: FileText,
-    title: "PDF RAG",
-    detail: "Local document retrieval",
-    meta: "20 files · 4 indexed",
-    chips: ["PyMuPDF", "nomic-embed"],
-    color: "emerald",
-  },
-  {
-    icon: BrainCircuit,
-    title: "Multi-agent",
-    detail: "Plan · Research · Answer",
-    meta: "4 agents",
-    chips: ["LangGraph", "Ollama"],
-    color: "violet",
-  },
+const researchModes = [
+  { label: "Deep Research", directive: "Deep research:", hint: "Plan, search many sources, rank evidence", icon: Sparkles, color: "violet" },
+  { label: "Compare", directive: "Compare:", hint: "Trade-offs across candidates", icon: Scale, color: "cyan" },
+  { label: "Think Longer", directive: "Think longer:", hint: "Extra depth per source", icon: BrainCircuit, color: "emerald" },
+  { label: "GitHub", directive: "GitHub:", hint: "Focus on repositories", icon: Github, color: "orange" },
 ] as const;
 
-const researchModes = [
-  { label: "Quick search", directive: "Quick search:", hint: "Fast answer, fewer sources" },
-  { label: "Deep research", directive: "Deep research:", hint: "Plan, search 18+ sources, rank evidence" },
-  { label: "Compare", directive: "Compare:", hint: "Trade-offs across candidates" },
-  { label: "Summarize", directive: "Summarize:", hint: "Condense documents or topics" },
-  { label: "Verify", directive: "Verify:", hint: "Check claims against sources" },
+const capabilities = [
+  "Web search",
+  "PDF analysis",
+  "GitHub research",
+  "Local files",
+  "Multi-agent planning",
+  "Cited reports",
 ] as const;
 
 function CopyButton({ text }: { text: string }) {
@@ -300,6 +282,7 @@ interface ComposerProps {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   mode: (typeof researchModes)[number] | null;
   setMode: (mode: (typeof researchModes)[number] | null) => void;
+  attachHint?: string;
 }
 
 function Composer({
@@ -315,8 +298,17 @@ function Composer({
   inputRef,
   mode,
   setMode,
+  attachHint,
 }: ComposerProps) {
   const isHero = variant === "hero";
+
+  const actionClass = (active = false) =>
+    cn(
+      "inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] transition-colors duration-150",
+      active
+        ? "bg-violet-500/12 text-violet-300"
+        : "text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]",
+    );
 
   return (
     <form
@@ -332,67 +324,68 @@ function Composer({
         placeholder={
           mode
             ? `${mode.label} — ${mode.hint}. ResearchSwarm will build a plan...`
-            : "Ask anything. ResearchSwarm will build a plan..."
+            : "Research anything — models, papers, companies, code..."
         }
         className={cn(
           "w-full resize-none bg-transparent text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]",
           isHero
-            ? "min-h-[118px] px-5 pb-3 pt-5 text-base"
+            ? "min-h-[120px] px-5 pb-3 pt-5 text-base"
             : "min-h-[54px] px-4 pb-2 pt-4 text-sm",
         )}
         rows={isHero ? 2 : 1}
         disabled={isRunning}
         aria-label="Research question"
       />
-      <div className="flex items-center justify-between gap-3 border-t border-white/[0.05]">
-        <div className={cn("flex min-w-0 items-center gap-1", isHero ? "px-3.5 py-3" : "px-2.5 py-2")}>
+      <div className="flex items-center gap-3 border-t border-white/[0.05] px-3 py-2.5">
+        <div
+          className={cn(
+            "min-w-0 flex-1",
+            isHero ? "grid grid-cols-3 gap-1 sm:grid-cols-6" : "flex flex-wrap items-center gap-1",
+          )}
+        >
           <button
             type="button"
             onClick={onAttach}
-            className="composer-tool"
+            className={actionClass()}
+            title={attachHint}
+            aria-label={attachHint || "Attach documents"}
           >
             <Paperclip className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Attach</span>
+            <span>Attach</span>
           </button>
-          <button
-            type="button"
-            onClick={onDebateToggle}
-            className={cn(
-              "composer-tool",
-              debateMode && "text-violet-400",
-            )}
-            aria-label={debateMode ? "Disable debate mode" : "Enable debate mode"}
-          >
-            <Scale className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Debate</span>
-            {debateMode && (
-              <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-violet-400" />
-            )}
-          </button>
-          {mode && (
-            <span className="composer-tool text-violet-300">
-              <Sparkles className="h-3 w-3" />
-              {mode.label}
-            </span>
-          )}
-          <span className="composer-tool hidden sm:flex">
+          <span className={cn(actionClass(), "cursor-default")}>
             <Globe2 className="h-3.5 w-3.5 text-cyan-400" />
-            Web
+            <span>Web</span>
           </span>
+          {researchModes.map((m) => (
+            <button
+              key={m.label}
+              type="button"
+              onClick={() => setMode(mode?.label === m.label ? null : m)}
+              className={actionClass(mode?.label === m.label)}
+              title={m.hint}
+              aria-pressed={mode?.label === m.label}
+            >
+              <m.icon className="h-3.5 w-3.5" />
+              <span>{m.label}</span>
+            </button>
+          ))}
         </div>
 
-        <div className={cn("flex items-center gap-2", isHero ? "px-3.5 py-3" : "px-2.5 py-2")}>
-          {input && (
+        <div className="flex items-center gap-1.5">
+          {onDebateToggle && (
             <button
               type="button"
-              onClick={() => {
-                setInput("");
-                inputRef.current?.focus();
-              }}
-              className="icon-button h-8 w-8"
-              aria-label="Clear question"
+              onClick={onDebateToggle}
+              className={cn(actionClass(), debateMode && "bg-violet-500/12 text-violet-300")}
+              title={debateMode ? "Disable debate mode" : "Enable debate mode"}
+              aria-label={debateMode ? "Disable debate mode" : "Enable debate mode"}
+              aria-pressed={debateMode}
             >
-              <Eraser className="h-3.5 w-3.5" />
+              <Scale className="h-3.5 w-3.5" />
+              {debateMode && (
+                <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-violet-400" />
+              )}
             </button>
           )}
           <button
@@ -410,38 +403,6 @@ function Composer({
         </div>
       </div>
     </form>
-  );
-}
-
-function ModeChips({
-  mode,
-  setMode,
-}: {
-  mode: (typeof researchModes)[number] | null;
-  setMode: (mode: (typeof researchModes)[number] | null) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-      {researchModes.map((m) => (
-        <button
-          key={m.label}
-          type="button"
-          onClick={() => setMode(mode?.label === m.label ? null : m)}
-          className={cn(
-            "mode-chip",
-            mode?.label === m.label && "mode-chip-active",
-          )}
-          title={m.hint}
-        >
-          {m.label}
-        </button>
-      ))}
-      {mode && (
-        <span className="ml-auto hidden shrink-0 text-[9px] text-[var(--text-muted)] sm:block">
-          {mode.hint}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -516,6 +477,26 @@ export default function Chat({
     hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const firstName = user?.name?.split(" ")[0] || "there";
 
+  const attachHint =
+    documents.length > 0
+      ? `${documents.length} document${documents.length === 1 ? "" : "s"} ready`
+      : "Attach PDFs to include";
+
+  const composerProps = {
+    input,
+    setInput,
+    onSubmit: handleSubmit,
+    onKeyDown: handleKeyDown,
+    onAttach,
+    onDebateToggle,
+    debateMode,
+    isRunning,
+    inputRef,
+    mode,
+    setMode,
+    attachHint,
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -523,49 +504,77 @@ export default function Chat({
           <motion.section
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
             className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-5 py-10 sm:px-8 lg:py-12"
           >
             <div className="text-center">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-300">
+              <p className="text-xs font-medium text-[var(--text-muted)]">
                 ResearchSwarm
               </p>
-              <h2 className="mt-3 text-balance text-4xl font-semibold tracking-[-0.04em] text-[var(--text-primary)] sm:text-5xl">
+              <motion.h2
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.05 }}
+                className="mt-2 text-balance text-5xl font-semibold tracking-[-0.045em] text-[var(--text-primary)] sm:text-6xl"
+              >
                 {greeting}, {firstName}
-              </h2>
-              <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--text-muted)]">
-                One question is enough — the swarm plans, searches, and connects the
-                evidence for you.
-              </p>
+              </motion.h2>
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+                className="mx-auto mt-4 max-w-xl text-base leading-6 text-[var(--text-muted)]"
+              >
+                One question is enough — the swarm plans, searches, and connects
+                the evidence for you.
+              </motion.p>
             </div>
 
-            <div className="mt-8 w-full">
-              <ModeChips mode={mode} setMode={setMode} />
-              <div className="mt-2.5">
-                <Composer
-                  variant="hero"
-                  input={input}
-                  setInput={setInput}
-                  onSubmit={handleSubmit}
-                  onKeyDown={handleKeyDown}
-                  onAttach={onAttach}
-                  onDebateToggle={onDebateToggle}
-                  debateMode={debateMode}
-                  isRunning={isRunning}
-                  inputRef={inputRef}
-                  mode={mode}
-                  setMode={setMode}
-                />
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.15 }}
+              className="mt-9 w-full"
+            >
+              <Composer variant="hero" {...composerProps} />
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {suggestions.map(({ label, prompt, icon: Icon, color }) => (
+                  <motion.button
+                    key={label}
+                    type="button"
+                    onClick={() => onSend(prompt)}
+                    disabled={isRunning}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ duration: 0.15 }}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--purple)_18%,var(--border))] bg-[color-mix(in_srgb,var(--surface-hover)_32%,transparent)] px-3.5 py-2 text-xs text-[var(--text-secondary)] transition-colors",
+                      "hover:border-[color-mix(in_srgb,var(--purple)_38%,var(--border))] hover:text-[var(--text-primary)] disabled:opacity-50",
+                    )}
+                  >
+                    <span className={`suggestion-icon suggestion-icon-${color} !h-5 !w-5 !rounded-full`}>
+                      <Icon className="h-3 w-3" />
+                    </span>
+                    {label}
+                  </motion.button>
+                ))}
               </div>
-              <p className="mt-3 text-center text-[10px] text-[var(--text-muted)]">
+              <p className="mt-4 text-center text-[11px] text-[var(--text-muted)]">
                 Enter to send · Shift + Enter for a new line · Research can make mistakes
               </p>
-            </div>
+            </motion.div>
 
             {liveLastSession && (
-              <div className="card-glass relative mt-9 overflow-hidden p-5">
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-violet-500/[0.07] via-transparent to-transparent" />
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                className="continue-card relative mt-9 overflow-hidden p-5"
+              >
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-violet-500/[0.09] via-transparent to-transparent" />
+                <div className="pointer-events-none absolute -top-10 right-0 h-32 w-32 rounded-full bg-violet-500/[0.07] blur-3xl" />
                 <div className="relative flex items-center justify-between gap-3">
-                  <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                     Continue research
                   </p>
                   <span className="ready-badge flex items-center gap-1.5">
@@ -582,11 +591,11 @@ export default function Chat({
                       : "Completed"}
                   </span>
                 </div>
-                <p className="relative mt-3 text-base font-medium leading-snug text-[var(--text-primary)]">
+                <p className="relative mt-3 text-[17px] font-medium leading-snug text-[var(--text-primary)]">
                   {liveLastSession.title || liveLastSession.prompt ||
                     "Compare LangGraph and CrewAI for production systems"}
                 </p>
-                <div className="relative mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[var(--text-muted)]">
+                <div className="relative mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--text-muted)]">
                   <span className="flex items-center gap-1.5">
                     <Check className="h-3 w-3 text-emerald-400" />
                     {liveLastSession.sources_total ?? 21} sources
@@ -619,123 +628,75 @@ export default function Chat({
                   Resume this run
                   <ArrowUp className="h-3 w-3 -rotate-90" />
                 </button>
-              </div>
+              </motion.div>
             )}
 
-            <div className="mt-9">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-medium text-[var(--text-primary)]">
+            <div className="mt-10">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-base font-semibold tracking-tight text-[var(--text-primary)]">
                   Recent research
                 </p>
-                <span className="text-[10px] text-[var(--text-muted)]">
+                <span className="text-xs text-[var(--text-muted)]">
                   From your memory
                 </span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="mt-2">
                 {recentItems.map((run) => (
-                  <button
+                  <motion.button
                     key={run.key}
                     type="button"
                     onClick={() => {
                       setInput(run.prompt);
                       inputRef.current?.focus();
                     }}
-                    className="card-glass group flex flex-col items-start gap-2.5 p-4 text-left"
+                    whileHover={{ x: 3 }}
+                    transition={{ duration: 0.15 }}
+                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--surface-hover)_45%,transparent)]"
                   >
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-400/10 text-emerald-300">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-medium text-[var(--text-secondary)] transition-colors group-hover:text-[var(--text-primary)]">
+                    <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400/70" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium text-[var(--text-primary)]">
                         {run.title}
                       </span>
-                      <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">
+                      <span className="mt-0.5 block text-xs text-[var(--text-muted)]">
                         {run.meta}
                       </span>
                     </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-9">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-medium text-[var(--text-primary)]">
-                  Suggested prompts
-                </p>
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  Choose one to begin
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {suggestions.map(({ label, prompt, icon: Icon, color }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => onSend(prompt)}
-                    disabled={isRunning}
-                    className={cn(
-                      "inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_35%,transparent)] px-3.5 py-2 text-xs text-[var(--text-secondary)] transition-colors",
-                      "hover:border-[color-mix(in_srgb,var(--purple)_35%,var(--border))] hover:text-[var(--text-primary)] disabled:opacity-50",
-                    )}
-                  >
-                    <span className={`suggestion-icon suggestion-icon-${color} !h-5 !w-5 !rounded-full`}>
-                      <Icon className="h-3 w-3" />
+                    <span className="flex items-center gap-1 text-xs text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100">
+                      Resume
+                      <ArrowUp className="h-3 w-3 -rotate-90" />
                     </span>
-                    {label}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
             </div>
 
-            <div className="mt-9 grid gap-2 sm:grid-cols-3">
-              {capabilityCards.map(
-                ({ icon: Icon, title, detail, meta, chips, color }) => (
-                  <article key={title} className="capability-card">
-                    <div className="flex items-start justify-between">
-                      <span className={`capability-icon capability-icon-${color}`}>
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <span className="ready-badge">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                        {meta}
-                      </span>
-                    </div>
-                    <p className="mt-4 text-sm font-medium text-[var(--text-primary)]">
-                      {title}
-                    </p>
-                    <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                      {detail}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-1">
-                      {chips.map((chip) => (
-                        <span key={chip} className="capability-chip">
-                          <Check className="h-2 w-2 text-emerald-400" />
-                          {chip}
-                        </span>
-                      ))}
-                    </div>
-                  </article>
-                ),
-              )}
-            </div>
-
-            {documents.length > 0 && (
-              <div className="mt-8 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-300">
-                  <FileText className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="text-xs font-medium text-[var(--text-primary)]">
-                    {documents.length} recent document
-                    {documents.length === 1 ? "" : "s"}
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                    Ready to include in your next research task
-                  </p>
-                </div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: 0.05 }}
+              className="card-glass mt-10 p-5"
+            >
+              <p className="text-base font-semibold tracking-tight text-[var(--text-primary)]">
+                Capabilities
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Everything the swarm can draw on
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-1 sm:grid-cols-2">
+                {capabilities.map((capability) => (
+                  <div
+                    key={capability}
+                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-[var(--text-secondary)]"
+                  >
+                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+                      <Check className="h-3 w-3" />
+                    </span>
+                    {capability}
+                  </div>
+                ))}
               </div>
-            )}
+            </motion.div>
           </motion.section>
         ) : (
           <section
@@ -778,23 +739,7 @@ export default function Chat({
 
       {messages.length === 0 ? null : (
         <div className="composer-wrap">
-          <div className="mx-auto mb-2 w-full max-w-4xl">
-            <ModeChips mode={mode} setMode={setMode} />
-          </div>
-          <Composer
-            variant="bar"
-            input={input}
-            setInput={setInput}
-            onSubmit={handleSubmit}
-            onKeyDown={handleKeyDown}
-            onAttach={onAttach}
-            onDebateToggle={onDebateToggle}
-            debateMode={debateMode}
-            isRunning={isRunning}
-            inputRef={inputRef}
-            mode={mode}
-            setMode={setMode}
-          />
+          <Composer variant="bar" {...composerProps} />
           <p className="mt-2 text-center text-[10px] text-[var(--text-muted)]">
             Enter to send · Shift + Enter for a new line · Research can make mistakes
           </p>
