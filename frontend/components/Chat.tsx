@@ -10,7 +10,6 @@ import {
   Bot,
   BrainCircuit,
   Check,
-  ChevronRight,
   Copy,
   Eraser,
   FileSearch,
@@ -23,9 +22,9 @@ import {
   Search,
   Sparkles,
   User,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { AgentLog, Message, UploadedDocument } from "@/lib/types";
 import AgentThinkingPanel from "./AgentThinkingPanel";
 import StreamingText from "./StreamingText";
@@ -288,6 +287,164 @@ function ChatMessage({ message, isLatest }: { message: Message; isLatest: boolea
   );
 }
 
+interface ComposerProps {
+  variant: "hero" | "bar";
+  input: string;
+  setInput: (value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onAttach: () => void;
+  onDebateToggle?: () => void;
+  debateMode?: boolean;
+  isRunning: boolean;
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  mode: (typeof researchModes)[number] | null;
+  setMode: (mode: (typeof researchModes)[number] | null) => void;
+}
+
+function Composer({
+  variant,
+  input,
+  setInput,
+  onSubmit,
+  onKeyDown,
+  onAttach,
+  onDebateToggle,
+  debateMode = false,
+  isRunning,
+  inputRef,
+  mode,
+  setMode,
+}: ComposerProps) {
+  const isHero = variant === "hero";
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className={cn("composer", isHero ? "composer-hero" : "mx-auto w-full max-w-4xl")}
+    >
+      <textarea
+        id="research-composer"
+        ref={inputRef}
+        value={input}
+        onChange={(event) => setInput(event.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={
+          mode
+            ? `${mode.label} — ${mode.hint}. ResearchSwarm will build a plan...`
+            : "Ask anything. ResearchSwarm will build a plan..."
+        }
+        className={cn(
+          "w-full resize-none bg-transparent text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]",
+          isHero
+            ? "min-h-[118px] px-5 pb-3 pt-5 text-base"
+            : "min-h-[54px] px-4 pb-2 pt-4 text-sm",
+        )}
+        rows={isHero ? 2 : 1}
+        disabled={isRunning}
+        aria-label="Research question"
+      />
+      <div className="flex items-center justify-between gap-3 border-t border-white/[0.05]">
+        <div className={cn("flex min-w-0 items-center gap-1", isHero ? "px-3.5 py-3" : "px-2.5 py-2")}>
+          <button
+            type="button"
+            onClick={onAttach}
+            className="composer-tool"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Attach</span>
+          </button>
+          <button
+            type="button"
+            onClick={onDebateToggle}
+            className={cn(
+              "composer-tool",
+              debateMode && "text-violet-400",
+            )}
+            aria-label={debateMode ? "Disable debate mode" : "Enable debate mode"}
+          >
+            <Scale className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Debate</span>
+            {debateMode && (
+              <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-violet-400" />
+            )}
+          </button>
+          {mode && (
+            <span className="composer-tool text-violet-300">
+              <Sparkles className="h-3 w-3" />
+              {mode.label}
+            </span>
+          )}
+          <span className="composer-tool hidden sm:flex">
+            <Globe2 className="h-3.5 w-3.5 text-cyan-400" />
+            Web
+          </span>
+        </div>
+
+        <div className={cn("flex items-center gap-2", isHero ? "px-3.5 py-3" : "px-2.5 py-2")}>
+          {input && (
+            <button
+              type="button"
+              onClick={() => {
+                setInput("");
+                inputRef.current?.focus();
+              }}
+              className="icon-button h-8 w-8"
+              aria-label="Clear question"
+            >
+              <Eraser className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={!input.trim() || isRunning}
+            className={cn("composer-submit", isHero && "h-9 w-9")}
+            aria-label={isRunning ? "Research in progress" : "Start research"}
+          >
+            {isRunning ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowUp className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function ModeChips({
+  mode,
+  setMode,
+}: {
+  mode: (typeof researchModes)[number] | null;
+  setMode: (mode: (typeof researchModes)[number] | null) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+      {researchModes.map((m) => (
+        <button
+          key={m.label}
+          type="button"
+          onClick={() => setMode(mode?.label === m.label ? null : m)}
+          className={cn(
+            "mode-chip",
+            mode?.label === m.label && "mode-chip-active",
+          )}
+          title={m.hint}
+        >
+          {m.label}
+        </button>
+      ))}
+      {mode && (
+        <span className="ml-auto hidden shrink-0 text-[9px] text-[var(--text-muted)] sm:block">
+          {mode.hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function Chat({
   messages,
   documents,
@@ -302,6 +459,7 @@ export default function Chat({
   liveSessions,
   liveLastSession,
 }: ChatProps) {
+  const { user } = useAuth();
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<(typeof researchModes)[number] | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -353,6 +511,11 @@ export default function Chat({
       }))
   ).slice(0, 3);
 
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const firstName = user?.name?.split(" ")[0] || "there";
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -360,113 +523,115 @@ export default function Chat({
           <motion.section
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mx-auto flex min-h-full w-full max-w-4xl flex-col justify-center px-5 py-10 sm:px-8 lg:py-12"
+            className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-5 py-10 sm:px-8 lg:py-12"
           >
-            <div className="mb-8">
-              <span className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-500/10 text-violet-300 shadow-lg shadow-violet-950/20">
-                <Sparkles className="h-5 w-5" />
-              </span>
+            <div className="text-center">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-300">
-                Today&apos;s workspace
+                ResearchSwarm
               </p>
-              <h2 className="mt-2 text-balance text-3xl font-semibold tracking-[-0.035em] text-[var(--text-primary)] sm:text-4xl">
-                What do you want to research today?
+              <h2 className="mt-3 text-balance text-4xl font-semibold tracking-[-0.04em] text-[var(--text-primary)] sm:text-5xl">
+                {greeting}, {firstName}
               </h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--text-muted)]">
-                Start with a question, add your documents, and watch specialized
-                agents gather and connect the evidence.
+              <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--text-muted)]">
+                One question is enough — the swarm plans, searches, and connects the
+                evidence for you.
               </p>
             </div>
 
-            <div className="continue-card">
-              <div className="flex items-center justify-between">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                  Continue last run
+            <div className="mt-8 w-full">
+              <ModeChips mode={mode} setMode={setMode} />
+              <div className="mt-2.5">
+                <Composer
+                  variant="hero"
+                  input={input}
+                  setInput={setInput}
+                  onSubmit={handleSubmit}
+                  onKeyDown={handleKeyDown}
+                  onAttach={onAttach}
+                  onDebateToggle={onDebateToggle}
+                  debateMode={debateMode}
+                  isRunning={isRunning}
+                  inputRef={inputRef}
+                  mode={mode}
+                  setMode={setMode}
+                />
+              </div>
+              <p className="mt-3 text-center text-[10px] text-[var(--text-muted)]">
+                Enter to send · Shift + Enter for a new line · Research can make mistakes
+              </p>
+            </div>
+
+            {liveLastSession && (
+              <div className="card-glass relative mt-9 overflow-hidden p-5">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-violet-500/[0.07] via-transparent to-transparent" />
+                <div className="relative flex items-center justify-between gap-3">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                    Continue research
+                  </p>
+                  <span className="ready-badge flex items-center gap-1.5">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        liveLastSession.status === "completed" ||
+                        !liveLastSession.status
+                          ? "bg-emerald-400"
+                          : "bg-amber-400"
+                      }`}
+                    />
+                    {liveLastSession.status
+                      ? liveLastSession.status.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())
+                      : "Completed"}
+                  </span>
+                </div>
+                <p className="relative mt-3 text-base font-medium leading-snug text-[var(--text-primary)]">
+                  {liveLastSession.title || liveLastSession.prompt ||
+                    "Compare LangGraph and CrewAI for production systems"}
                 </p>
-                <span className="ready-badge">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      liveLastSession?.status === "completed" ||
-                      !liveLastSession?.status
-                        ? "bg-emerald-400"
-                        : "bg-amber-400"
-                    }`}
-                  />
-                  {liveLastSession
-                    ? liveLastSession.status
-                        .replace(/_/g, " ")
-                        .replace(/^\w/, (c) => c.toUpperCase())
-                    : "Completed"}
-                </span>
+                <div className="relative mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[var(--text-muted)]">
+                  <span className="flex items-center gap-1.5">
+                    <Check className="h-3 w-3 text-emerald-400" />
+                    {liveLastSession.sources_total ?? 21} sources
+                  </span>
+                  {liveLastSession.mode && (
+                    <span className="flex items-center gap-1.5">
+                      <Check className="h-3 w-3 text-emerald-400" />
+                      {liveLastSession.mode.replace(/_/g, " ")}
+                    </span>
+                  )}
+                  {liveLastSession.updated_at && (
+                    <span className="flex items-center gap-1.5">
+                      <Check className="h-3 w-3 text-emerald-400" />
+                      {timeAgo(liveLastSession.updated_at)}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInput(
+                      liveLastSession.prompt ||
+                        liveLastSession.title ||
+                        "Compare LangGraph and CrewAI for production systems",
+                    );
+                    inputRef.current?.focus();
+                  }}
+                  className="continue-button relative mt-4"
+                >
+                  Resume this run
+                  <ArrowUp className="h-3 w-3 -rotate-90" />
+                </button>
               </div>
-              <p className="mt-2.5 text-sm font-medium text-[var(--text-primary)]">
-                {liveLastSession?.title || liveLastSession?.prompt ||
-                  "Compare LangGraph and CrewAI for production systems"}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[var(--text-muted)]">
-                <span className="flex items-center gap-1.5">
-                  <Check className="h-3 w-3 text-emerald-400" />
-                  {liveLastSession?.sources_total ?? 21} sources
-                </span>
-                {liveLastSession?.mode && (
-                  <span className="flex items-center gap-1.5">
-                    <Check className="h-3 w-3 text-emerald-400" />
-                    {liveLastSession.mode.replace(/_/g, " ")}
-                  </span>
-                )}
-                {!liveLastSession?.mode && (
-                  <span className="flex items-center gap-1.5">
-                    <Check className="h-3 w-3 text-emerald-400" />
-                    7 citations
-                  </span>
-                )}
-                {liveLastSession?.updated_at && (
-                  <span className="flex items-center gap-1.5">
-                    <Check className="h-3 w-3 text-emerald-400" />
-                    {timeAgo(liveLastSession.updated_at)}
-                  </span>
-                )}
-                {!liveLastSession?.updated_at && (
-                  <span className="flex items-center gap-1.5">
-                    <Check className="h-3 w-3 text-emerald-400" />
-                    6.4s execution
-                  </span>
-                )}
-                <span className="ml-auto hidden font-mono text-[9px] sm:inline">
-                  {liveLastSession
-                    ? liveLastSession.updated_at
-                      ? timeAgo(liveLastSession.updated_at)
-                      : "just now"
-                    : "2h ago"}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setInput(
-                    liveLastSession?.prompt ||
-                      liveLastSession?.title ||
-                      "Compare LangGraph and CrewAI for production systems",
-                  );
-                  inputRef.current?.focus();
-                }}
-                className="continue-button"
-              >
-                Resume this run
-                <ArrowUp className="h-3 w-3 -rotate-90" />
-              </button>
-            </div>
+            )}
 
-            <div className="mt-6">
-              <div className="mb-2.5 flex items-center justify-between">
-                <p className="text-[10px] font-medium text-[var(--text-secondary)]">
+            <div className="mt-9">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
                   Recent research
                 </p>
-                <span className="text-[9px] text-[var(--text-muted)]">
+                <span className="text-[10px] text-[var(--text-muted)]">
                   From your memory
                 </span>
               </div>
-              <div className="grid gap-1.5 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 {recentItems.map((run) => (
                   <button
                     key={run.key}
@@ -475,16 +640,16 @@ export default function Chat({
                       setInput(run.prompt);
                       inputRef.current?.focus();
                     }}
-                    className="run-row"
+                    className="card-glass group flex flex-col items-start gap-2.5 p-4 text-left"
                   >
-                    <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-400/10 text-emerald-300">
-                      <Check className="h-3 w-3" />
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-400/10 text-emerald-300">
+                      <Check className="h-3.5 w-3.5" />
                     </span>
-                    <span className="min-w-0 flex-1 text-left">
-                      <span className="block truncate text-[11px] font-medium text-[var(--text-secondary)]">
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-medium text-[var(--text-secondary)] transition-colors group-hover:text-[var(--text-primary)]">
                         {run.title}
                       </span>
-                      <span className="block text-[9px] text-[var(--text-muted)]">
+                      <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">
                         {run.meta}
                       </span>
                     </span>
@@ -493,37 +658,37 @@ export default function Chat({
               </div>
             </div>
 
-            <div className="mt-7">
+            <div className="mt-9">
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs font-medium text-[var(--text-secondary)]">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
                   Suggested prompts
                 </p>
                 <span className="text-[10px] text-[var(--text-muted)]">
                   Choose one to begin
                 </span>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex flex-wrap gap-2">
                 {suggestions.map(({ label, prompt, icon: Icon, color }) => (
                   <button
                     key={label}
                     type="button"
                     onClick={() => onSend(prompt)}
                     disabled={isRunning}
-                    className="suggestion-card group"
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_35%,transparent)] px-3.5 py-2 text-xs text-[var(--text-secondary)] transition-colors",
+                      "hover:border-[color-mix(in_srgb,var(--purple)_35%,var(--border))] hover:text-[var(--text-primary)] disabled:opacity-50",
+                    )}
                   >
-                    <span className={`suggestion-icon suggestion-icon-${color}`}>
-                      <Icon className="h-4 w-4" />
+                    <span className={`suggestion-icon suggestion-icon-${color} !h-5 !w-5 !rounded-full`}>
+                      <Icon className="h-3 w-3" />
                     </span>
-                    <span className="flex-1 text-left text-sm text-[var(--text-secondary)] transition-colors group-hover:text-[var(--text-primary)]">
-                      {label}
-                    </span>
-                    <ChevronRight className="h-3.5 w-3.5 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5" />
+                    {label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="mt-7 grid gap-2 sm:grid-cols-3">
+            <div className="mt-9 grid gap-2 sm:grid-cols-3">
               {capabilityCards.map(
                 ({ icon: Icon, title, detail, meta, chips, color }) => (
                   <article key={title} className="capability-card">
@@ -556,7 +721,7 @@ export default function Chat({
             </div>
 
             {documents.length > 0 && (
-              <div className="mt-6 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+              <div className="mt-8 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-300">
                   <FileText className="h-4 w-4" />
                 </span>
@@ -611,119 +776,30 @@ export default function Chat({
         )}
       </div>
 
-      <div className="composer-wrap">
-        <div className="mx-auto mb-2 flex w-full max-w-4xl items-center gap-1.5 overflow-x-auto pb-0.5">
-          {researchModes.map((m) => (
-            <button
-              key={m.label}
-              type="button"
-              onClick={() => setMode(mode?.label === m.label ? null : m)}
-              className={cn(
-                "mode-chip",
-                mode?.label === m.label && "mode-chip-active",
-              )}
-              title={m.hint}
-            >
-              {m.label}
-            </button>
-          ))}
-          {mode && (
-            <span className="ml-auto hidden shrink-0 text-[9px] text-[var(--text-muted)] sm:block">
-              {mode.hint}
-            </span>
-          )}
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="composer mx-auto w-full max-w-4xl"
-        >
-          <textarea
-            id="research-composer"
-            ref={inputRef}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              mode
-                ? `${mode.label} — ${mode.hint}. ResearchSwarm will build a plan...`
-                : "Ask anything. ResearchSwarm will build a plan..."
-            }
-            className="min-h-[54px] w-full resize-none bg-transparent px-4 pb-2 pt-4 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-            rows={1}
-            disabled={isRunning}
-            aria-label="Research question"
-          />
-          <div className="flex items-center justify-between gap-3 border-t border-white/[0.05] px-2.5 py-2">
-            <div className="flex min-w-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={onAttach}
-                className="composer-tool"
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Attach</span>
-              </button>
-              <button
-                type="button"
-                onClick={onDebateToggle}
-                className={cn(
-                  "composer-tool",
-                  debateMode && "text-violet-400"
-                )}
-                aria-label={debateMode ? "Disable debate mode" : "Enable debate mode"}
-              >
-                <Scale className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Debate</span>
-                {debateMode && (
-                  <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-violet-400" />
-                )}
-              </button>
-              {mode && (
-                <span className="composer-tool text-violet-300">
-                  <Sparkles className="h-3 w-3" />
-                  {mode.label}
-                </span>
-              )}
-              <span className="composer-tool hidden sm:flex">
-                <Globe2 className="h-3.5 w-3.5 text-cyan-400" />
-                Web
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {input && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInput("");
-                    inputRef.current?.focus();
-                  }}
-                  className="icon-button h-8 w-8"
-                  aria-label="Clear question"
-                >
-                  <Eraser className="h-3.5 w-3.5" />
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={!input.trim() || isRunning}
-                className="composer-submit"
-                aria-label={isRunning ? "Research in progress" : "Start research"}
-              >
-                {isRunning ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowUp className="h-4 w-4" />
-                )}
-              </button>
-            </div>
+      {messages.length === 0 ? null : (
+        <div className="composer-wrap">
+          <div className="mx-auto mb-2 w-full max-w-4xl">
+            <ModeChips mode={mode} setMode={setMode} />
           </div>
-        </form>
-        <p className="mt-2 text-center text-[10px] text-[var(--text-muted)]">
-          Enter to send · Shift + Enter for a new line · Research can make mistakes
-        </p>
-      </div>
+          <Composer
+            variant="bar"
+            input={input}
+            setInput={setInput}
+            onSubmit={handleSubmit}
+            onKeyDown={handleKeyDown}
+            onAttach={onAttach}
+            onDebateToggle={onDebateToggle}
+            debateMode={debateMode}
+            isRunning={isRunning}
+            inputRef={inputRef}
+            mode={mode}
+            setMode={setMode}
+          />
+          <p className="mt-2 text-center text-[10px] text-[var(--text-muted)]">
+            Enter to send · Shift + Enter for a new line · Research can make mistakes
+          </p>
+        </div>
+      )}
     </div>
   );
 }

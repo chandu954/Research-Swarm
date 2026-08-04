@@ -2,21 +2,15 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Clock3,
   FileText,
   FolderOpen,
-  History,
-  Plus,
+  Layers,
   Pencil,
+  Plus,
   Search,
   Settings2,
   Sparkles,
-  Star,
   Trash2,
-  Bookmark,
-  LayoutTemplate,
-  Layers,
-  MessageSquare,
 } from "lucide-react";
 import type { UploadedDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -56,12 +50,7 @@ interface Conversation {
   demo?: boolean;
 }
 
-const navItems = [
-  { icon: History, label: "Recent", active: true },
-  { icon: Bookmark, label: "Collections", active: false },
-  { icon: LayoutTemplate, label: "Templates", active: false },
-  { icon: Star, label: "Pinned", active: false },
-];
+const demoCollections = ["Research papers", "AI agents", "Vector DBs", "Benchmarks"];
 
 const demoConversations = [
   { query: "LangGraph vs CrewAI", meta: "2h ago · 21 sources" },
@@ -69,8 +58,6 @@ const demoConversations = [
   { query: "Postgres vs MongoDB", meta: "Monday · 14 sources" },
   { query: "Local LLM stack survey", meta: "Jul 28 · 9 sources" },
 ];
-
-const demoCollections = ["Research papers", "AI agents", "Vector DBs", "Benchmarks"];
 
 function timeAgo(iso: string): string {
   const t = new Date(iso).getTime();
@@ -185,6 +172,9 @@ export default function Sidebar({
       )
     : displayConversations;
 
+  const collectionItems =
+    collections.length > 0 ? collections : demoCollections;
+
   return (
     <div className="flex h-full flex-col p-3">
       <div className="flex items-center justify-between px-2 py-2">
@@ -216,81 +206,43 @@ export default function Sidebar({
         </span>
       </button>
 
-      <nav className="mt-5 space-y-0.5" aria-label="Workspace navigation">
-        {navItems.map(({ icon: Icon, label, active }) => (
-          <button
-            key={label}
-            type="button"
-            className={`sidebar-nav-item ${active ? "active" : ""}`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      <div className="mt-6 px-2">
+        <div className="mb-2 flex items-center gap-2">
+          <Layers className="h-3 w-3 text-[var(--text-muted)]" />
+          <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+            Collections
+          </p>
+          <span className="sidebar-count">{collectionItems.length}</span>
+        </div>
+        <div className="space-y-0.5">
+          {collectionItems.map((collection) => (
+            <button
+              key={collection}
+              type="button"
+              className="conversation-item group"
+            >
+              <span className="conversation-dot bg-violet-400/40" />
+              <span className="truncate">{collection}</span>
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={onOpenDocuments}
-          className="sidebar-nav-item"
+          className="sidebar-nav-item mt-2"
         >
           <FolderOpen className="h-4 w-4" />
           Documents
           <span className="sidebar-count">{documents.length}</span>
         </button>
-      </nav>
-
-      {collections.length > 0 && (
-        <div className="mt-6 px-2">
-          <div className="mb-2 flex items-center gap-2">
-            <Layers className="h-3 w-3 text-[var(--text-muted)]" />
-            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-              Collections
-            </p>
-          </div>
-          <div className="space-y-0.5">
-            {collections.map((collection) => (
-              <button
-                key={collection}
-                type="button"
-                className="conversation-item group"
-              >
-                <span className="conversation-dot bg-violet-400/40" />
-                <span className="truncate">{collection}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {collections.length === 0 && (
-        <div className="mt-6 px-2">
-          <div className="mb-2 flex items-center gap-2">
-            <Layers className="h-3 w-3 text-[var(--text-muted)]" />
-            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-              Collections
-            </p>
-            <span className="sidebar-count">4</span>
-          </div>
-          <div className="space-y-0.5">
-            {demoCollections.map((collection) => (
-              <button
-                key={collection}
-                type="button"
-                className="conversation-item group"
-              >
-                <span className="conversation-dot bg-violet-400/40" />
-                <span className="truncate">{collection}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      </div>
 
       <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-1">
         <div className="mb-2 flex items-center justify-between px-2">
           <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-            Memory browser
+            Recent research
           </p>
-          <MessageSquare className="h-3 w-3 text-[var(--text-muted)]" />
+          <Search className="h-3 w-3 text-[var(--text-muted)]" />
         </div>
 
         <div className="relative mb-2 px-1">

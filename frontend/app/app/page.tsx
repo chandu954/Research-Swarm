@@ -22,9 +22,9 @@ import Sources from "@/components/Sources";
 import Topbar from "@/components/Topbar";
 import KnowledgeGraph from "@/components/KnowledgeGraph";
 import ReportGenerator from "@/components/ReportGenerator";
-import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import ReportsPanel from "@/components/ReportsPanel";
 import SourceInspector from "@/components/SourceInspector";
+import WorkflowOverview from "@/components/WorkflowOverview";
 import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConversation, ApiClientError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useProviderSettings } from "@/lib/useSettings";
@@ -394,6 +394,12 @@ export default function ResearchWorkspace() {
   }, [documents, realtime.documents]);
   const mergedSourceCount = sources.length || realtime.sourcesFound;
 
+  const phase: "idle" | "running" | "completed" = isRunning
+    ? "running"
+    : messages.length === 0
+      ? "idle"
+      : "completed";
+
   const openDocumentPicker = useCallback(() => {
     pdfInputRef.current?.click();
     setSidebarOpen(false);
@@ -500,7 +506,9 @@ export default function ResearchWorkspace() {
               }}
             />
             <div className="mx-auto w-full max-w-4xl px-5 pb-2 sm:px-8">
-              <ReportGenerator query={query} messages={messages} sources={sources} />
+              {messages.length > 0 && (
+                <ReportGenerator query={query} messages={messages} sources={sources} />
+              )}
             </div>
           </section>
 
@@ -517,37 +525,86 @@ export default function ResearchWorkspace() {
               workflowOpen ? "!translate-x-0" : ""
             }`}
           >
-            <div className="space-y-6 p-4">
-              <ExecutionTimeline
-                logs={mergedLogs}
-                agentMetrics={mergedAgentMetrics}
-                isRunning={isRunning}
-              />
-              <MetricsPanel
-                agentMetrics={mergedAgentMetrics}
-                executionTime={mergedExecutionTime}
-                sourceCount={mergedSourceCount}
-                documentCount={selectedDocs.length}
-                lastRun={live.lastMetrics}
-              />
-              <AnalyticsDashboard
-                agentMetrics={mergedAgentMetrics}
-                logs={mergedLogs}
-                executionTime={mergedExecutionTime}
-                sourceCount={mergedSourceCount}
-                isRunning={isRunning}
-              />
-              <PDFUploader
-                documents={mergedDocuments}
-                onDocumentsChange={setDocuments}
-                selectedDocs={selectedDocs}
-                onSelectionChange={setSelectedDocs}
-              />
-              <ReportsPanel reports={live.reports} />
-              <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
-              <Sources sources={sources} onInspect={setInspectedSource} />
-              {lastAnswer && (
-                <KnowledgeGraph answer={lastAnswer} sources={sources} />
+            <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] px-4 py-3 backdrop-blur-lg">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold tracking-tight text-[var(--text-primary)]">
+                  Workflow
+                </p>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-hover)] px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      phase === "running"
+                        ? "animate-pulse bg-violet-400"
+                        : phase === "completed"
+                          ? "bg-emerald-400"
+                          : "bg-[var(--text-muted)]"
+                    }`}
+                  />
+                  {phase}
+                </span>
+              </div>
+              {phase === "running" && (
+                <div className="mt-2.5 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                  <span>Research in progress</span>
+                  <span className="font-mono">{Math.floor(elapsed)}s</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-5 p-4">
+              {phase === "idle" && (
+                <>
+                  <WorkflowOverview />
+                  <ReportsPanel reports={live.reports} />
+                  <PDFUploader
+                    documents={mergedDocuments}
+                    onDocumentsChange={setDocuments}
+                    selectedDocs={selectedDocs}
+                    onSelectionChange={setSelectedDocs}
+                  />
+                </>
+              )}
+
+              {phase === "running" && (
+                <>
+                  <ExecutionTimeline
+                    logs={mergedLogs}
+                    agentMetrics={mergedAgentMetrics}
+                    isRunning={isRunning}
+                  />
+                  <MetricsPanel
+                    agentMetrics={mergedAgentMetrics}
+                    executionTime={mergedExecutionTime}
+                    sourceCount={mergedSourceCount}
+                    documentCount={selectedDocs.length}
+                    lastRun={live.lastMetrics}
+                  />
+                  <PDFUploader
+                    documents={mergedDocuments}
+                    onDocumentsChange={setDocuments}
+                    selectedDocs={selectedDocs}
+                    onSelectionChange={setSelectedDocs}
+                  />
+                  <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
+                </>
+              )}
+
+              {phase === "completed" && (
+                <>
+                  <MetricsPanel
+                    agentMetrics={mergedAgentMetrics}
+                    executionTime={mergedExecutionTime}
+                    sourceCount={mergedSourceCount}
+                    documentCount={selectedDocs.length}
+                    lastRun={live.lastMetrics}
+                  />
+                  <Sources sources={sources} onInspect={setInspectedSource} />
+                  {lastAnswer && (
+                    <KnowledgeGraph answer={lastAnswer} sources={sources} />
+                  )}
+                  <ReportsPanel reports={live.reports} />
+                  <AgentLogs logs={mergedLogs} plan={plan} isRunning={isRunning} />
+                </>
               )}
             </div>
           </aside>
