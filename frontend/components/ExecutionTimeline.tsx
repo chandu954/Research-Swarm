@@ -144,7 +144,9 @@ function AgentStep({
                     ? "Failed"
                     : isSkipped
                       ? "Skipped"
-                      : "Queued"}
+                      : isRunning
+                        ? "Queued"
+                        : "Idle"}
             </span>
           </div>
         </div>
@@ -182,7 +184,11 @@ export default function ExecutionTimeline({
             </h2>
           </div>
           <p className="mt-1 text-[10px] text-[var(--text-muted)]">
-            Live agent execution
+            {isRunning
+              ? "Live agent execution"
+              : completedCount > 0
+                ? "Last run completed"
+                : "Agents idle — waiting for input"}
           </p>
         </div>
         <span
@@ -222,12 +228,17 @@ export default function ExecutionTimeline({
         ))}
       </AnimatePresence>
 
-      {logs.length === 0 && (
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-white/[0.07] px-3 py-2.5">
+      {logs.length === 0 && !isRunning && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.015] px-3 py-2.5">
           <Clock3 className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-          <p className="text-[10px] text-[var(--text-muted)]">
-            Agents will appear here when research begins.
-          </p>
+          <div className="min-w-0">
+            <p className="text-[10px] text-[var(--text-secondary)]">
+              Waiting for a question…
+            </p>
+            <p className="mt-0.5 text-[9px] text-[var(--text-muted)]">
+              Agents activate automatically when research starts.
+            </p>
+          </div>
         </div>
       )}
     </section>

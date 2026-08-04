@@ -111,8 +111,8 @@ export default function LoginPage() {
   useEffect(() => { emailRef.current?.focus(); }, [view]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => { if (e.getModifierState("CapsLock")) setCapsLock(true); };
-    const handleKeyUp = (e: KeyboardEvent) => { if (!e.getModifierState("CapsLock")) setCapsLock(false); };
+    const handleKeyDown = (e: KeyboardEvent) => { if (typeof e.getModifierState === "function" && e.getModifierState("CapsLock")) setCapsLock(true); };
+    const handleKeyUp = (e: KeyboardEvent) => { if (typeof e.getModifierState === "function" && !e.getModifierState("CapsLock")) setCapsLock(false); };
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     return () => { window.removeEventListener("keydown", handleKeyDown); window.removeEventListener("keyup", handleKeyUp); };

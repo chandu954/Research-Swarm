@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { token, isLoading: authLoading } = useAuth();
+  const { token, isLoading: authLoading, refreshToken } = useAuth();
   const router = useRouter();
   const [checkingOrg, setCheckingOrg] = useState(true);
 
@@ -17,7 +17,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
+    function isJwtExpired(t: string) {
+      try {
+        const parts = t.split(".");
+        if (parts.length !== 3) return true;
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (!payload || typeof payload.exp === "undefined") return false;
+        const now = Math.floor(Date.now() / 1000);
+        return Number(payload.exp) < now - 60;
+      } catch {
+        return true;
+      }
+    }
+
     async function checkOrg() {
+      // if the token is already expired client-side, attempt refresh first
+      if (token && isJwtExpired(token)) {
+        try {
+          const ok = await refreshToken();
+          if (!ok) {
+            router.replace("/login");
+            return;
+          }
+        } catch {
+          router.replace("/login");
+          return;
+        }
+      }
       try {
         const res = await fetch(`${API_URL}/auth/org-status`, {
           headers: { Authorization: `Bearer ${token}` },

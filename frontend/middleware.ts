@@ -8,14 +8,29 @@ function isValidJwt(token: string): boolean {
   const parts = token.split(".");
   if (parts.length !== 3) return false;
   try {
-    return parts.every((p) => {
+    // ensure each part is decodable
+    for (const p of parts) {
       try {
         atob(p.replace(/-/g, "+").replace(/_/g, "/"));
-        return true;
       } catch {
         return false;
       }
-    });
+    }
+    // Basic expiry check from payload (second part)
+    try {
+      const payload = parts[1];
+      const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+      if (json && typeof json.exp !== "undefined") {
+        const exp = Number(json.exp);
+        const now = Math.floor(Date.now() / 1000);
+        // allow small clock skew of 60s
+        if (isNaN(exp) || exp < now - 60) return false;
+      }
+    } catch {
+      // if payload isn't parseable, treat as invalid
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }

@@ -14,13 +14,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ResearchSwarm AI - Multi-Agent Research System",
+  title: "ResearchSwarm — Turn hours of research into one cited report",
   description:
-    "AI-powered multi-agent research system with web search, PDF analysis, and RAG capabilities. Powered by LangGraph + Ollama.",
-  keywords: ["AI", "research", "multi-agent", "RAG", "LangGraph", "Ollama", "PDF analysis"],
+    "A local-first multi-agent research workspace. Ask a question, and ResearchSwarm plans it, searches the web and your PDFs, ranks the evidence, and writes a cited answer. Powered by LangGraph + Ollama.",
+  keywords: ["AI", "research", "multi-agent", "RAG", "LangGraph", "Ollama", "PDF analysis", "citations"],
   openGraph: {
-    title: "ResearchSwarm AI",
-    description: "Multi-Agent Research System powered by LangGraph + Ollama",
+    title: "ResearchSwarm — Multi-agent research workspace",
+    description:
+      "Turn hours of research into one cited report. Web search, PDF analysis, and evidence-ranked answers — all local.",
     type: "website",
   },
 };
