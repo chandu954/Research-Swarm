@@ -1583,6 +1583,22 @@ button.composer-tool:hover {
   animation: step-glow 1.8s ease-in-out infinite;
 }
 
+@keyframes icon-breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.upload-breathe {
+  animation: icon-breathe 3.2s ease-in-out infinite;
+}
+
 @media (max-width: 767px) {
   .why-panel {
     padding: 40px 24px;

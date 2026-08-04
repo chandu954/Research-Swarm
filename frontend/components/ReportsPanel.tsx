@@ -35,9 +35,15 @@ export default function ReportsPanel({ reports, onStartResearch, bare = false }:
           <FileText className="h-[18px] w-[18px] text-[var(--accent-violet)]" />
           Recent reports
           {ready.length > 0 && (
-            <span className="rounded-full bg-[var(--accent-violet)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent-violet)]">
+            <motion.span
+              key={ready.length}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2 }}
+              className="rounded-full bg-[var(--accent-violet)]/15 px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent-violet)]"
+            >
               {ready.length}
-            </span>
+            </motion.span>
           )}
         </h3>
       </div>
@@ -49,10 +55,11 @@ export default function ReportsPanel({ reports, onStartResearch, bare = false }:
             <FileText className="h-6 w-6" />
           </span>
           <p className="mt-3 text-[15px] font-semibold text-[var(--text-primary)]">
-            No reports yet
+            Your research reports will appear here
           </p>
-          <p className="mt-1.5 max-w-[240px] text-xs leading-relaxed text-[var(--text-muted)]">
-            Reports appear automatically after every completed research.
+          <p className="mt-1.5 max-w-[250px] text-xs leading-relaxed text-[var(--text-muted)]">
+            Every completed research automatically generates a fully cited
+            report.
           </p>
           {onStartResearch && (
             <button

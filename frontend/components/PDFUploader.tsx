@@ -160,7 +160,7 @@ export default function PDFUploader({
           </>
         ) : (
           <>
-            <UploadCloud className="h-5 w-5 text-emerald-400" />
+            <UploadCloud className="upload-breathe h-5 w-5 text-emerald-400" />
             <span>
               {documents.length > 0
                 ? "Drop more PDFs here"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -29,7 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import type { AgentLog, Message, UploadedDocument } from "@/lib/types";
-import type { LiveCollection } from "@/lib/supabase/query";
+import type { LiveCollection, LiveReport } from "@/lib/supabase/query";
 import AgentThinkingPanel from "./AgentThinkingPanel";
 import StreamingText from "./StreamingText";
 import FollowUpSuggestions from "./FollowUpSuggestions";
@@ -50,6 +51,7 @@ interface ChatProps {
   liveSessions?: LiveSession[];
   liveLastSession?: LiveSession | null;
   collections?: LiveCollection[];
+  reports?: LiveReport[];
 }
 
 export interface LiveSession {
@@ -140,11 +142,13 @@ const capabilities = [
 ] as const;
 
 const rotatingPlaceholders = [
-  "Ask a research question…",
-  "Compare LangGraph vs CrewAI",
+  "Compare GPT-5 vs Claude",
   "Analyze uploaded PDFs",
   "Review a GitHub repository",
-  "Research a startup",
+  "Research LangGraph",
+  "Find AI startup competitors",
+  "Generate a literature review",
+  "Track the latest AI agent frameworks",
 ] as const;
 
 function CopyButton({ text }: { text: string }) {
@@ -345,10 +349,10 @@ function Composer({
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={onKeyDown}
           className={cn(
-            "w-full resize-none bg-transparent text-[var(--text-primary)] outline-none placeholder:text-[color-mix(in_srgb,var(--text-secondary)_68%,transparent)]",
+            "w-full resize-none bg-transparent text-[var(--text-primary)] caret-[#a78bfa] outline-none placeholder:text-[color-mix(in_srgb,var(--text-secondary)_68%,transparent)]",
             isHero
-              ? "min-h-[84px] px-5 pb-2 pt-4 text-base"
-              : "min-h-[52px] px-4 pb-1.5 pt-3.5 text-sm",
+              ? "min-h-[72px] px-5 pb-1.5 pt-3.5 text-[15px]"
+              : "min-h-[46px] px-4 pb-1 pt-3 text-sm",
           )}
           rows={isHero ? 1 : 1}
           disabled={isRunning}
@@ -364,7 +368,7 @@ function Composer({
               transition={{ duration: 0.18 }}
               className={cn(
                 "pointer-events-none absolute text-[color-mix(in_srgb,var(--text-secondary)_68%,transparent)]",
-                isHero ? "left-5 top-4 text-base" : "left-4 top-3.5 text-sm",
+                isHero ? "left-5 top-3.5 text-[15px]" : "left-4 top-3 text-sm",
               )}
             >
               {placeholder}
@@ -502,8 +506,10 @@ export default function Chat({
   liveSessions,
   liveLastSession,
   collections = [],
+  reports = [],
 }: ChatProps) {
   const { user } = useAuth();
+  const router = useRouter();
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<(typeof researchModes)[number] | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
@@ -568,6 +574,12 @@ export default function Chat({
   ).slice(0, 3);
 
   const recentCollections = collections.slice(0, 4);
+  const readyReports = reports.filter((report) => report.status === "ready");
+  const reportList = (
+    readyReports.some((report) => report.is_pinned)
+      ? readyReports.filter((report) => report.is_pinned)
+      : readyReports
+  ).slice(0, 4);
 
   const hour = new Date().getHours();
   const greeting =
@@ -608,7 +620,7 @@ export default function Chat({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-5 py-6 sm:px-8"
+            className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-5 pt-6 pb-[110px] sm:px-8"
           >
             <div className="text-center">
               <p className="text-[11px] font-medium text-[var(--text-muted)]">
@@ -620,44 +632,42 @@ export default function Chat({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="mt-1.5 text-[42px] font-bold leading-[1.08] tracking-[-0.04em] text-[var(--text-primary)] sm:text-[48px]"
+                    className="mt-1.5 text-[28px] font-bold leading-[1.15] tracking-[-0.03em] text-[var(--text-primary)] sm:text-[32px]"
                   >
-                    Continue your research
+                    Continue research
                   </motion.h2>
-                  <motion.p
+                  <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: 0.05 }}
-                    className="mx-auto mt-3 max-w-lg text-sm text-[var(--text-muted)]"
+                    className="mx-auto mt-4 w-full max-w-md"
                   >
-                    Last session:{" "}
-                    <span className="font-medium text-[var(--text-secondary)]">
-                      {lastSession.title || lastSession.prompt || "Untitled"}
-                    </span>
-                    {" · "}
-                    {lastSession.sources_total ?? 0} sources ·{" "}
-                    {timeAgo(lastSession.updated_at || lastSession.created_at || "")}
-                  </motion.p>
-                  <motion.button
-                    type="button"
-                    onClick={() => {
-                      setInput(
-                        lastSession.prompt ||
-                          lastSession.title ||
-                          "Compare LangGraph and CrewAI for production systems",
-                      );
-                      inputRef.current?.focus();
-                    }}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                    whileHover={{ y: -1 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="continue-button mt-4"
-                  >
-                    Resume this run
-                    <ArrowUp className="h-3 w-3 -rotate-90" />
-                  </motion.button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInput(
+                          lastSession.prompt ||
+                            lastSession.title ||
+                            "Compare LangGraph and CrewAI for production systems",
+                        );
+                        inputRef.current?.focus();
+                      }}
+                      className="group flex w-full items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--surface-hover)_30%,transparent)] px-3.5 py-2.5 text-left transition-all hover:-translate-y-px hover:border-[color-mix(in_srgb,var(--purple)_35%,var(--border))] hover:shadow-[0_8px_24px_rgb(0_0_0/0.14)]"
+                    >
+                      <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400/80" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-primary)]">
+                        {lastSession.title || lastSession.prompt || "Untitled"}
+                      </span>
+                      <span className="shrink-0 truncate text-xs text-[var(--text-muted)]">
+                        {lastSession.sources_total ?? 0} sources ·{" "}
+                        {timeAgo(lastSession.updated_at || lastSession.created_at || "")}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-[var(--text-secondary)] opacity-0 transition-opacity group-hover:opacity-100">
+                        Resume
+                        <ArrowUp className="h-3 w-3 -rotate-90" />
+                      </span>
+                    </button>
+                  </motion.div>
                 </>
               ) : (
                 <>
@@ -713,7 +723,7 @@ export default function Chat({
               </div>
             </motion.div>
 
-            <div className="mt-16">
+            <div className="mt-10">
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
                   Recent research
@@ -723,7 +733,7 @@ export default function Chat({
                 </span>
               </div>
               <div className="mt-2">
-                {recentItems.map((run) => (
+                {recentItems.map((run, index) => (
                   <motion.button
                     key={run.key}
                     type="button"
@@ -731,9 +741,11 @@ export default function Chat({
                       setInput(run.prompt);
                       inputRef.current?.focus();
                     }}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, delay: index * 0.05 }}
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.995 }}
-                    transition={{ duration: 0.15 }}
                     className="group flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--surface-hover)_45%,transparent)] hover:shadow-[0_6px_20px_rgb(0_0_0/0.12)]"
                   >
                     <span
@@ -754,7 +766,7 @@ export default function Chat({
                     <span className="shrink-0 truncate text-xs text-[var(--text-muted)]">
                       {run.meta}
                     </span>
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-secondary)] opacity-0 transition-opacity group-hover:opacity-100">
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-secondary)] opacity-0 transition-all duration-150 group-hover:-translate-x-0.5 group-hover:opacity-100">
                       Resume
                       <ArrowUp className="h-3 w-3 -rotate-90" />
                     </span>
@@ -767,7 +779,7 @@ export default function Chat({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: 0.05 }}
-              className="card-glass mt-10 p-5"
+              className="card-glass mt-8 p-5"
             >
               {recentCollections.length > 0 ? (
                 <>
@@ -802,6 +814,38 @@ export default function Chat({
                               {collection.description}
                             </span>
                           )}
+                        </span>
+                        <ArrowUp className="h-3 w-3 -rotate-90 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : reportList.length > 0 ? (
+                <>
+                  <p className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">
+                    {readyReports.some((report) => report.is_pinned)
+                      ? "Pinned reports"
+                      : "Recent reports"}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    Fully cited research, ready to reopen
+                  </p>
+                  <div className="mt-4 space-y-1">
+                    {reportList.map((report) => (
+                      <button
+                        key={report.id}
+                        type="button"
+                        onClick={() => router.push(`/app/reports/${report.id}`)}
+                        className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-[var(--surface-hover)]"
+                      >
+                        <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--accent-violet)]/10 text-[var(--accent-violet)]">
+                          <FileCheck2 className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
+                          {report.title}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
+                          {timeAgo(report.created_at || "")}
                         </span>
                         <ArrowUp className="h-3 w-3 -rotate-90 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
                       </button>

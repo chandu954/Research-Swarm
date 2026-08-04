@@ -467,15 +467,15 @@ export default function Sidebar({
           Clear workspace
         </button>
 
-        <button type="button" className="profile-card mt-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-[10px] font-semibold text-white">
+        <button type="button" className="profile-card mt-2 !gap-2 !px-2 !py-1.5">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 text-[9px] font-semibold text-white">
             {user?.name?.charAt(0)?.toUpperCase() || "U"}
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className="block truncate text-xs font-medium text-[var(--text-primary)]">
+            <span className="block truncate text-[11px] font-medium text-[var(--text-primary)]">
               {user?.name || "User"}
             </span>
-            <span className="block text-[9px] text-[var(--text-muted)]">
+            <span className="block truncate text-[8px] text-[var(--text-muted)]">
               {user?.email || "Signed in"}
             </span>
           </span>

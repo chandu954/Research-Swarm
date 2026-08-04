@@ -486,6 +486,7 @@ export default function ResearchWorkspace() {
               liveSessions={live.sessions}
               liveLastSession={live.sessions[0] ?? null}
               collections={live.collections}
+              reports={live.reports}
             />
             <input
               ref={pdfInputRef}
