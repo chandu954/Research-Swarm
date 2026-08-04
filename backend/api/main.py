@@ -17,10 +17,14 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from loguru import logger
+
+from backend.core.ratelimit import (
+    limiter,
+    ws_limiter,
+    rate_limit_exceeded_handler,
+)
 
 from backend.agents.graph import create_research_graph
 from backend.agents.entity_extractor import extract_entities
@@ -179,6 +183,8 @@ async def _register_builtin_plugins() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    from backend.core.config import validate_secrets
+    validate_secrets()
     logger.info("ResearchSwarm AI starting up")
     app.state.start_time = time.time()
     await init_db()
@@ -196,6 +202,11 @@ async def lifespan(app: FastAPI):
     app.state.plugin_registry = get_plugin_registry()
 
     yield
+    # Cancel any still-running research streams before DB/plugin teardown.
+    try:
+        await app.state.stream_manager.cancel_all_tasks()
+    except Exception as exc:  # pragma: no cover - resilience path
+        logger.warning(f"Stream task cancellation on shutdown failed: {exc}")
     await close_db()
     # Cleanup all registered plugins
     registry = get_plugin_registry()
@@ -231,9 +242,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 cors_origins = os.getenv("CORS_ORIGINS", "https://research-swarm-omega.vercel.app,http://localhost:3000,http://localhost:5173").split(",")
 app.add_middleware(
@@ -415,8 +425,8 @@ async def _log_audit(
 # RESEARCH
 # ═══════════════════════════════════════════════════════════════
 
-@limiter.limit("10/minute")
 @app.post("/research", response_model=ResearchResponse)
+@limiter.limit("10/minute")
 async def run_research(
     request: Request,
     body: ResearchRequest,
@@ -431,9 +441,9 @@ async def run_research(
     user_id = current_user.id
     logger.info(f"[{task_id}] Research by user={user_id} org={ctx.organization_id}: {body.query[:100]}...")
 
-    pdf_paths = await _resolve_pdf_paths(session, body.document_ids)
+    pdf_paths = await _resolve_pdf_paths(session, body.document_ids, ctx.organization_id)
     graph = app.state.graph
-    app.state.stream_manager.get_or_create_stream(task_id)
+    app.state.stream_manager.get_or_create_stream(task_id, owner_user_id=user_id)
 
     # Phase 4: mirror this run into Supabase for the workspace UI + realtime.
     sb_session_id: Optional[str] = None
@@ -698,9 +708,20 @@ async def subscribe_research_stream(
     task_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    """Subscribe to the SSE log stream for a research task.
+
+    Streams are owned by the user who started the task: subscribing to
+    another user's task id is rejected so logs (which may contain the
+    research query) never leak cross-tenant.
+    """
     _ensure_app_state()
     stream_mgr = app.state.stream_manager
-    log_queue = stream_mgr.get_or_create_stream(task_id)
+    if not stream_mgr.has_stream(task_id):
+        raise HTTPException(status_code=404, detail="Unknown task stream")
+    owner = stream_mgr.get_owner(task_id)
+    if owner and owner != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the owner of this task stream")
+    log_queue = stream_mgr.get_stream(task_id)
     return StreamingResponse(
         event_stream(task_id, log_queue),
         media_type="text/event-stream",
@@ -714,22 +735,16 @@ async def research_stream(
     conversation_id: Optional[str] = Query(None),
     document_ids: str = Query(default=""),
     current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
 ):
     _ensure_app_state()
     task_id = str(uuid.uuid4())
     conv_id = conversation_id or str(uuid.uuid4())
     doc_ids = [d.strip() for d in document_ids.split(",") if d.strip()]
-    pdf_paths = []
-    for d in doc_ids:
-        resolved = (Path(UPLOAD_DIR) / d).resolve()
-        allowed = Path(UPLOAD_DIR).resolve()
-        if allowed not in resolved.parents and resolved != allowed:
-            logger.warning(f"Rejected path traversal attempt: {d}")
-            continue
-        if resolved.exists():
-            pdf_paths.append(str(resolved))
+    pdf_paths = await _resolve_pdf_paths(session, doc_ids, ctx.organization_id)
     stream_mgr = app.state.stream_manager
-    log_queue = stream_mgr.create_stream(task_id)
+    log_queue = stream_mgr.create_stream(task_id, owner_user_id=current_user.id)
     stream_mgr.push_log(task_id, make_log("planner", "analyze_query", "running", query[:100]))
 
     async def run_and_stream():
@@ -762,7 +777,14 @@ async def research_stream(
             stream_mgr.close_stream(task_id)
 
     async def stream_with_cleanup():
+        """Stream SSE events while the research task runs in the background.
+
+        On client disconnect the generator is cancelled: the background task
+        is cancelled too and awaited (with a hard timeout) so in-flight LLM
+        calls terminate instead of leaking past disconnect.
+        """
         task = asyncio.create_task(run_and_stream())
+        stream_mgr.register_task(task_id, task)
         try:
             async for event in event_stream(task_id, log_queue):
                 yield event
@@ -772,7 +794,12 @@ async def research_stream(
         finally:
             if not task.done():
                 task.cancel()
-            await asyncio.sleep(0)
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            stream_mgr.unregister_task(task_id, task)
+            stream_mgr.close_stream(task_id)
 
     return StreamingResponse(
         stream_with_cleanup(),
@@ -782,12 +809,17 @@ async def research_stream(
 
 
 @app.post("/research/extract-entities")
-async def research_extract_entities(request: ExtractEntitiesRequest):
+@limiter.limit("30/minute")
+async def research_extract_entities(
+    request: Request,
+    body: ExtractEntitiesRequest,
+    current_user: User = Depends(get_current_user),
+):
     _ensure_app_state()
     result = await extract_entities(
-        text=request.text,
-        llm_provider=request.llm_provider,
-        model=request.model,
+        text=body.text,
+        llm_provider=body.llm_provider,
+        model=body.model,
     )
     return result
 
@@ -973,8 +1005,8 @@ async def delete_conversation(
 # DOCUMENTS (tenant-aware)
 # ═══════════════════════════════════════════════════════════════
 
-@limiter.limit("30/minute")
 @app.post("/upload")
+@limiter.limit("30/minute")
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
@@ -989,7 +1021,11 @@ async def upload_document(
     if content_length and int(content_length) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB")
 
-    file_id = f"{uuid.uuid4()}_{file.filename}"
+    safe_name = os.path.basename(file.filename or "")
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Missing filename")
+
+    file_id = f"{uuid.uuid4()}_{safe_name}"
     file_path = os.path.join(UPLOAD_DIR, file_id)
     try:
         content = await file.read()
@@ -1541,8 +1577,17 @@ async def list_models():
             return {"provider": provider, "models": [], "available_providers": plugin_registry.list_types()}
 
 
-async def _resolve_pdf_paths(session: AsyncSession, document_ids: list[str]) -> list[str]:
-    """Resolve document UUIDs to absolute filesystem paths via DB lookup."""
+async def _resolve_pdf_paths(
+    session: AsyncSession,
+    document_ids: list[str],
+    organization_id: str,
+) -> list[str]:
+    """Resolve document UUIDs to absolute filesystem paths via DB lookup.
+
+    Ownership is enforced here: a document is only resolved when it belongs
+    to the caller's organization. Filesystem paths are never accepted from
+    callers — only database rows may produce storage paths.
+    """
     if not document_ids:
         return []
     paths = []
@@ -1550,6 +1595,7 @@ async def _resolve_pdf_paths(session: AsyncSession, document_ids: list[str]) -> 
         result = await session.execute(
             select(Document).where(
                 Document.id == doc_id,
+                Document.organization_id == organization_id,
                 Document.is_deleted == False,
             )
         )
@@ -1568,6 +1614,14 @@ async def _resolve_pdf_paths(session: AsyncSession, document_ids: list[str]) -> 
 @app.websocket("/ws/workspace/{workspace_id}")
 async def workspace_ws(workspace_id: str, ws: WebSocket):
     from backend.auth.jwt import decode_token as _decode_ws_token
+
+    # WebSocket routes bypass the slowapi middleware: throttle connection
+    # creation with the in-process sliding-window limiter.
+    client_ip = ws.client.host if ws.client else "unknown"
+    if not ws_limiter.allow(f"ws:{client_ip}"):
+        await ws.close(code=1008, reason="Rate limit exceeded")
+        return
+
     protocols = ws.headers.get("sec-websocket-protocol", "")
     parts = [p.strip() for p in protocols.split(",")] if protocols else []
     token = ""

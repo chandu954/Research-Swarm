@@ -7,13 +7,19 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from backend.db.session import Base, DATABASE_URL
+from backend.db.session import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+
+def _db_url() -> str:
+    """Resolve the database URL at migration time (overridable in tests)."""
+    from backend.db.session import DATABASE_URL
+    return DATABASE_URL
 
 
 def run_migrations_offline() -> None:
@@ -38,7 +44,7 @@ def do_run_migrations(connection):
 
 async def run_async_migrations() -> None:
     """Run migrations in 'online' async mode."""
-    connectable = create_async_engine(DATABASE_URL, poolclass=pool.NullPool)
+    connectable = create_async_engine(_db_url(), poolclass=pool.NullPool)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

@@ -4,6 +4,7 @@ Supports: email/password, Google OAuth, GitHub OAuth, Microsoft OAuth,
           magic links, MFA, session management, trusted devices.
 """
 from __future__ import annotations
+import hashlib
 import os
 import secrets
 import uuid
@@ -36,20 +37,24 @@ from backend.auth.providers import (
     config as oauth_config,
 )
 from backend.auth.dependencies import get_current_user
+from backend.core.ratelimit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-async def _build_tokens(user: User) -> TokenResponse:
+async def _build_tokens(user: User, refresh_token: Optional[str] = None) -> TokenResponse:
     """Build JWT tokens and bridge the user's identity to Supabase.
 
     The Supabase identity is provisioned in the background so RLS, realtime
     and storage have an `auth.uid()` for this user — without a re-login.
     Persistence failures never break the primary JWT auth flow.
+
+    `refresh_token` is the newly rotated refresh token when this is called
+    from the refresh flow (the session row already stores its hash).
     """
     tokens = TokenResponse(
         access_token=create_access_token(user.id, {"name": user.name}),
-        refresh_token=create_refresh_token(user.id),
+        refresh_token=refresh_token or create_refresh_token(user.id),
     )
     try:
         from backend.core.supabase import (
@@ -86,13 +91,14 @@ async def _create_session(user: User, request: Request, session: AsyncSession) -
     """Create a refresh-token session. Returns the raw refresh token (caller sets it as a cookie)."""
     from backend.auth.jwt import REFRESH_TOKEN_EXPIRE_DAYS
     refresh_token_value = create_refresh_token(user.id)
-    token_hash = secrets.token_hex(32)
+    token_hash = hashlib.sha256(refresh_token_value.encode()).hexdigest()
     user_session = UserSession(
         user_id=user.id,
         refresh_token_hash=token_hash,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        last_used_at=datetime.now(timezone.utc),
     )
     session.add(user_session)
     return refresh_token_value
@@ -153,6 +159,7 @@ async def _find_or_create_user(email: str, name: str, provider_data: dict, provi
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
+@limiter.limit("5/minute")
 async def register(
     body: RegisterRequest,
     request: Request,
@@ -171,12 +178,13 @@ async def register(
     session.add(user)
     await session.flush()
     await _create_default_organization(session, user)
-    await _create_session(user, request, session)
+    refresh_token = await _create_session(user, request, session)
 
-    return await _build_tokens(user)
+    return await _build_tokens(user, refresh_token=refresh_token)
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 async def login(
     body: LoginRequest,
     request: Request,
@@ -197,9 +205,9 @@ async def login(
     user.last_login_at = datetime.now(timezone.utc)
     user.last_login_ip = request.client.host if request.client else None
     await session.flush()
-    await _create_session(user, request, session)
+    refresh_token = await _create_session(user, request, session)
 
-    return await _build_tokens(user)
+    return await _build_tokens(user, refresh_token=refresh_token)
 
 
 class RefreshRequest(BaseModel):
@@ -207,6 +215,7 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("30/minute")
 async def refresh(
     body: RefreshRequest,
     request: Request,
@@ -216,12 +225,80 @@ async def refresh(
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
+    token_hash = hashlib.sha256(body.refresh_token.encode()).hexdigest()
+    now = datetime.now(timezone.utc)
+
+    result = await session.execute(
+        select(UserSession).where(
+            UserSession.user_id == user_id,
+            UserSession.refresh_token_hash == token_hash,
+        )
+    )
+    user_session = result.scalar_one_or_none()
+
+    if not user_session or not user_session.is_active:
+        # The JWT itself is valid, but it is not the session's current token:
+        # either it was rotated (replay) or the session was revoked. Assume
+        # theft and revoke every session for this user.
+        logger.warning(
+            f"Refresh token reuse or revoked session for user={user_id}; revoking all sessions"
+        )
+        stale = await session.execute(
+            select(UserSession).where(UserSession.user_id == user_id, UserSession.is_active)
+        )
+        for stale_session in stale.scalars().all():
+            stale_session.is_active = False
+        # Commit explicitly: the exception below would otherwise trigger the
+        # request-scoped rollback and discard the revocation.
+        await session.commit()
+        raise HTTPException(status_code=401, detail="Session revoked; please log in again")
+
+    if user_session.expires_at.tzinfo is None:
+        user_session.expires_at = user_session.expires_at.replace(tzinfo=timezone.utc)
+    if user_session.expires_at < now:
+        user_session.is_active = False
+        await session.commit()
+        raise HTTPException(status_code=401, detail="Session expired; please log in again")
+
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
-    return await _build_tokens(user)
+    # Rotate: issue a new refresh token and store its hash in the same row.
+    new_refresh_token = create_refresh_token(user.id)
+    user_session.refresh_token_hash = hashlib.sha256(new_refresh_token.encode()).hexdigest()
+    user_session.last_used_at = now
+    await session.flush()
+
+    return await _build_tokens(user, refresh_token=new_refresh_token)
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/logout")
+async def logout(
+    body: LogoutRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Revoke the session that owns the presented refresh token."""
+    user_id = get_token_subject(body.refresh_token, expected_type="refresh")
+    if user_id:
+        token_hash = hashlib.sha256(body.refresh_token.encode()).hexdigest()
+        result = await session.execute(
+            select(UserSession).where(
+                UserSession.user_id == user_id,
+                UserSession.refresh_token_hash == token_hash,
+                UserSession.is_active,
+            )
+        )
+        user_session = result.scalar_one_or_none()
+        if user_session:
+            user_session.is_active = False
+            await session.flush()
+    return {"status": "logged_out"}
 
 
 @router.get("/me", response_model=UserResponse)
@@ -305,8 +382,8 @@ async def _handle_oauth_callback(
         provider=provider,
         db_session=session,
     )
-    await _create_session(user, request, session)
-    return _oauth_callback_html(await _build_tokens(user))
+    refresh_token = await _create_session(user, request, session)
+    return _oauth_callback_html(await _build_tokens(user, refresh_token=refresh_token))
 
 
 # ── Google OAuth ────────────────────────────────────────────────
@@ -450,6 +527,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 @router.post("/forgot-password")
+@limiter.limit("5/hour")
 async def forgot_password(
     body: ForgotPasswordRequest,
     request: Request,
@@ -481,6 +559,13 @@ async def reset_password(
     from backend.auth.password import hash_password
     user.hashed_password = hash_password(body.password)
     await session.flush()
+    # Password changed: invalidate every existing session.
+    result = await session.execute(
+        select(UserSession).where(UserSession.user_id == user.id, UserSession.is_active)
+    )
+    for user_session in result.scalars().all():
+        user_session.is_active = False
+    await session.flush()
     return {"status": "password_reset"}
 
 
@@ -495,8 +580,10 @@ class MagicLinkVerify(BaseModel):
     email: str
 
 @router.post("/magic-link")
+@limiter.limit("5/hour")
 async def request_magic_link(
     body: MagicLinkRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     url, token, expires = create_magic_link(body.email)
@@ -509,6 +596,7 @@ async def request_magic_link(
 @router.post("/magic-link/verify", response_model=TokenResponse)
 async def verify_magic_link(
     body: MagicLinkVerify,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     if not verify_magic_token(body.token, body.email):
@@ -521,7 +609,8 @@ async def verify_magic_link(
 
     user.last_login_at = datetime.now(timezone.utc)
     await session.flush()
-    return _build_tokens(user)
+    refresh_token = await _create_session(user, request, session)
+    return _build_tokens(user, refresh_token=refresh_token)
 
 
 # ── MFA ─────────────────────────────────────────────────────────
@@ -605,7 +694,7 @@ async def list_sessions(
     result = await session.execute(
         select(UserSession).where(
             UserSession.user_id == current_user.id,
-            UserSession.is_active == True,
+            UserSession.is_active,
         ).order_by(UserSession.last_used_at.desc().nullslast())
     )
     return [SessionResponse.model_validate(s) for s in result.scalars().all()]

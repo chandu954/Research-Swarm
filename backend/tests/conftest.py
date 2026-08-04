@@ -1,8 +1,15 @@
 """Pytest fixtures and configuration for ResearchSwarm tests."""
 from __future__ import annotations
+import os
 import asyncio
 import pytest
 from unittest.mock import MagicMock, patch
+
+# ── Test environment must be configured BEFORE any backend imports ──
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-0123456789abcdef0123456789abcdef")
+if not os.environ.get("DATABASE_URL"):
+    os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./data/test_security.db"
 
 from backend.agents.graph import create_research_graph, reset_graph
 from backend.agents.memory import ConversationMemory

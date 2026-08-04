@@ -21,7 +21,8 @@ from backend.db.schemas import (
 from backend.auth.dependencies import get_current_user
 from backend.auth.tenant import (
     TenantContext,
-    require_permission,
+    require_org,
+    require_org_permission,
 )
 
 router = APIRouter(tags=["organizations"])
@@ -129,6 +130,7 @@ async def get_organization(
     org_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Organization).join(
@@ -168,7 +170,7 @@ async def update_organization(
     body: OrganizationUpdate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_permission("manage_workspaces")),
+    ctx: TenantContext = Depends(require_org_permission("manage_workspaces")),
 ):
     result = await session.execute(
         select(Organization).where(
@@ -195,7 +197,7 @@ async def delete_organization(
     org_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_permission("delete_organization")),
+    ctx: TenantContext = Depends(require_org_permission("delete_organization")),
 ):
     result = await session.execute(
         select(Organization).where(
@@ -218,6 +220,7 @@ async def list_members(
     org_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Organization).where(Organization.id == org_id, Organization.is_active == True).join(
@@ -252,7 +255,7 @@ async def add_member(
     body: AddMemberRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_permission("manage_members")),
+    ctx: TenantContext = Depends(require_org_permission("manage_members")),
 ):
     user_result = await session.execute(
         select(User).where(User.email == body.email)
@@ -295,7 +298,7 @@ async def update_member_role(
     body: UpdateMemberRoleRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_permission("manage_members")),
+    ctx: TenantContext = Depends(require_org_permission("manage_members")),
 ):
     result = await session.execute(
         select(OrganizationMember).where(
@@ -319,7 +322,7 @@ async def remove_member(
     member_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_permission("manage_members")),
+    ctx: TenantContext = Depends(require_org_permission("manage_members")),
 ):
     result = await session.execute(
         select(OrganizationMember).where(
@@ -347,6 +350,7 @@ async def create_workspace(
     body: WorkspaceCreate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     slug = body.slug or _slugify(body.name)
     result = await session.execute(
@@ -395,6 +399,7 @@ async def list_workspaces(
     org_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     member_count_subq = (
         select(
@@ -442,6 +447,7 @@ async def get_workspace(
     ws_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Workspace).where(
@@ -479,6 +485,7 @@ async def update_workspace(
     body: WorkspaceUpdate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Workspace).where(
@@ -504,6 +511,7 @@ async def delete_workspace(
     ws_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Workspace).where(
@@ -529,6 +537,7 @@ async def create_project(
     body: ProjectCreate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     slug = body.slug or _slugify(body.name)
     result = await session.execute(
@@ -571,6 +580,7 @@ async def list_projects(
     ws_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Project).where(
@@ -589,6 +599,7 @@ async def get_project(
     proj_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Project).where(
@@ -612,6 +623,7 @@ async def update_project(
     body: ProjectUpdate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Project).where(
@@ -639,6 +651,7 @@ async def delete_project(
     proj_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
         select(Project).where(
@@ -664,6 +677,7 @@ async def list_workspace_members(
     ws_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    ctx: TenantContext = Depends(require_org),
 ):
     rows = await session.execute(
         select(WorkspaceMember, User).join(

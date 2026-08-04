@@ -267,6 +267,49 @@ def require_permission(permission: str):
     return dependency
 
 
+def require_org(
+    org_id: str,
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+) -> TenantContext:
+    """Require that the path `org_id` IS the caller's resolved tenant organization.
+
+    The effective organization is derived exclusively from the caller's
+    authenticated membership (header/subdomain are hints, never authority);
+    this guard rejects requests whose path org differs from that canonical id.
+    """
+    if org_id != ctx.organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this organization",
+        )
+    return ctx
+
+
+def require_org_permission(permission: str):
+    """Combine org-bound (path == canonical tenant) and permission checks.
+
+    Mirrors `require_permission` but additionally asserts the path `org_id`
+    equals the tenant resolved from authenticated membership, closing the
+    path/header decoupling IDOR class.
+    """
+    async def dependency(
+        org_id: str,
+        ctx: TenantContext = Depends(resolve_tenant_dependencies),
+    ) -> TenantContext:
+        if org_id != ctx.organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not a member of this organization",
+            )
+        if not ctx.permissions.get(permission, False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required permission: {permission}",
+            )
+        return ctx
+    return dependency
+
+
 def tenant_filter(model) -> list:
     ctx = get_tenant_context()
     if not ctx:

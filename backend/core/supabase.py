@@ -17,9 +17,24 @@ from supabase import Client, create_client
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
 _SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 _ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-_BRIDGE_SECRET = os.getenv("SUPABASE_BRIDGE_SECRET", os.getenv("JWT_SECRET_KEY", "dev"))
+_BRIDGE_SECRET = os.getenv("SUPABASE_BRIDGE_SECRET", os.getenv("JWT_SECRET_KEY", ""))
 
 _client: Client | None = None
+
+
+def get_bridge_secret() -> str:
+    """Return the bridge secret, refusing to fall back to any default.
+
+    No default secret is ever used: the bridge derives Supabase passwords
+    from this value, so a predictable default would allow offline password
+    recovery. Fails closed when unset.
+    """
+    if not _BRIDGE_SECRET:
+        raise RuntimeError(
+            "SUPABASE_BRIDGE_SECRET (or JWT_SECRET_KEY) is not set. "
+            "The Supabase identity bridge refuses to run without a strong secret."
+        )
+    return _BRIDGE_SECRET
 
 
 def get_supabase() -> Client:
@@ -80,14 +95,22 @@ def get_profile(legacy_user_id: str) -> dict[str, Any] | None:
 
 
 def _bridge_password(legacy_user_id: str) -> str:
-    """Deterministic password for bridged Supabase identities.
+    """Deterministic keyed password for bridged Supabase identities.
 
     Never stored anywhere: derived from the legacy JWT user id and the
     server secret so a browser session can always be minted on demand.
-    SHA-256 keeps it under bcrypt's 72-byte limit regardless of id length.
+    Uses PBKDF2-HMAC-SHA256 with a high iteration count (the secret acts
+    as the key) so offline cracking is expensive. The hex digest stays
+    under bcrypt's 72-byte limit.
     """
-    raw = f"rs-bridge::{legacy_user_id}::{_BRIDGE_SECRET}"
-    return hashlib.sha256(raw.encode()).hexdigest()
+    secret = get_bridge_secret()
+    raw = f"rs-bridge::v2::{legacy_user_id}"
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        raw.encode(),
+        salt=secret.encode(),
+        iterations=210_000,
+    ).hex()
 
 
 def ensure_supabase_user(

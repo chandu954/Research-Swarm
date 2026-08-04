@@ -56,6 +56,11 @@ async def event_stream(
     Yields formatted SSE strings:
       event: log
       data: {json}
+
+    Cancellation is re-raised (never swallowed) and the trailing `done`
+    event is only emitted on normal termination — yielding inside a
+    `finally` block would raise ``RuntimeError`` when a client disconnects
+    and the generator is closed mid-iteration.
     """
     try:
         while True:
@@ -74,7 +79,8 @@ async def event_stream(
                 yield f"event: heartbeat\ndata: {json.dumps({'timestamp': time.time()})}\n\n"
     except asyncio.CancelledError:
         logger.debug(f"Stream {task_id} cancelled")
-    finally:
+        raise
+    else:
         yield f"event: done\ndata: {json.dumps({'task_id': task_id})}\n\n"
 
 
@@ -104,18 +110,50 @@ class StreamManager:
     def __init__(self):
         self._queues: Dict[str, AsyncQueueAdapter] = {}
         self._persistence: Dict[str, Dict[str, Any]] = {}
+        self._owners: Dict[str, str] = {}
+        self._tasks: Dict[str, "asyncio.Task[Any]"] = {}
 
-    def create_stream(self, task_id: str) -> AsyncQueueAdapter:
+    def create_stream(self, task_id: str, owner_user_id: Optional[str] = None) -> AsyncQueueAdapter:
         """Create a new log queue adapter for a task stream."""
         adapter = AsyncQueueAdapter(maxsize=500)
         self._queues[task_id] = adapter
+        if owner_user_id:
+            self._owners[task_id] = owner_user_id
         return adapter
 
-    def get_or_create_stream(self, task_id: str) -> AsyncQueueAdapter:
+    def get_stream(self, task_id: str) -> Optional[AsyncQueueAdapter]:
+        """Return the existing queue adapter, if any."""
+        return self._queues.get(task_id)
+
+    def has_stream(self, task_id: str) -> bool:
+        return task_id in self._queues
+
+    def get_or_create_stream(self, task_id: str, owner_user_id: Optional[str] = None) -> AsyncQueueAdapter:
         """Return existing queue or create one."""
         if task_id not in self._queues:
-            return self.create_stream(task_id)
+            return self.create_stream(task_id, owner_user_id=owner_user_id)
         return self._queues[task_id]
+
+    def get_owner(self, task_id: str) -> Optional[str]:
+        """Return the user id that created a stream, if known."""
+        return self._owners.get(task_id)
+
+    def register_task(self, task_id: str, task: "asyncio.Task[Any]") -> None:
+        """Track a background research task so it can be cancelled on shutdown."""
+        self._tasks[task_id] = task
+
+    def unregister_task(self, task_id: str, task: "asyncio.Task[Any]") -> None:
+        if self._tasks.get(task_id) is task:
+            self._tasks.pop(task_id, None)
+
+    async def cancel_all_tasks(self) -> None:
+        """Cancel every tracked background task (graceful shutdown)."""
+        for task in list(self._tasks.values()):
+            if not task.done():
+                task.cancel()
+        if self._tasks:
+            await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+        self._tasks.clear()
 
     def attach_persistence(
         self, task_id: str, *, supabase_user_id: str, session_id: str
@@ -198,11 +236,20 @@ class StreamManager:
             logger.debug(f"supabase mirror failed for {task_id}: {exc}")
 
     def close_stream(self, task_id: str) -> None:
-        """Close and remove a stream."""
+        """Close and remove a stream.
+
+        The tracked task (if any) is unregistered but NOT cancelled here:
+        cancellation is the responsibility of the code that owns the task
+        (the SSE wrapper on disconnect, or ``cancel_all_tasks`` on shutdown),
+        because this method is also called from inside the task's own
+        ``finally`` block on normal completion.
+        """
         adapter = self._queues.pop(task_id, None)
         if adapter:
             adapter.close()
         self._persistence.pop(task_id, None)
+        self._owners.pop(task_id, None)
+        self._tasks.pop(task_id, None)
 
 
 # Singleton
