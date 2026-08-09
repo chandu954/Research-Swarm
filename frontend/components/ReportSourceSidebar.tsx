@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, ExternalLink, FileCheck2, ShieldCheck } from "lucide-react";
+import { BookOpen, ExternalLink, FileCheck2, Layers, ShieldCheck } from "lucide-react";
 import type { SourceCitation } from "@/lib/types";
 import {
   computeEvidenceScore,
@@ -12,8 +12,10 @@ import {
   getConfidence,
   confidenceLabel,
   faviconUrl,
+  classifySourceType,
 } from "@/lib/trust-scores";
 import { CONFIDENCE_PILL } from "@/lib/confidence-pill";
+import SourceTypeBadge from "./SourceTypeBadge";
 import { cn } from "@/lib/utils";
 
 function Favicon({
@@ -60,22 +62,25 @@ function SourceRow({
   source,
   cited,
   evidence,
+  citationCount = 0,
 }: {
   index: number;
   source: SourceCitation;
   cited: boolean;
   evidence?: number | null;
+  citationCount?: number;
 }) {
   const score = evidence ?? sourceEvidenceScore(source);
   const authority = score != null ? score : getTrustScore(source.url, source.title).authority / 10;
   const trust = getTrustScore(source.url, source.title);
   const confidence = getConfidence(trust.authority, trust.relevance);
   const label = confidenceLabel(confidence);
+  const type = classifySourceType({ url: source.url, provider: source.provider });
 
   return (
     <li
       className={cn(
-        "group rounded-lg border p-3 transition-colors",
+        "group rounded-xl border p-3 transition-colors",
         cited
           ? "border-[var(--accent-violet)]/40 bg-[var(--accent-violet)]/5"
           : "border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]/60",
@@ -85,7 +90,7 @@ function SourceRow({
         <Favicon url={source.url} title={source.title} className="mt-0.5 h-5 w-5" />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-medium leading-snug text-[var(--text-primary)]">
+            <p className="min-w-0 text-xs font-medium leading-snug text-[var(--text-primary)]">
               <span
                 className={cn(
                   "mr-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-[5px] border px-1 text-[9px] font-semibold leading-none align-[-1px]",
@@ -96,7 +101,7 @@ function SourceRow({
               >
                 {index}
               </span>
-              {source.title}
+              <span className="line-clamp-2">{source.title}</span>
             </p>
             {source.url && (
               <a
@@ -111,19 +116,13 @@ function SourceRow({
               </a>
             )}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--text-tertiary)]">
-            <span className="font-medium text-[var(--text-secondary)]">{trust.domain}</span>
-            <span aria-hidden>·</span>
-            <span>{trust.freshness}</span>
-            <span
-              className={cn(
-                "ml-auto inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-medium",
-                CONFIDENCE_PILL[label],
-              )}
-            >
-              <ShieldCheck className="h-2.5 w-2.5" />
-              {label}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <SourceTypeBadge type={type} />
+            <span className="min-w-0 truncate text-[10px] font-medium text-[var(--text-secondary)]">
+              {trust.domain}
             </span>
+            <span aria-hidden className="text-[var(--text-tertiary)]">·</span>
+            <span className="text-[10px] text-[var(--text-tertiary)]">{trust.freshness}</span>
           </div>
           {source.relevance && (
             <p className="mt-1.5 line-clamp-2 text-[10px] leading-relaxed text-[var(--text-secondary)]">
@@ -140,8 +139,23 @@ function SourceRow({
             <span className="flex-shrink-0 text-[9px] tabular-nums text-[var(--text-tertiary)]">
               {authority.toFixed(1)}/10
             </span>
+            <span
+              className={cn(
+                "inline-flex flex-shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-medium",
+                CONFIDENCE_PILL[label],
+              )}
+            >
+              <ShieldCheck className="h-2.5 w-2.5" />
+              {confidence}% · {label}
+            </span>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-[9px] text-[var(--text-tertiary)]">
+            <span className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white/[0.03] px-1.5 py-0.5 font-medium text-[var(--text-secondary)]">
+              <Layers className="h-2.5 w-2.5" />
+              {citationCount} {citationCount === 1 ? "citation" : "citations"}
+            </span>
             {cited && (
-              <span className="flex flex-shrink-0 items-center gap-0.5 rounded-md bg-[var(--accent-violet)]/10 px-1.5 py-0.5 text-[9px] font-medium text-[var(--accent-violet)]">
+              <span className="inline-flex items-center gap-0.5 rounded-md bg-[var(--accent-violet)]/10 px-1.5 py-0.5 font-medium text-[var(--accent-violet)]">
                 <FileCheck2 className="h-2.5 w-2.5" />
                 cited
               </span>
@@ -158,9 +172,11 @@ type SourceSort = "confidence" | "relevance" | "cited";
 export default function ReportSourceSidebar({
   sources,
   evidence,
+  citationCounts,
 }: {
   sources: SourceCitation[];
   evidence: ReturnType<typeof computeEvidenceScore>;
+  citationCounts?: Map<number, number>;
 }) {
   const [sort, setSort] = useState<SourceSort>("confidence");
 
@@ -222,6 +238,7 @@ export default function ReportSourceSidebar({
                 source={source}
                 cited={evidence.cited.includes(index)}
                 evidence={evidence.perSource[index - 1] ?? null}
+                citationCount={citationCounts?.get(index) ?? 0}
               />
             ))}
           </ul>

@@ -39,7 +39,7 @@ export function getTrustScore(url?: string, title?: string): TrustScore {
   const domain = extractDomain(url || "");
   const rating = DOMAIN_RATINGS[domain] || TLD_RATINGS[`.${domain.split(".").pop()}`] || null;
 
-  const authority = rating?.authority ?? estimateAuthority(domain, title);
+  const authority = rating?.authority ?? estimateAuthority(domain);
   const bias = rating?.bias ?? "moderate";
   const freshness = estimateFreshness(title);
   const relevance = estimateRelevance(title);
@@ -56,7 +56,7 @@ function extractDomain(url: string): string {
   }
 }
 
-function estimateAuthority(domain: string, title?: string): number {
+function estimateAuthority(domain: string): number {
   const tld = `.${domain.split(".").pop()}`;
   if (tld === ".gov") return 92;
   if (tld === ".edu") return 88;
@@ -108,4 +108,125 @@ export function getHallucinationRisk(authority: number): number {
   if (authority >= 60) return 12;
   if (authority >= 40) return 18;
   return 25;
+}
+
+export type ConfidenceLabel = "High" | "Medium" | "Low";
+
+export function confidenceLabel(confidence: number): ConfidenceLabel {
+  if (confidence >= 75) return "High";
+  if (confidence >= 55) return "Medium";
+  return "Low";
+}
+
+export function faviconUrl(url?: string): string | null {
+  const domain = getTrustScore(url, undefined).domain;
+  if (!domain || domain.includes(".") === false) return null;
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+}
+
+export type SourceType = "Official" | "Docs" | "Paper" | "Blog" | "GitHub" | "Web";
+
+const PAPER_HOSTS = [
+  "arxiv.org",
+  "dl.acm.org",
+  "acm.org",
+  "ieee.org",
+  "ieeexplore.ieee.org",
+  "pubmed.ncbi.nlm.nih.gov",
+  "nature.com",
+  "science.org",
+  "springer.com",
+  "link.springer.com",
+  "sciencedirect.com",
+  "semanticscholar.org",
+  "openreview.net",
+  "jmlr.org",
+  "ncbi.nlm.nih.gov",
+];
+
+const BLOG_HOSTS = [
+  "medium.com",
+  "substack.com",
+  "blogspot.com",
+  "wordpress.com",
+  "dev.to",
+  "hashnode.dev",
+  "hashnode.com",
+  "ghost.io",
+];
+
+const DOC_HOSTS = [
+  "docs.python.org",
+  "docs.openai.com",
+  "platform.openai.com",
+  "docs.anthropic.com",
+  "docs.langchain.com",
+  "langchain-ai.github.io",
+  "developers.google.com",
+  "developer.apple.com",
+  "learn.microsoft.com",
+  "docs.aws.amazon.com",
+  "cloud.google.com",
+  "docs.docker.com",
+  "typescriptlang.org",
+  "developer.mozilla.org",
+];
+
+const OFFICIAL_HOSTS = [
+  "react.dev",
+  "nextjs.org",
+  "kubernetes.io",
+  "docker.com",
+  "nodejs.org",
+  "python.org",
+  "tailwindcss.com",
+  "vercel.com",
+  "openai.com",
+  "anthropic.com",
+  "langchain.com",
+  "supabase.com",
+  "graphql.org",
+];
+
+function hostMatches(host: string, list: string[]): boolean {
+  return list.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
+/**
+ * Classifies a source into a human-readable type badge derived purely from
+ * available metadata (hostname, URL path, provider). Falls back to "Web" when
+ * nothing conclusive is found so metadata is never invented.
+ */
+export function classifySourceType(source: {
+  url?: string;
+  provider?: string | null;
+}): SourceType {
+  const url = source.url ?? "";
+  const domain = extractDomain(url);
+  const provider = (source.provider ?? "").toLowerCase();
+
+  if (provider.includes("github") || domain === "github.com") return "GitHub";
+  if (hostMatches(domain, PAPER_HOSTS)) return "Paper";
+  if (hostMatches(domain, BLOG_HOSTS)) return "Blog";
+
+  const tld = `.${domain.split(".").pop()}`.toLowerCase();
+  if (tld === ".gov" || tld === ".edu") return "Official";
+
+  let subdomain = "";
+  try {
+    subdomain =
+      new URL(url.startsWith("http") ? url : `https://${url}`).hostname.split(".")[0] ?? "";
+  } catch {
+    subdomain = "";
+  }
+  if (/^(docs|developer|developers|help|learn|api)(\d*)$/i.test(subdomain)) return "Docs";
+  if (/\/docs(\/|$)|documentation/i.test(url)) return "Docs";
+  if (hostMatches(domain, DOC_HOSTS)) return "Docs";
+  if (hostMatches(domain, OFFICIAL_HOSTS)) return "Official";
+  return "Web";
+}
+
+/** Maps a 0-100 confidence score to a 1-5 star verdict. */
+export function verdictStars(confidence: number): number {
+  return Math.max(1, Math.min(5, Math.round(confidence / 20)));
 }

@@ -53,6 +53,22 @@ export function extractCitedIndices(markdown: string): number[] {
   return result;
 }
 
+/** Counts how many times each source index is cited within the report body. */
+export function countCitationOccurrences(markdown: string): Map<number, number> {
+  const body = splitSections(markdown)
+    .filter((section) => !section.heading || !/^(references|sources)$/i.test(section.heading))
+    .map((section) => section.content)
+    .join("\n");
+  const counts = new Map<number, number>();
+  for (const segment of parseCitationSegments(body)) {
+    if (segment.type !== "citation") continue;
+    for (const idx of segment.indices) {
+      counts.set(idx, (counts.get(idx) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 export interface ReportSection {
   level: number;
   heading: string | null;
@@ -124,6 +140,91 @@ export function computeEvidenceScore(
 
 export function formatEvidenceScore(score: number): string {
   return score.toFixed(1);
+}
+
+export interface ReferenceEntry {
+  index: number;
+  title: string;
+  url?: string;
+  description?: string;
+}
+
+const REF_ITEM_RE = /^\s*(?:[-*]|\d+\.)\s+(.+?)\s*$/;
+
+/**
+ * Parses the markdown body of a References/Sources section into entries.
+ * Supports "[title](url) — description", "title: url", and fallback lines.
+ */
+export function parseReferences(markdown: string): ReferenceEntry[] {
+  const entries: ReferenceEntry[] = [];
+  for (const rawLine of markdown.split("\n")) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    const matched = REF_ITEM_RE.exec(trimmed);
+    const item = matched ? matched[1] : trimmed.replace(/^[#>\s]+/, "");
+    if (!item) continue;
+
+    const link = /\[([^\]]+)\]\(([^)]+)\)/.exec(item);
+    if (link) {
+      const rest = item.replace(link[0], "").replace(/^[\s:—-]+|[\s—-]+$/g, "");
+      entries.push({ index: entries.length + 1, title: link[1], url: link[2], description: rest || undefined });
+      continue;
+    }
+
+    if (/[a-z0-9-]+\.(dev|com|org|net|io|gov|edu|ai|app|co)([/:?#]|$)/i.test(item)) {
+      const parts = item.split(" ");
+      const urlIndex = parts.findIndex((p) => /^(https?:\/\/)?[a-z0-9-]+\.(dev|com|org|net|io|gov|edu|ai|app|co)([/:?#]|$)/i.test(p));
+      if (urlIndex >= 0) {
+        const url = (parts[urlIndex] as string).replace(/^[\[\[【<]/, "").replace(/[\]】>]*$/, "");
+        const titlePart = parts.slice(0, urlIndex).join(" ").trim();
+        const description = parts.slice(urlIndex + 1).join(" ").trim();
+        entries.push({
+          index: entries.length + 1,
+          title: titlePart.replace(/^[:—-]\s*/, "") || url,
+          url,
+          description: description || undefined,
+        });
+        continue;
+      }
+    }
+
+    if (!isCategorizedText(item)) {
+      entries.push({ index: entries.length + 1, title: item });
+    }
+  }
+  return entries;
+}
+
+const CATEGORY_RE = /^(?:references?|sources?|for\s+more\s+information|appendi[ex]|bibliography)/i;
+
+function isCategorizedText(text: string): boolean {
+  const clean = text.replace(/[*_`]/g, "").trim();
+  if (CATEGORY_RE.test(clean)) return true;
+  if (clean.length > 220) return true;
+  return false;
+}
+
+/** Builds a map of source index -> section headings that cite it. */
+export function buildUsedInMap(
+  sources: SourceCitation[],
+  usedSections: { index: number; heading: string | null; content: string }[],
+): Map<number, string[]> {
+  const map = new Map<number, string[]>();
+  for (const section of usedSections) {
+    if (!section.heading) continue;
+    const heading = section.heading;
+    const segments = parseCitationSegments(section.content);
+    for (const segment of segments) {
+      if (segment.type !== "citation") continue;
+      for (const idx of segment.indices) {
+        if (idx < 1 || idx > sources.length) continue;
+        const list = map.get(idx) ?? [];
+        if (!list.includes(heading)) list.push(heading);
+        map.set(idx, list);
+      }
+    }
+  }
+  return map;
 }
 
 interface CitationTextNode {
