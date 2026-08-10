@@ -25,6 +25,11 @@ def _get_secret() -> str:
     return secret
 
 
+def get_jwt_secret() -> str:
+    """Public accessor for the signing secret (used by signed download URLs)."""
+    return _get_secret()
+
+
 def _rotation_secrets() -> list[str]:
     """Active signing secret plus any previously-rotated secrets (verification only)."""
     secrets = [s for s in os.getenv("JWT_SECRET_KEYS_ROTATION", "").split(",") if s]

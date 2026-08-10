@@ -17,11 +17,17 @@ services:
       - key: ANSWER_MODEL
         value: mistralai/mistral-small-3.2-24b-instruct
       - key: APP_URL
-        value: https://research-swarm-omega.vercel.app
+        # Set to the deployed frontend URL at deploy time (exact production
+        # origin is a deployment decision, not a hardcoded value).
+        sync: false
       - key: CORS_ORIGINS
-        value: https://research-swarm-omega.vercel.app,https://research-swarm.vercel.app
+        # Set to the exact frontend origin(s), e.g.
+        # https://research-swarm.vercel.app (comma-separated for multiples).
+        sync: false
       - key: LOG_LEVEL
         value: INFO
+      - key: ENVIRONMENT
+        value: production
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: OPENROUTER_API_KEY

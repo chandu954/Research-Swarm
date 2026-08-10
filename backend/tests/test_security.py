@@ -407,7 +407,28 @@ class TestJWTAndSecrets:
         monkeypatch.setenv("JWT_SECRET_KEY", "k" * 40)
         monkeypatch.setenv("SUPABASE_BRIDGE_SECRET", "b" * 40)
         monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "s" * 40)
+        monkeypatch.setenv("SUPABASE_URL", "https://proj.supabase.co")
         validate_secrets()  # must not raise
+
+    def test_production_validation_rejects_local_supabase_url(self, monkeypatch):
+        from backend.core.config import validate_secrets
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("JWT_SECRET_KEY", "k" * 40)
+        monkeypatch.setenv("SUPABASE_BRIDGE_SECRET", "b" * 40)
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "s" * 40)
+        monkeypatch.setenv("SUPABASE_URL", "http://127.0.0.1:54321")
+        with pytest.raises(RuntimeError, match="deployed Supabase project URL"):
+            validate_secrets()
+
+    def test_production_validation_rejects_missing_supabase_url(self, monkeypatch):
+        from backend.core.config import validate_secrets
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("JWT_SECRET_KEY", "k" * 40)
+        monkeypatch.setenv("SUPABASE_BRIDGE_SECRET", "b" * 40)
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "s" * 40)
+        monkeypatch.delenv("SUPABASE_URL", raising=False)
+        with pytest.raises(RuntimeError, match="SUPABASE_URL is not set"):
+            validate_secrets()
 
 
 # ═════════════════════════════════════════════════════════════════

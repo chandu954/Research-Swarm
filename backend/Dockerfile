@@ -23,4 +23,6 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Honor the platform-provided PORT (Render injects $PORT; Railway uses
+# 8000) with a sane local default.
+CMD ["sh", "-c", "uvicorn backend.api.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]

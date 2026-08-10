@@ -31,11 +31,17 @@
 
 [[env]]
   name = "CORS_ORIGINS"
-  value = "https://research-swarm-frontend.vercel.app"
+  # Set to the exact production frontend URL at deploy time, e.g.
+  # https://research-swarm.vercel.app — comma-separated for multiples.
+  sync = false
 
 [[env]]
   name = "LOG_LEVEL"
   value = "INFO"
+
+[[env]]
+  name = "ENVIRONMENT"
+  value = "production"
 
 [[volumes]]
   name = "backend_data"

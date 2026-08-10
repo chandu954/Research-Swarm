@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { getApiUrl } from "@/lib/config";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { token, isLoading: authLoading, refreshToken } = useAuth();
@@ -45,7 +44,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         }
       }
       try {
-        const res = await fetch(`${API_URL}/auth/org-status`, {
+        const res = await fetch(`${getApiUrl()}/auth/org-status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {

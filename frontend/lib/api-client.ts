@@ -1,5 +1,6 @@
 "use client";
 
+import { getApiUrl } from "./config";
 import type { ProviderSettings } from "./useSettings";
 import type { AgentLog, ResearchResult } from "./types";
 
@@ -91,7 +92,6 @@ function classifyResponse(status: number, body: Record<string, unknown>): ApiErr
    Configuration
    ─────────────────────────────────────────── */
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const RESEARCH_TIMEOUT_MS = 180_000;
 const STREAM_TIMEOUT_MS = 120_000;
@@ -189,7 +189,7 @@ async function refreshAccessToken(): Promise<boolean> {
   const rt = getRefreshToken();
   if (!rt) return false;
   try {
-    const res = await fetch(`${API_URL}/auth/refresh`, {
+    const res = await fetch(`${getApiUrl()}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: rt }),
@@ -212,7 +212,7 @@ async function request<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const requestId = nextRequestId();
-  const url = `${API_URL}${endpoint}`;
+  const url = `${getApiUrl()}${endpoint}`;
   const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = options.retryable !== false ? MAX_RETRIES : 0;
 
@@ -348,7 +348,7 @@ export const api = {
 
 export async function checkHealth(): Promise<{ ok: boolean; status: string; detail?: string }> {
   try {
-    const res = await fetch(`${API_URL}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${getApiUrl()}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       return { ok: false, status: `HTTP ${res.status}`, detail: body.detail };
@@ -414,7 +414,7 @@ export function subscribeResearchLogs(
   },
 ): AbortController {
   const controller = new AbortController();
-  const url = `${API_URL}/research/stream/${encodeURIComponent(taskId)}`;
+  const url = `${getApiUrl()}/research/stream/${encodeURIComponent(taskId)}`;
   const token = getToken();
   const { orgId, wsId } = getTenantIds();
 
@@ -616,8 +616,16 @@ export async function deleteDocument(docId: string) {
   return api.delete<{ status: string }>(`/documents/${docId}`);
 }
 
-export function getDocumentDownloadUrl(docId: string) {
-  return `${API_URL}/documents/${docId}/download`;
+/**
+ * Request a short-lived signed download URL for a document.
+ *
+ * The backend verifies the caller's session and document/workspace
+ * ownership, then returns an HMAC-signed URL (opaque, not a JWT) that
+ * expires in seconds. The bearer token is never placed in a URL.
+ */
+export async function getDocumentDownloadUrl(docId: string): Promise<string> {
+  const res = await api.post<{ url: string; expires_in: number }>(`/documents/${docId}/download-url`);
+  return `${getApiUrl()}${res.url}`;
 }
 
 // ── Conversation Actions ──────────────────────────────────

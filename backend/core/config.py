@@ -60,6 +60,11 @@ def validate_secrets() -> None:
             problems.append("SUPABASE_BRIDGE_SECRET is missing or too weak")
         if not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
             problems.append("SUPABASE_SERVICE_ROLE_KEY is not set")
+        supabase_url = os.getenv("SUPABASE_URL", "")
+        if not supabase_url:
+            problems.append("SUPABASE_URL is not set")
+        elif "127.0.0.1" in supabase_url or "localhost" in supabase_url:
+            problems.append("SUPABASE_URL must be the deployed Supabase project URL (not a local instance)")
         if problems:
             raise RuntimeError(f"Refusing to start in production: {'; '.join(problems)}")
         return

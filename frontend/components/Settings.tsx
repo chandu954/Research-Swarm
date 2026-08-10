@@ -6,8 +6,7 @@ import { X, Settings2, ChevronDown, Check, RefreshCw, Puzzle, Key } from "lucide
 import type { ProviderSettings } from "@/lib/useSettings";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import { useReducedMotion } from "@/lib/useReducedMotion";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { getApiUrl } from "@/lib/config";
 
 const OLLAMA_PRESETS: Record<string, string[]> = {
   planner: ["qwen3:14b", "llama3:8b", "qwen3:8b", "gemma3:12b"],
@@ -118,7 +117,7 @@ function useModelList(provider: string) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/models`);
+      const res = await fetch(`${getApiUrl()}/models`);
       const data = await res.json();
       setModels(data.models || []);
     } catch (e) {
@@ -148,7 +147,7 @@ function PluginSection() {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/plugins`)
+    fetch(`${getApiUrl()}/plugins`)
       .then((r) => r.json())
       .then(setPlugins)
       .catch(() => {});
@@ -156,12 +155,12 @@ function PluginSection() {
 
   const configure = async (name: string) => {
     try {
-      await fetch(`${API_URL}/plugins/${name}/configure`, {
+      await fetch(`${getApiUrl()}/plugins/${name}/configure`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, config: { token: configs[name] || "" } }),
       });
-      const res = await fetch(`${API_URL}/plugins`);
+      const res = await fetch(`${getApiUrl()}/plugins`);
       const data = await res.json();
       setPlugins(data);
     } catch {}

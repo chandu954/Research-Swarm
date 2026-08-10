@@ -8,8 +8,7 @@ import {
   ArrowRight, ArrowLeft, Loader2, Hash,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { getApiUrl } from "@/lib/config";
 
 const STEPS = [
   { id: "welcome", icon: Sparkles, label: "Welcome" },
@@ -60,7 +59,7 @@ export default function OnboardingPage() {
     if (step === 1) {
       setLoading(true);
       try {
-        const res = await fetch(`${API_URL}/organizations`, {
+        const res = await fetch(`${getApiUrl()}/organizations`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -89,7 +88,7 @@ export default function OnboardingPage() {
     if (step === 2 && createdOrgId) {
       setLoading(true);
       try {
-        const res = await fetch(`${API_URL}/organizations/${createdOrgId}/workspaces`, {
+        const res = await fetch(`${getApiUrl()}/organizations/${createdOrgId}/workspaces`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -119,7 +118,7 @@ export default function OnboardingPage() {
       setLoading(true);
       try {
         const res = await fetch(
-          `${API_URL}/organizations/${createdOrgId}/workspaces/${createdWsId}/projects`,
+          `${getApiUrl()}/organizations/${createdOrgId}/workspaces/${createdWsId}/projects`,
           {
             method: "POST",
             headers: {

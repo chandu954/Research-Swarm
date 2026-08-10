@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import { api, API_URL, TOKEN_KEY, REFRESH_KEY, ApiClientError } from "./api-client";
+import { api, TOKEN_KEY, REFRESH_KEY, ApiClientError } from "./api-client";
+import { getApiUrl } from "./config";
 import { clearSupabaseSession, storeSupabaseSession } from "./supabase/session";
 
 interface TokenPair {
@@ -135,24 +136,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const oauthLogin = useCallback(async (provider: "google" | "github" | "microsoft"): Promise<void> => {
     if (!window) return;
+    const apiUrl = getApiUrl();
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.innerWidth - width) / 2;
     const top = window.screenY + (window.innerHeight - height) / 2;
     const popup = window.open(
-      `${API_URL}/auth/${provider}`,
+      `${apiUrl}/auth/${provider}`,
       `${provider}OAuth`,
       `width=${width},height=${height},left=${left},top=${top}`,
     );
     if (!popup) {
       // Popup blocked — fall back to redirect (full page navigation)
-      window.location.href = `${API_URL}/auth/${provider}`;
+      window.location.href = `${apiUrl}/auth/${provider}`;
       // Return a promise that never settles — page will navigate away
       return new Promise<never>(() => {});
     }
     return new Promise<void>((resolve, reject) => {
       const handler = (e: MessageEvent) => {
-        if (e.origin !== API_URL && e.origin !== window.location.origin) return;
+        if (e.origin !== apiUrl && e.origin !== window.location.origin) return;
         if (e.data?.access_token) {
           setStoredToken(e.data.access_token);
           if (e.data.refresh_token) localStorage.setItem(REFRESH_KEY, e.data.refresh_token);

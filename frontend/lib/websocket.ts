@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { getApiUrl } from "./config";
 
 export interface PresenceUser {
   userId: string;
@@ -80,8 +80,9 @@ export class CollaborationClient {
 
   private _connect() {
     if (!this.currentWorkspaceId || !this.currentToken) return;
-    const protocol = API_URL.startsWith("https") ? "wss" : "ws";
-    const base = API_URL.replace(/^https?:\/\//, "");
+    const apiUrl = getApiUrl();
+    const protocol = apiUrl.startsWith("https") ? "wss" : "ws";
+    const base = apiUrl.replace(/^https?:\/\//, "");
     const url = `${protocol}://${base}/ws/workspace/${this.currentWorkspaceId}`;
 
     try {

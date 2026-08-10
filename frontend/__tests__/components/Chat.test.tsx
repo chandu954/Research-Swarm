@@ -3,6 +3,23 @@ import { render, screen } from "@testing-library/react";
 import Chat from "@/components/Chat";
 import type { Message } from "@/lib/types";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({
+    user: null,
+    token: null,
+    isLoading: false,
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    oauthLogin: vi.fn(),
+    refreshToken: vi.fn(),
+  }),
+}));
+
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });

@@ -3,7 +3,7 @@
 import { useReducer, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth";
-import { API_URL, checkHealth } from "./api-client";
+import { checkHealth } from "./api-client";
 import { classifyAuthError } from "./auth-errors";
 import {
   authFlowReducer,
@@ -221,7 +221,6 @@ export function useLoginAuthFlow(options: UseLoginAuthFlowOptions = {}) {
     dismissError,
     resetFlow,
     dispatch: dispatchAction,
-    apiUrl: API_URL,
   };
 }
 

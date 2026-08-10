@@ -85,6 +85,19 @@ export default function PDFUploader({
     );
   };
 
+  const openDocument = useCallback(async (docId: string) => {
+    try {
+      // Backend mints a short-lived signed URL (never a JWT in the query
+      // string); a plain browser tab can then download without auth headers.
+      const url = await getDocumentDownloadUrl(docId);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setUploadError(
+        err instanceof Error ? err.message : "Could not open the document.",
+      );
+    }
+  }, []);
+
   const removeDocument = useCallback(
     async (id: string) => {
       try {
@@ -247,9 +260,11 @@ export default function PDFUploader({
 
                 <div className="flex items-center gap-1">
                   <a
-                    href={getDocumentDownloadUrl(document.document_id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void openDocument(document.document_id);
+                    }}
                     className="icon-button h-7 w-7 opacity-60 hover:text-cyan-300 hover:opacity-100"
                     aria-label={`View ${name}`}
                   >

@@ -16,7 +16,7 @@ from backend.db.models import (
     User, Organization, OrganizationMember,
     Workspace, Project,
 )
-from backend.auth.dependencies import get_current_user
+from backend.auth.dependencies import get_current_user, get_optional_user
 
 
 @dataclass
@@ -213,7 +213,7 @@ async def resolve_tenant_dependencies(
 
 async def resolve_optional_tenant(
     request: Request,
-    user: Optional[User] = None,
+    user: Optional[User] = Depends(get_optional_user),
     session: AsyncSession = Depends(get_session),
 ) -> Optional[TenantContext]:
     if not user:

@@ -264,6 +264,11 @@ class DocumentVersionResponse(BaseModel):
     created_by: Optional[str] = None
     created_at: datetime
 
+
+class DocumentDownloadUrlResponse(BaseModel):
+    url: str
+    expires_in: int
+
     model_config = {"from_attributes": True}
 
 

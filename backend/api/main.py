@@ -48,6 +48,7 @@ from backend.db.schemas import (
     ConversationCreate, ConversationResponse, ConversationDetail,
     ConversationUpdate, MessageResponse,
     DocumentResponse, DocumentVersionResponse,
+    DocumentDownloadUrlResponse,
     PluginConfigRequest, PluginStatus,
     NotificationResponse, APIKeyCreate, APIKeyResponse, APIKeyFullResponse,
     AuditLogResponse, BillingUsageResponse,
@@ -55,8 +56,12 @@ from backend.db.schemas import (
     ExtractEntitiesRequest,
     ProviderCreate, ProviderUpdate, ProviderResponse, ProviderListResponse,
 )
-from backend.auth.dependencies import get_current_user
-from backend.auth.tenant import resolve_tenant_dependencies, TenantContext
+from backend.auth.dependencies import get_current_user, get_optional_user
+from backend.auth.tenant import (
+    resolve_tenant_dependencies,
+    resolve_optional_tenant,
+    TenantContext,
+)
 # The unified PluginRegistry is imported via core.registry above
 # Old compat note: providers.registry is deprecated in favor of core.registry
 
@@ -245,7 +250,21 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
-cors_origins = os.getenv("CORS_ORIGINS", "https://research-swarm-omega.vercel.app,http://localhost:3000,http://localhost:5173").split(",")
+# CORS: production frontend origins are an explicit deployment-time
+# decision (CORS_ORIGINS env). The default intentionally contains only
+# local development origins — no hardcoded production domain, and no
+# wildcard with credentials.
+_DEFAULT_CORS = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000"
+cors_origins = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", _DEFAULT_CORS).split(",")
+    if o.strip()
+]
+if "*" in cors_origins:
+    raise RuntimeError(
+        "CORS_ORIGINS must not contain '*' together with allow_credentials=True — "
+        "list exact production origins instead"
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -1221,11 +1240,67 @@ async def soft_delete_document(
 @app.get("/documents/{doc_id}/download")
 async def download_document(
     doc_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    session: AsyncSession = Depends(get_session),
+    ctx: Optional[TenantContext] = Depends(resolve_optional_tenant),
+    sig: Optional[str] = Query(None, description="HMAC signature for signed download URLs"),
+    exp: Optional[int] = Query(None, description="Signature expiry epoch seconds"),
+):
+    from fastapi.responses import FileResponse
+
+    # Signed (short-lived) download path: no bearer token in the URL, and no
+    # token can be attached by a plain browser tab — the HMAC is the auth.
+    # The signature binds doc_id + owning organization + expiry, so it can
+    # never be replayed against another tenant's document.
+    if sig and exp is not None:
+        sig_result = await session.execute(
+            select(Document).where(
+                Document.id == doc_id,
+                Document.is_deleted == False,
+            )
+        )
+        doc_for_sig = sig_result.scalar_one_or_none()
+        if doc_for_sig is None or not _verify_document_download(doc_id, doc_for_sig.organization_id, exp, sig):
+            raise HTTPException(status_code=403, detail="Invalid or expired download link")
+        doc = doc_for_sig
+    else:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Authentication required", headers={"WWW-Authenticate": "Bearer"})
+        if ctx is None:
+            raise HTTPException(status_code=403, detail="organization_required")
+        result = await session.execute(
+            select(Document).where(
+                Document.id == doc_id,
+                Document.organization_id == ctx.organization_id,
+                Document.is_deleted == False,
+            )
+        )
+        doc = result.scalar_one_or_none()
+        if not doc or not doc.storage_path:
+            raise HTTPException(status_code=404, detail="Document not found")
+    if not doc.storage_path or not os.path.exists(doc.storage_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    return FileResponse(
+        doc.storage_path,
+        media_type="application/pdf",
+        filename=doc.original_filename,
+    )
+
+
+@app.post("/documents/{doc_id}/download-url", response_model=DocumentDownloadUrlResponse)
+async def create_document_download_url(
+    doc_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     ctx: TenantContext = Depends(resolve_tenant_dependencies),
 ):
-    from fastapi.responses import FileResponse
+    """Issue a short-lived, cryptographically signed download URL.
+
+    The signature binds the document id, the owning organization, and an
+    expiry timestamp (HMAC-SHA256 over a server-only secret) — never a JWT.
+    Signed URLs are valid for 5 minutes and cannot be replayed across
+    tenants or documents.
+    """
     result = await session.execute(
         select(Document).where(
             Document.id == doc_id,
@@ -1238,11 +1313,37 @@ async def download_document(
         raise HTTPException(status_code=404, detail="Document not found")
     if not os.path.exists(doc.storage_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
-    return FileResponse(
-        doc.storage_path,
-        media_type="application/pdf",
-        filename=doc.original_filename,
+
+    expires = int(time.time()) + 300
+    sig = _sign_document_download(doc_id, doc.organization_id, expires)
+    return DocumentDownloadUrlResponse(
+        url=f"/documents/{doc_id}/download?sig={sig}&exp={expires}",
+        expires_in=300,
     )
+
+
+def _sign_document_download(doc_id: str, org_id: str, expires: int) -> str:
+    """HMAC-SHA256 signature binding doc_id + org_id + expiry."""
+    import hashlib
+    import hmac
+    from backend.auth.jwt import get_jwt_secret
+
+    message = f"{doc_id}:{org_id}:{expires}".encode()
+    return hmac.new(get_jwt_secret().encode(), message, hashlib.sha256).hexdigest()
+
+
+def _verify_document_download(doc_id: str, org_id: str, expires: int, sig: str) -> bool:
+    """Verify an HMAC signature and its expiry window."""
+    import hashlib
+    import hmac
+
+    if not sig or not expires:
+        return False
+    now = int(time.time())
+    if expires < now or expires > now + 3600:  # valid for max 1h from issue time
+        return False
+    expected = _sign_document_download(doc_id, org_id, expires)
+    return hmac.compare_digest(expected, sig)
 
 
 @app.post("/documents/{doc_id}/restore")
@@ -1409,11 +1510,23 @@ async def global_search(
 
 @app.get("/billing/usage", response_model=BillingUsageResponse)
 async def get_billing_usage(
-    org_id: str = Query(..., alias="organization_id"),
+    organization_id: Optional[str] = Query(None, alias="organization_id"),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
     ctx: TenantContext = Depends(resolve_tenant_dependencies),
 ):
+    """Usage aggregates are scoped to the caller's authenticated tenant.
+
+    The effective organization is derived from the user's membership via
+    tenant resolution — a client-supplied organization_id is at most a
+    consistency check, never an authority (rejects cross-org reads).
+    """
+    if organization_id and organization_id != ctx.organization_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Not a member of this organization",
+        )
+    org_id = ctx.organization_id
     result = await session.execute(
         select(
             func.coalesce(func.sum(BillingRecord.tokens_in), 0),
@@ -1615,6 +1728,14 @@ async def _resolve_pdf_paths(
 async def workspace_ws(workspace_id: str, ws: WebSocket):
     from backend.auth.jwt import decode_token as _decode_ws_token
 
+    # Origin validation: browsers always send an Origin header on WebSocket
+    # handshakes. Cross-origin sockets are rejected unless the origin is an
+    # explicitly configured CORS origin (production frontend domain).
+    origin = ws.headers.get("origin", "")
+    if origin and origin not in cors_origins:
+        await ws.close(code=1008, reason="Origin not allowed")
+        return
+
     # WebSocket routes bypass the slowapi middleware: throttle connection
     # creation with the in-process sliding-window limiter.
     client_ip = ws.client.host if ws.client else "unknown"
@@ -1716,14 +1837,34 @@ async def list_plugins():
 
 
 @app.post("/plugins/{name}/configure")
-async def configure_plugin(name: str, req: PluginConfigRequest, current_user: User = Depends(get_current_user)):
+async def configure_plugin(
+    name: str,
+    req: PluginConfigRequest,
+    current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
+):
+    """Configure a plugin, restricted to the plugin's declared contract.
+
+    Only configuration keys declared in the plugin's config_schema are
+    accepted; unknown keys are rejected instead of silently mutating
+    shared plugin state.
+    """
     registry = get_plugin_registry()
     plugin = registry.get(name)
     if plugin is None:
         raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
+
+    config_schema = plugin.spec.config_schema or {}
+    if config_schema:
+        undeclared = set(req.config) - set(config_schema)
+        if undeclared:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown configuration keys for plugin '{name}': {sorted(undeclared)}",
+            )
     if hasattr(plugin, "_config"):
         plugin._config.update(req.config)
-    logger.info(f"Plugin '{name}' configured")
+    logger.info(f"Plugin '{name}' configured by user {current_user.id} (org {ctx.organization_id})")
     return {"status": "configured", "name": name}
 
 
@@ -1732,9 +1873,29 @@ async def execute_plugin(
     name: str,
     action: str = Query(...),
     current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(resolve_tenant_dependencies),
     request: Request = None,
 ):
+    """Execute a plugin action, bound to the plugin's declared contract.
+
+    Invocation is restricted to actions declared in the plugin's spec.tags
+    (the declared contract); undeclared actions are rejected. Kwargs still
+    pass through so each plugin's own signature validation applies.
+    """
     registry = get_plugin_registry()
+    plugin = registry.get(name)
+    if plugin is None:
+        raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
+
+    spec = plugin.spec
+    if spec.tags and action not in spec.tags:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Action '{action}' is not a declared action of plugin '{name}'",
+        )
+    if not plugin.is_configured():
+        raise HTTPException(status_code=400, detail=f"Plugin '{name}' is not configured")
+
     try:
         body = {}
         if request is not None and request.headers.get("content-type") == "application/json":
