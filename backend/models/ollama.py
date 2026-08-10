@@ -69,9 +69,10 @@ class OllamaClient:
             response.raise_for_status()
             data = response.json()
             return data.get("response", "").strip()
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to generate with model {model}: {e}")
-            return ""
+        except httpx.HTTPError:
+            # Re-raise so the retry layer can classify transient failures
+            # (timeouts, connection resets, 5xx) and retry with backoff.
+            raise
 
     def create_embedding(
         self, model: str, text: str, truncate: bool = True

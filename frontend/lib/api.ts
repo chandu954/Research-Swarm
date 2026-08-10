@@ -4,6 +4,7 @@ export {
   ApiClientError,
   checkHealth,
   runResearch,
+  cancelResearch,
   subscribeResearchLogs,
   uploadPDF,
   listDocuments,

@@ -27,13 +27,19 @@ class OllamaProvider(LLMProvider):
         self.client = OllamaClient(config=config)
         logger.info(f"Ollama provider initialized (base_url={base_url})")
 
-    def generate(
+    def _generate_once(
         self,
         prompt: str,
         model: str,
         system_prompt: str | None = None,
         options: dict[str, Any] | None = None,
     ) -> str:
+        """Single-attempt Ollama generation (retries live in the base class).
+
+        OllamaClient re-raises httpx errors so transient failures
+        (timeouts, connection resets, 5xx) are retried; a permanently
+        missing model raises and is never retried.
+        """
         if self.client is None:
             raise RuntimeError("OllamaProvider not initialized — call initialize() first")
         return self.client.generate(

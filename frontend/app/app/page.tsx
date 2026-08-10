@@ -31,7 +31,7 @@ import ReportGenerator from "@/components/ReportGenerator";
 import ReportsPanel from "@/components/ReportsPanel";
 import SourceInspector from "@/components/SourceInspector";
 import WorkflowOverview from "@/components/WorkflowOverview";
-import { listDocuments, runResearch, subscribeResearchLogs, uploadPDF, loadConversation, ApiClientError } from "@/lib/api";
+import { listDocuments, runResearch, cancelResearch, subscribeResearchLogs, uploadPDF, loadConversation, ApiClientError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useProviderSettings } from "@/lib/useSettings";
 import { collaborationClient } from "@/lib/websocket";
@@ -90,6 +90,7 @@ export default function ResearchWorkspace() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [supabaseSessionId, setSupabaseSessionId] = useState<string | null>(null);
   const [debateMode, setDebateMode] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const { settings: providerSettings, update: setProviderSettings } = useProviderSettings();
   const { user, token } = useAuth();
   const { currentWorkspace } = useTenant();
@@ -169,7 +170,7 @@ export default function ResearchWorkspace() {
   }, [token, currentWorkspace?.id]);
 
   const handleSend = useCallback(
-    async (query: string) => {
+    async (query: string, opts?: { replaceLastUserMessage?: boolean }) => {
       const now = Date.now();
       const userMessage: Message = {
         id: `${now}-user`,
@@ -184,7 +185,17 @@ export default function ResearchWorkspace() {
         timestamp: now,
       };
 
-      setMessages((current) => [...current, userMessage, thinkingMessage]);
+      setRunError(null);
+      userCancelledRef.current = false;
+      setMessages((current) => {
+        // Retry re-uses the last user message: drop that message and anything
+        // after it (the failed/cancelled bubble) so it does not duplicate.
+        if (opts?.replaceLastUserMessage) {
+          const lastUserIdx = current.map((m) => m.role).lastIndexOf("user");
+          if (lastUserIdx >= 0) current = current.slice(0, lastUserIdx);
+        }
+        return [...current, userMessage, thinkingMessage];
+      });
       setIsRunning(true);
       setLogs([]);
       setPlan([]);
@@ -193,6 +204,7 @@ export default function ResearchWorkspace() {
       setExecutionTime(undefined);
 
       const taskId = crypto.randomUUID();
+      researchTaskIdRef.current = taskId;
       const streamController = subscribeResearchLogs(taskId, {
         onLog: (log) => {
           if (log.agent === "system" && log.action === "session" && log.details) {
@@ -259,7 +271,10 @@ export default function ResearchWorkspace() {
           },
         ]);
       } catch (error) {
-        if (error instanceof ApiClientError && error.code === "ABORTED") {
+        if (
+          userCancelledRef.current ||
+          (error instanceof ApiClientError && error.code === "ABORTED")
+        ) {
           setMessages((current) => [
             ...current.filter((message) => message.id !== thinkingMessage.id),
             {
@@ -284,17 +299,37 @@ export default function ResearchWorkspace() {
               timestamp: Date.now(),
             },
           ]);
+          setRunError(
+            error instanceof ApiClientError
+              ? error.code === "OFFLINE"
+                ? "The backend may be offline. Check your connection and try again."
+                : error.code === "TIMEOUT"
+                  ? "The research took too long. Try again or use a simpler query."
+                  : error.code === "UNAUTHORIZED"
+                    ? "Your session expired. Please sign in again."
+                    : error.message
+              : error instanceof Error
+                ? error.message
+                : "An unexpected error occurred. Please try again.",
+          );
         }
       } finally {
         streamController.abort();
         streamAbortRef.current = null;
         researchAbortRef.current = null;
+        researchTaskIdRef.current = null;
         setIsRunning(false);
         live.refresh();
       }
     },
     [selectedDocs, providerSettings, debateMode, conversationId, live.refresh],
   );
+
+  const handleRetryResearch = useCallback(() => {
+    const lastQuery = [...messages].reverse().find((m) => m.role === "user")?.content;
+    if (!lastQuery || isRunning) return;
+    void handleSend(lastQuery, { replaceLastUserMessage: true });
+  }, [messages, handleSend, isRunning]);
 
   const handleNewChat = useCallback(() => {
     setMessages([]);
@@ -303,6 +338,8 @@ export default function ResearchWorkspace() {
     setSources([]);
     setAgentMetrics({});
     setExecutionTime(undefined);
+    setRunError(null);
+    userCancelledRef.current = false;
     setConversationId(null);
     setSidebarOpen(false);
   }, []);
@@ -316,6 +353,8 @@ export default function ResearchWorkspace() {
     setSelectedDocs([]);
     setAgentMetrics({});
     setExecutionTime(undefined);
+    setRunError(null);
+    userCancelledRef.current = false;
     setConversationId(null);
   }, []);
 
@@ -361,10 +400,21 @@ export default function ResearchWorkspace() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const researchAbortRef = useRef<AbortController | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const researchTaskIdRef = useRef<string | null>(null);
+  const userCancelledRef = useRef(false);
 
   const handleCancelResearch = useCallback(() => {
+    userCancelledRef.current = true;
+    const taskId = researchTaskIdRef.current;
     researchAbortRef.current?.abort();
     streamAbortRef.current?.abort();
+    // Server-side cancel: terminates the background graph task so provider
+    // work stops and the run is persisted with a terminal "cancelled" state.
+    if (taskId) {
+      cancelResearch(taskId).catch(() => {
+        /* local aborts already stop the client; server cleanup is best-effort */
+      });
+    }
   }, []);
 
   // Phase 5: merge Supabase Realtime state with the SSE/response state so
@@ -412,11 +462,13 @@ export default function ResearchWorkspace() {
   }, [documents, realtime.documents]);
   const mergedSourceCount = sources.length || realtime.sourcesFound;
 
-  const phase: "idle" | "running" | "completed" = isRunning
+  const phase: "idle" | "running" | "completed" | "failed" = isRunning
     ? "running"
-    : messages.length === 0
-      ? "idle"
-      : "completed";
+    : runError
+      ? "failed"
+      : messages.length === 0
+        ? "idle"
+        : "completed";
 
   const openDocumentPicker = useCallback(() => {
     pdfInputRef.current?.click();
@@ -530,6 +582,8 @@ export default function ResearchWorkspace() {
               liveLastSession={live.sessions[0] ?? null}
               collections={live.collections}
               reports={live.reports}
+              runError={runError}
+              onRetry={handleRetryResearch}
             />
             <input
               ref={pdfInputRef}
@@ -579,9 +633,11 @@ export default function ResearchWorkspace() {
                     className={`h-1.5 w-1.5 rounded-full ${
                       phase === "running"
                         ? "animate-pulse bg-violet-400"
-                        : phase === "completed"
-                          ? "bg-emerald-400"
-                          : "bg-[var(--text-muted)]"
+                        : phase === "failed"
+                          ? "bg-rose-400"
+                          : phase === "completed"
+                            ? "bg-emerald-400"
+                            : "bg-[var(--text-muted)]"
                     }`}
                   />
                   {phase}

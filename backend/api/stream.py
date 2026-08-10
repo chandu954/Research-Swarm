@@ -146,6 +146,10 @@ class StreamManager:
         if self._tasks.get(task_id) is task:
             self._tasks.pop(task_id, None)
 
+    def get_task(self, task_id: str) -> Optional["asyncio.Task[Any]"]:
+        """Return the tracked background task for a stream, if any."""
+        return self._tasks.get(task_id)
+
     async def cancel_all_tasks(self) -> None:
         """Cancel every tracked background task (graceful shutdown)."""
         for task in list(self._tasks.values()):

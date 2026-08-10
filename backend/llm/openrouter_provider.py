@@ -1,6 +1,5 @@
 """OpenRouter LLM provider — cloud models via OpenRouter API."""
 from __future__ import annotations
-import json
 from typing import Any
 import httpx
 from loguru import logger
@@ -44,13 +43,14 @@ class OpenRouterProvider(LLMProvider):
             raise RuntimeError("OpenRouterProvider not initialized — call initialize() first")
         return self._client
 
-    def generate(
+    def _generate_once(
         self,
         prompt: str,
         model: str,
         system_prompt: str | None = None,
         options: dict[str, Any] | None = None,
     ) -> str:
+        """Single-attempt chat completion (retries live in the base class)."""
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -69,26 +69,19 @@ class OpenRouterProvider(LLMProvider):
             "max_tokens": max_tokens,
         }
 
-        try:
-            response = self.client.post(
-                f"{OPENROUTER_BASE_URL}/chat/completions",
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/research-swarm",
-                    "X-Title": "ResearchSwarm AI",
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"].strip()
-        except httpx.HTTPError as e:
-            logger.error(f"OpenRouter request failed: {e}")
-            raise
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"OpenRouter response parse failed: {e}")
-            raise
+        response = self.client.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/research-swarm",
+                "X-Title": "ResearchSwarm AI",
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"].strip()
 
     def create_embedding(self, model: str, text: str) -> list[float]:
         import os

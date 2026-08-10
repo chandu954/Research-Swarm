@@ -532,14 +532,35 @@ async def run_research(
         tracer = get_tracer()
         tracer.start_trace(task_id, body.query)
         result = None
+        run_status = "failed"
+
+        # Run the graph as a tracked background task so a cancellation can
+        # terminate in-flight LLM/provider work (and so client disconnects
+        # cannot strand a half-finished run with no terminal state).
+        graph_task = asyncio.create_task(
+            graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
+        )
+        app.state.stream_manager.register_task(task_id, graph_task)
         try:
             with tracer.span("research_graph", "graph", span_type="node"):
-                result = await graph.ainvoke(initial_state, config={"configurable": {"thread_id": task_id}})
+                result = await graph_task
+            run_status = _normalize_run_status(result)
+        except asyncio.CancelledError:
+            run_status = "cancelled"
+            raise
         finally:
-            status = result.get("status", "failed") if result else "failed"
-            tracer.end_trace("completed" if status != "failed" else "failed")
+            tracer.end_trace(run_status)
 
         execution_time = time.time() - start_time
+        app.state.stream_manager.push_log(
+            task_id,
+            make_log(
+                "system",
+                "status",
+                run_status,
+                "Research finished" if run_status == "completed" else "Research failed to complete",
+            ),
+        )
         app.state.stream_manager.close_stream(task_id)
 
         if sb_session_id:
@@ -560,7 +581,7 @@ async def run_research(
             sources=result.get("sources", []),
             plan=result.get("plan", []),
             logs=result.get("logs", []),
-            status=result.get("status", "completed"),
+            status=run_status,
             errors=result.get("errors", []),
             execution_time=execution_time,
             plan_reasoning=result.get("plan_reasoning"),
@@ -572,6 +593,21 @@ async def run_research(
             evidence_summary=result.get("evidence_summary"),
             has_evidence=result.get("has_evidence", False),
         )
+    except asyncio.CancelledError:
+        logger.info(f"[{task_id}] Research cancelled")
+        app.state.stream_manager.push_log(
+            task_id,
+            make_log("system", "cancelled", "cancelled", "Research cancelled"),
+        )
+        app.state.stream_manager.close_stream(task_id)
+        if sb_session_id:
+            try:
+                from backend.core.supabase import update_session
+
+                update_session(sb_session_id, status="cancelled", error=None)
+            except Exception as exc:  # pragma: no cover
+                logger.warning(f"[{task_id}] supabase cancel persist skipped: {exc}")
+        raise
     except Exception as e:
         logger.error(f"[{task_id}] Research failed: {e}")
         app.state.stream_manager.close_stream(task_id)
@@ -597,6 +633,50 @@ async def run_research(
             errors=[str(e)],
             execution_time=time.time() - start_time,
         )
+
+
+def _normalize_run_status(result: Optional[Dict[str, Any]]) -> str:
+    """Coerce a graph result into one of the terminal research statuses.
+
+    ``completed`` / ``failed`` / ``cancelled`` pass through. Anything else
+    (including a run that ended without ever reporting a status) is marked
+    ``failed`` so no path can leave a run permanently stuck in
+    ``running``.
+    """
+    status = (result or {}).get("status", "")
+    if status in ("completed", "failed", "cancelled"):
+        return status
+    if isinstance(result, dict):
+        result["status"] = "failed"
+        errors = result.setdefault("errors", [])
+        note = "Research ended without a terminal status and was marked failed"
+        if note not in [str(e) for e in errors]:
+            errors.append(note)
+    return "failed"
+
+
+@app.post("/research/{task_id}/cancel")
+async def cancel_research_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel an in-flight research run.
+
+    Cancellation is restricted to the owner of the task stream. The
+    background graph task is cancelled so in-flight LLM/provider work
+    terminates; the run handler persists the run as ``cancelled``.
+    """
+    _ensure_app_state()
+    stream_mgr = app.state.stream_manager
+    owner = stream_mgr.get_owner(task_id)
+    if owner and owner != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the owner of this task")
+    task = stream_mgr.get_task(task_id)
+    if task is None or task.done():
+        return {"status": "cancelled", "task_id": task_id, "already_done": True}
+    task.cancel()
+    logger.info(f"[{task_id}] Cancel requested by user {current_user.id}")
+    return {"status": "cancelled", "task_id": task_id}
 
 
 def _finalize_supabase_run(
@@ -631,7 +711,7 @@ def _finalize_supabase_run(
 
         update_session(
             session_id,
-            status="completed" if status != "failed" else "failed",
+            status="completed" if status == "completed" else status,
             sources_total=len(sources) if sources else 0,
             error=(
                 "; ".join(str(e) for e in result.get("errors", []))[:500]

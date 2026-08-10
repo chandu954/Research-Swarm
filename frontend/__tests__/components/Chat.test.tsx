@@ -67,4 +67,50 @@ describe("Chat", () => {
     const input = screen.getByRole("textbox", { name: /research question/i });
     expect(input).toBeDisabled();
   });
+
+  it("renders failure card with human reason when runError is set", () => {
+    render(<Chat {...baseProps} runError="The backend may be offline. Check your connection and try again." />);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("Research failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("The backend may be offline. Check your connection and try again.")
+    ).toBeInTheDocument();
+  });
+
+  it("exposes a retry button when onRetry is provided", () => {
+    const onRetry = vi.fn();
+    render(<Chat {...baseProps} runError="boom" onRetry={onRetry} />);
+    const retry = screen.getByRole("button", { name: /retry research/i });
+    expect(retry).toBeInTheDocument();
+    retry.click();
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render the failure card while a new run is in flight", () => {
+    render(<Chat {...baseProps} runError="boom" isRunning={true} onRetry={() => {}} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not render the failure card when there is no error", () => {
+    render(<Chat {...baseProps} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows the cancelled state as an idle assistant message, not an alert", () => {
+    const cancelled: Message[] = [
+      { id: "1", role: "user", content: "Hello", timestamp: Date.now() },
+      {
+        id: "2",
+        role: "assistant",
+        content: "**Research cancelled.** The workspace is idle and ready for a new query.",
+        timestamp: Date.now(),
+      },
+      { id: "3", role: "assistant", content: "Trailing", timestamp: Date.now() },
+    ];
+    render(<Chat {...baseProps} messages={cancelled} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.getByText((content) => /Research cancelled\./.test(content))
+    ).toBeInTheDocument();
+  });
 });

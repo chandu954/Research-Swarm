@@ -401,6 +401,22 @@ export async function runResearch(
   });
 }
 
+/**
+ * Ask the backend to cancel an in-flight research run. The server
+ * cancels the tracked background task so provider work terminates and
+ * the run is persisted with a terminal "cancelled" status.
+ */
+export async function cancelResearch(
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<{ status: string; task_id: string; already_done?: boolean }> {
+  return api.post<{ status: string; task_id: string; already_done?: boolean }>(
+    `/research/${encodeURIComponent(taskId)}/cancel`,
+    undefined,
+    { signal, timeout: 10_000 },
+  );
+}
+
 /* ───────────────────────────────────────────
    Research stream (SSE)
    ─────────────────────────────────────────── */

@@ -23,6 +23,7 @@ import {
   Globe2,
   Loader2,
   Paperclip,
+  RotateCcw,
   Scale,
   Search,
   Sparkles,
@@ -54,6 +55,8 @@ interface ChatProps {
   liveLastSession?: LiveSession | null;
   collections?: LiveCollection[];
   reports?: LiveReport[];
+  runError?: string | null;
+  onRetry?: () => void;
 }
 
 export interface LiveSession {
@@ -542,6 +545,8 @@ export default function Chat({
   liveLastSession,
   collections = [],
   reports = [],
+  runError = null,
+  onRetry,
 }: ChatProps) {
   const { user } = useAuth();
   const router = useRouter();
@@ -962,6 +967,32 @@ export default function Chat({
                 logs={streamLogs}
                 isRunning={isRunning}
               />
+            )}
+            {!isRunning && runError && (
+              <div
+                role="alert"
+                className="mb-6 flex items-start gap-3 rounded-xl border border-rose-400/20 bg-rose-500/[0.06] px-4 py-3"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-rose-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-rose-300">
+                    Research failed
+                  </p>
+                  <p className="mt-0.5 text-xs leading-5 text-[var(--text-muted)]">
+                    {runError}
+                  </p>
+                </div>
+                {onRetry && (
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-medium text-rose-300 transition-colors hover:border-rose-400/40 hover:bg-rose-500/15"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Retry research
+                  </button>
+                )}
+              </div>
             )}
             {!isRunning && (() => {
               const lastMsg = [...messages].reverse().find(
