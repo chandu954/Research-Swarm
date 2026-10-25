@@ -1,7 +1,8 @@
 """Entity extraction service for knowledge graph enrichment."""
 from __future__ import annotations
 import asyncio
-import json, re
+import json
+import re
 from typing import Optional
 from pydantic import BaseModel
 from loguru import logger

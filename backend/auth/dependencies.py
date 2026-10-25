@@ -25,7 +25,7 @@ async def _resolve_api_key(request: Request, session: AsyncSession) -> Optional[
     result = await session.execute(
         select(APIKey).where(
             APIKey.key_hash == key_hash,
-            APIKey.is_active == True,
+            APIKey.is_active.is_(True),
         )
     )
     api_key = result.scalar_one_or_none()

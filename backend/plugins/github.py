@@ -109,7 +109,7 @@ class GitHubPlugin(Plugin):
                 "url": item["html_url"],
                 "state": item["state"],
                 "created_at": item["created_at"],
-                "labels": [l["name"] for l in item.get("labels", [])],
+                "labels": [label["name"] for label in item.get("labels", [])],
             }
             for item in resp.json()
         ]

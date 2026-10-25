@@ -1,7 +1,7 @@
 """LLM provider base — extends core provider with streaming support."""
 from __future__ import annotations
 from collections.abc import Generator
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional
 
 from loguru import logger
 
@@ -11,10 +11,6 @@ from backend.llm.retry import (
 )
 from backend.core.providers.llm import LLMProvider as CoreLLMProvider
 from backend.core.plugin import PluginSpec
-
-if TYPE_CHECKING:  # pragma: no cover - runtime import cycles avoided
-    from backend.llm.base import LLMProvider as _Base
-
 
 class LLMProvider(CoreLLMProvider):
     spec: PluginSpec

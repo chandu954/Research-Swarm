@@ -1,7 +1,9 @@
 """Built-in search providers: DuckDuckGo, Bing, Serper, fallback."""
 from __future__ import annotations
 import asyncio
-import os, re, urllib.parse
+import os
+import re
+import urllib.parse
 from typing import Any
 from loguru import logger
 import httpx

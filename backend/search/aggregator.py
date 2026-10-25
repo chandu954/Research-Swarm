@@ -160,7 +160,10 @@ async def aggregate_search(
         embed_fn = None
         embedding_provider = registry.get_embedding()
         if embedding_provider is not None and hasattr(embedding_provider, "embed_query"):
-            embed_fn = lambda t: embedding_provider.embed_query(t)
+
+            def embed_fn(text: str):
+                return embedding_provider.embed_query(text)
+
         reranked = hybrid_rerank(query, deduped, bm25_weight=0.3, top_k=max_results, embed_fn=embed_fn)
         # Boost diverse sources on top of hybrid scores
         for r in reranked:

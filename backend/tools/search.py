@@ -64,7 +64,15 @@ def hybrid_search_web(
             return []
         from backend.search.hybrid import hybrid_rerank
         llm = registry.get_llm()
-        embed_fn = lambda t: llm.create_embedding(model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"), text=t) if llm else None
+
+        def embed_fn(text: str):
+            if llm is None:
+                return None
+            return llm.create_embedding(
+                model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
+                text=text,
+            )
+
         return hybrid_rerank(query, raw, bm25_weight=0.3, top_k=max_results, embed_fn=embed_fn)
     except Exception as e:
         logger.warning(f"Fallback search failed: {e}")

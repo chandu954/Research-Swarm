@@ -80,7 +80,7 @@ async def resolve_tenant_dependencies(
     if org_id:
         stmt = select(Organization).where(
             Organization.id == org_id,
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
         result = await session.execute(stmt)
         org = result.scalar_one_or_none()
@@ -99,7 +99,7 @@ async def resolve_tenant_dependencies(
     elif org_slug:
         stmt = select(Organization).where(
             Organization.slug == org_slug,
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
         result = await session.execute(stmt)
         org = result.scalar_one_or_none()
@@ -118,7 +118,7 @@ async def resolve_tenant_dependencies(
     elif subdomain_org:
         stmt = select(Organization).where(
             Organization.slug == subdomain_org,
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
         result = await session.execute(stmt)
         org = result.scalar_one_or_none()
@@ -161,7 +161,7 @@ async def resolve_tenant_dependencies(
         stmt = select(Workspace).where(
             Workspace.id == ws_id,
             Workspace.organization_id == resolved_org_id,
-            Workspace.is_active == True,
+            Workspace.is_active.is_(True),
         )
         result = await session.execute(stmt)
         ws = result.scalar_one_or_none()
@@ -175,7 +175,7 @@ async def resolve_tenant_dependencies(
         stmt = select(Project).where(
             Project.id == proj_id,
             Project.organization_id == resolved_org_id,
-            Project.is_active == True,
+            Project.is_active.is_(True),
         )
         if resolved_ws_id:
             stmt = stmt.where(Project.workspace_id == resolved_ws_id)
