@@ -1,9 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { mockExternalServices } from "./mocks";
 
 test.describe("Login flow", () => {
+  test.beforeEach(async ({ page }) => mockExternalServices(page));
+
   test("shows login page", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
+    await expect(page.getByText("Welcome back to ResearchSwarm")).toBeVisible();
   });
 
   test("redirects to login when unauthenticated", async ({ page }) => {
@@ -13,7 +16,9 @@ test.describe("Login flow", () => {
 
   test("shows validation errors", async ({ page }) => {
     await page.goto("/login");
+    await page.getByLabel(/email address/i).fill("reader@example.test");
+    await page.getByLabel("Password *").fill("short");
     await page.getByRole("button", { name: /sign in/i }).click();
-    await expect(page.getByText(/email/i)).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: /at least 8 characters/i })).toBeVisible();
   });
 });
