@@ -1,44 +1,31 @@
-"""Organization, workspace, and project management endpoints."""
-from __future__ import annotations
-import re
+"""Organization and organization-member endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
-from backend.db.session import get_session
+from backend.auth.dependencies import get_current_user
+from backend.auth.tenant import TenantContext, require_org, require_org_permission
 from backend.db.models import (
-    User, Organization, OrganizationMember,
-    Workspace, WorkspaceMember,
-    Project,
+    Organization,
+    OrganizationMember,
+    User,
 )
 from backend.db.schemas import (
-    OrganizationCreate, OrganizationResponse, OrganizationUpdate,
-    MemberResponse, AddMemberRequest, UpdateMemberRoleRequest,
-    WorkspaceCreate, WorkspaceResponse, WorkspaceUpdate,
-    ProjectCreate, ProjectResponse, ProjectUpdate,
+    AddMemberRequest,
+    MemberResponse,
+    OrganizationCreate,
+    OrganizationResponse,
+    OrganizationUpdate,
+    UpdateMemberRoleRequest,
 )
-from backend.auth.dependencies import get_current_user
-from backend.auth.tenant import (
-    TenantContext,
-    require_org,
-    require_org_permission,
-)
+from backend.db.session import get_session
 
 router = APIRouter(tags=["organizations"])
 
 
-def _slugify(name: str) -> str:
-    import unicodedata
-    normalized = unicodedata.normalize("NFKD", name.lower().replace(" ", "-"))
-    ascii_str = normalized.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-z0-9-]", "", ascii_str)
-    if not slug:
-        slug = "org"
-    return slug[:80]
-
-
 # ── Organizations ───────────────────────────────────────────────
+
 
 @router.post("/organizations", response_model=OrganizationResponse, status_code=201)
 async def create_organization(
@@ -50,7 +37,9 @@ async def create_organization(
         select(Organization).where(Organization.slug == body.slug)
     )
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="An organization with this slug already exists")
+        raise HTTPException(
+            status_code=409, detail="An organization with this slug already exists"
+        )
 
     org = Organization(
         name=body.name,
@@ -89,23 +78,27 @@ async def list_organizations(
     member_count_subq = (
         select(
             OrganizationMember.organization_id,
-            func.count(OrganizationMember.id).label("cnt")
-        ).group_by(OrganizationMember.organization_id)
+            func.count(OrganizationMember.id).label("cnt"),
+        )
+        .group_by(OrganizationMember.organization_id)
         .subquery()
     )
     result = await session.execute(
         select(
             Organization,
             func.coalesce(member_count_subq.c.cnt, 0).label("member_count"),
-        ).outerjoin(
+        )
+        .outerjoin(
             member_count_subq,
             member_count_subq.c.organization_id == Organization.id,
-        ).join(
+        )
+        .join(
             OrganizationMember,
             OrganizationMember.organization_id == Organization.id,
-        ).where(
+        )
+        .where(
             OrganizationMember.user_id == current_user.id,
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
     )
     rows = result.all()
@@ -133,13 +126,15 @@ async def get_organization(
     ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
-        select(Organization).join(
+        select(Organization)
+        .join(
             OrganizationMember,
             OrganizationMember.organization_id == Organization.id,
-        ).where(
+        )
+        .where(
             Organization.id == org_id,
             OrganizationMember.user_id == current_user.id,
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
     )
     org = result.scalar_one_or_none()
@@ -175,7 +170,7 @@ async def update_organization(
     result = await session.execute(
         select(Organization).where(
             Organization.id == org_id,
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
     )
     org = result.scalar_one_or_none()
@@ -215,6 +210,7 @@ async def delete_organization(
 
 # ── Organization Members ────────────────────────────────────────
 
+
 @router.get("/organizations/{org_id}/members", response_model=list[MemberResponse])
 async def list_members(
     org_id: str,
@@ -223,33 +219,43 @@ async def list_members(
     ctx: TenantContext = Depends(require_org),
 ):
     result = await session.execute(
-        select(Organization).where(Organization.id == org_id, Organization.is_active == True).join(
+        select(Organization)
+        .where(Organization.id == org_id, Organization.is_active.is_(True))
+        .join(
             OrganizationMember,
             OrganizationMember.organization_id == Organization.id,
-        ).where(OrganizationMember.user_id == current_user.id)
+        )
+        .where(OrganizationMember.user_id == current_user.id)
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Not a member of this organization")
 
     rows = await session.execute(
-        select(OrganizationMember, User).join(
-            User, User.id == OrganizationMember.user_id,
-        ).where(OrganizationMember.organization_id == org_id)
+        select(OrganizationMember, User)
+        .join(
+            User,
+            User.id == OrganizationMember.user_id,
+        )
+        .where(OrganizationMember.organization_id == org_id)
     )
     members = []
     for membership, user in rows.all():
-        members.append(MemberResponse(
-            id=membership.id,
-            user_id=membership.user_id,
-            name=user.name,
-            email=user.email,
-            role=membership.role,
-            joined_at=membership.joined_at,
-        ))
+        members.append(
+            MemberResponse(
+                id=membership.id,
+                user_id=membership.user_id,
+                name=user.name,
+                email=user.email,
+                role=membership.role,
+                joined_at=membership.joined_at,
+            )
+        )
     return members
 
 
-@router.post("/organizations/{org_id}/members", response_model=MemberResponse, status_code=201)
+@router.post(
+    "/organizations/{org_id}/members", response_model=MemberResponse, status_code=201
+)
 async def add_member(
     org_id: str,
     body: AddMemberRequest,
@@ -257,9 +263,7 @@ async def add_member(
     session: AsyncSession = Depends(get_session),
     ctx: TenantContext = Depends(require_org_permission("manage_members")),
 ):
-    user_result = await session.execute(
-        select(User).where(User.email == body.email)
-    )
+    user_result = await session.execute(select(User).where(User.email == body.email))
     target_user = user_result.scalar_one_or_none()
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -340,358 +344,3 @@ async def remove_member(
     await session.delete(membership)
     await session.flush()
     return {"status": "removed"}
-
-
-# ── Workspaces ──────────────────────────────────────────────────
-
-@router.post("/organizations/{org_id}/workspaces", response_model=WorkspaceResponse, status_code=201)
-async def create_workspace(
-    org_id: str,
-    body: WorkspaceCreate,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    slug = body.slug or _slugify(body.name)
-    result = await session.execute(
-        select(Workspace).where(
-            Workspace.organization_id == org_id,
-            Workspace.slug == slug,
-        )
-    )
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="A workspace with this slug already exists")
-
-    ws = Workspace(
-        organization_id=org_id,
-        name=body.name,
-        slug=slug,
-        description=body.description,
-        owner_id=current_user.id,
-        vector_db_namespace=f"org_{org_id}_ws_{slug}",
-    )
-    session.add(ws)
-    await session.flush()
-
-    membership = WorkspaceMember(
-        workspace_id=ws.id,
-        user_id=current_user.id,
-        role="owner",
-    )
-    session.add(membership)
-    await session.flush()
-
-    return WorkspaceResponse(
-        id=ws.id,
-        name=ws.name,
-        slug=ws.slug,
-        description=ws.description,
-        organization_id=ws.organization_id,
-        owner_id=ws.owner_id,
-        member_count=1,
-        is_active=ws.is_active,
-        created_at=ws.created_at,
-    )
-
-
-@router.get("/organizations/{org_id}/workspaces", response_model=list[WorkspaceResponse])
-async def list_workspaces(
-    org_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    member_count_subq = (
-        select(
-            WorkspaceMember.workspace_id,
-            func.count(WorkspaceMember.id).label("cnt")
-        ).group_by(WorkspaceMember.workspace_id)
-        .subquery()
-    )
-    result = await session.execute(
-        select(
-            Workspace,
-            func.coalesce(member_count_subq.c.cnt, 0).label("member_count"),
-        ).outerjoin(
-            member_count_subq,
-            member_count_subq.c.workspace_id == Workspace.id,
-        ).join(
-            WorkspaceMember,
-            WorkspaceMember.workspace_id == Workspace.id,
-        ).where(
-            Workspace.organization_id == org_id,
-            WorkspaceMember.user_id == current_user.id,
-            Workspace.is_active == True,
-        )
-    )
-    rows = result.all()
-    return [
-        WorkspaceResponse(
-            id=ws.id,
-            name=ws.name,
-            slug=ws.slug,
-            description=ws.description,
-            organization_id=ws.organization_id,
-            owner_id=ws.owner_id,
-            member_count=member_count,
-            is_active=ws.is_active,
-            created_at=ws.created_at,
-        )
-        for ws, member_count in rows
-    ]
-
-
-@router.get("/organizations/{org_id}/workspaces/{ws_id}", response_model=WorkspaceResponse)
-async def get_workspace(
-    org_id: str,
-    ws_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    result = await session.execute(
-        select(Workspace).where(
-            Workspace.id == ws_id,
-            Workspace.organization_id == org_id,
-            Workspace.is_active == True,
-        )
-    )
-    ws = result.scalar_one_or_none()
-    if not ws:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    member_count = await session.scalar(
-        select(func.count(WorkspaceMember.id)).where(
-            WorkspaceMember.workspace_id == ws.id,
-        )
-    )
-    return WorkspaceResponse(
-        id=ws.id,
-        name=ws.name,
-        slug=ws.slug,
-        description=ws.description,
-        organization_id=ws.organization_id,
-        owner_id=ws.owner_id,
-        member_count=member_count or 0,
-        is_active=ws.is_active,
-        created_at=ws.created_at,
-    )
-
-
-@router.patch("/organizations/{org_id}/workspaces/{ws_id}", response_model=WorkspaceResponse)
-async def update_workspace(
-    org_id: str,
-    ws_id: str,
-    body: WorkspaceUpdate,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    result = await session.execute(
-        select(Workspace).where(
-            Workspace.id == ws_id,
-            Workspace.organization_id == org_id,
-            Workspace.is_active == True,
-        )
-    )
-    ws = result.scalar_one_or_none()
-    if not ws:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    if body.name is not None:
-        ws.name = body.name
-    if body.description is not None:
-        ws.description = body.description
-    await session.flush()
-    return WorkspaceResponse.model_validate(ws)
-
-
-@router.delete("/organizations/{org_id}/workspaces/{ws_id}")
-async def delete_workspace(
-    org_id: str,
-    ws_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    result = await session.execute(
-        select(Workspace).where(
-            Workspace.id == ws_id,
-            Workspace.organization_id == org_id,
-            Workspace.owner_id == current_user.id,
-        )
-    )
-    ws = result.scalar_one_or_none()
-    if not ws:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    ws.is_active = False
-    await session.flush()
-    return {"status": "deleted"}
-
-
-# ── Projects ────────────────────────────────────────────────────
-
-@router.post("/organizations/{org_id}/workspaces/{ws_id}/projects", response_model=ProjectResponse, status_code=201)
-async def create_project(
-    org_id: str,
-    ws_id: str,
-    body: ProjectCreate,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    slug = body.slug or _slugify(body.name)
-    result = await session.execute(
-        select(Project).where(
-            Project.workspace_id == ws_id,
-            Project.slug == slug,
-            Project.is_active == True,
-        )
-    )
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="A project with this slug already exists")
-
-    proj = Project(
-        organization_id=org_id,
-        workspace_id=ws_id,
-        name=body.name,
-        slug=slug,
-        description=body.description,
-        owner_id=current_user.id,
-    )
-    session.add(proj)
-    await session.flush()
-
-    return ProjectResponse(
-        id=proj.id,
-        name=proj.name,
-        slug=proj.slug,
-        description=proj.description,
-        organization_id=proj.organization_id,
-        workspace_id=proj.workspace_id,
-        owner_id=proj.owner_id,
-        is_active=proj.is_active,
-        created_at=proj.created_at,
-    )
-
-
-@router.get("/organizations/{org_id}/workspaces/{ws_id}/projects", response_model=list[ProjectResponse])
-async def list_projects(
-    org_id: str,
-    ws_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    result = await session.execute(
-        select(Project).where(
-            Project.workspace_id == ws_id,
-            Project.organization_id == org_id,
-            Project.is_active == True,
-        )
-    )
-    return [ProjectResponse.model_validate(p) for p in result.scalars().all()]
-
-
-@router.get("/organizations/{org_id}/workspaces/{ws_id}/projects/{proj_id}", response_model=ProjectResponse)
-async def get_project(
-    org_id: str,
-    ws_id: str,
-    proj_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    result = await session.execute(
-        select(Project).where(
-            Project.id == proj_id,
-            Project.workspace_id == ws_id,
-            Project.organization_id == org_id,
-            Project.is_active == True,
-        )
-    )
-    proj = result.scalar_one_or_none()
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return ProjectResponse.model_validate(proj)
-
-
-@router.patch("/organizations/{org_id}/workspaces/{ws_id}/projects/{proj_id}", response_model=ProjectResponse)
-async def update_project(
-    org_id: str,
-    ws_id: str,
-    proj_id: str,
-    body: ProjectUpdate,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    result = await session.execute(
-        select(Project).where(
-            Project.id == proj_id,
-            Project.workspace_id == ws_id,
-            Project.organization_id == org_id,
-            Project.is_active == True,
-        )
-    )
-    proj = result.scalar_one_or_none()
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
-    if body.name is not None:
-        proj.name = body.name
-    if body.description is not None:
-        proj.description = body.description
-    await session.flush()
-    return ProjectResponse.model_validate(proj)
-
-
-@router.delete("/organizations/{org_id}/workspaces/{ws_id}/projects/{proj_id}")
-async def delete_project(
-    org_id: str,
-    ws_id: str,
-    proj_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    result = await session.execute(
-        select(Project).where(
-            Project.id == proj_id,
-            Project.workspace_id == ws_id,
-            Project.organization_id == org_id,
-            Project.owner_id == current_user.id,
-        )
-    )
-    proj = result.scalar_one_or_none()
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
-    proj.is_active = False
-    await session.flush()
-    return {"status": "deleted"}
-
-
-# ── Workspace Members ──────────────────────────────────────────
-
-@router.get("/organizations/{org_id}/workspaces/{ws_id}/members", response_model=list[MemberResponse])
-async def list_workspace_members(
-    org_id: str,
-    ws_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-    ctx: TenantContext = Depends(require_org),
-):
-    rows = await session.execute(
-        select(WorkspaceMember, User).join(
-            User, User.id == WorkspaceMember.user_id,
-        ).where(WorkspaceMember.workspace_id == ws_id)
-    )
-    return [
-        MemberResponse(
-            id=m.id,
-            user_id=m.user_id,
-            name=u.name,
-            email=u.email,
-            role=m.role,
-            joined_at=m.joined_at,
-        )
-        for m, u in rows.all()
-    ]
