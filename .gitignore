@@ -37,3 +37,24 @@ Thumbs.db
 .docker/
 .vercel
 .env*
+
+# Local package store
+.pnpm-store/
+
+# Test / coverage artifacts
+coverage/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/tsconfig.tsbuildinfo
+
+# Generated demo recordings
+assets/.recordings/
+assets/demo-build/raw/
+
+# Local tool configuration
+.kilo/
+
+# Keep environment templates tracked even though real env files are ignored
+!.env.example
+!**/.env.example
