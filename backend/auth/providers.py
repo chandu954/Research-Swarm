@@ -1,9 +1,11 @@
 """Multi-provider OAuth and authentication support.
 
-Supports: Google, GitHub, Microsoft, Magic Links, MFA
+Supports: Google, Magic Links, MFA
 """
+
 from __future__ import annotations
 import os
+import pyotp
 import secrets
 import hashlib
 from typing import Optional
@@ -20,15 +22,6 @@ class OAuthConfig:
     google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
     google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     google_redirect_uri: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
-
-    github_client_id: str = os.getenv("GITHUB_CLIENT_ID", "")
-    github_client_secret: str = os.getenv("GITHUB_CLIENT_SECRET", "")
-    github_redirect_uri: str = os.getenv("GITHUB_REDIRECT_URI", "http://localhost:8000/auth/github/callback")
-
-    microsoft_client_id: str = os.getenv("MICROSOFT_CLIENT_ID", "")
-    microsoft_client_secret: str = os.getenv("MICROSOFT_CLIENT_SECRET", "")
-    microsoft_redirect_uri: str = os.getenv("MICROSOFT_REDIRECT_URI", "http://localhost:8000/auth/microsoft/callback")
-    microsoft_tenant: str = os.getenv("MICROSOFT_TENANT", "common")
 
     magic_link_secret: str = os.getenv("MAGIC_LINK_SECRET", "")
     magic_link_expire_minutes: int = int(os.getenv("MAGIC_LINK_EXPIRE", "15"))
@@ -99,125 +92,6 @@ async def get_google_userinfo(access_token: str) -> Optional[dict]:
             return None
 
 
-# ── GitHub OAuth ────────────────────────────────────────────────
-
-GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
-GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
-GITHUB_USERINFO_URL = "https://api.github.com/user"
-GITHUB_EMAIL_URL = "https://api.github.com/user/emails"
-
-
-def get_github_auth_url(state: str = "") -> str:
-    params = {
-        "client_id": config.github_client_id,
-        "redirect_uri": config.github_redirect_uri,
-        "scope": "read:user user:email",
-    }
-    if state:
-        params["state"] = state
-    return f"{GITHUB_AUTH_URL}?{urlencode(params)}"
-
-
-async def exchange_github_code(code: str) -> Optional[dict]:
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                GITHUB_TOKEN_URL,
-                data={
-                    "client_id": config.github_client_id,
-                    "client_secret": config.github_client_secret,
-                    "code": code,
-                    "redirect_uri": config.github_redirect_uri,
-                },
-                headers={"Accept": "application/json"},
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"GitHub token exchange failed: {e}")
-            return None
-
-
-async def get_github_userinfo(access_token: str) -> Optional[dict]:
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                GITHUB_USERINFO_URL,
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/json",
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            if not data.get("email"):
-                email_resp = await client.get(
-                    GITHUB_EMAIL_URL,
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
-                if email_resp.status_code == 200:
-                    emails = email_resp.json()
-                    primary = next((e for e in emails if e.get("primary")), {})
-                    data["email"] = primary.get("email", "")
-            return data
-        except Exception as e:
-            logger.error(f"GitHub userinfo failed: {e}")
-            return None
-
-
-# ── Microsoft OAuth ─────────────────────────────────────────────
-
-MICROSOFT_AUTH_URL = f"https://login.microsoftonline.com/{config.microsoft_tenant}/oauth2/v2.0/authorize"
-MICROSOFT_TOKEN_URL = f"https://login.microsoftonline.com/{config.microsoft_tenant}/oauth2/v2.0/token"
-MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
-
-
-def get_microsoft_auth_url(state: str = "") -> str:
-    params = {
-        "client_id": config.microsoft_client_id,
-        "redirect_uri": config.microsoft_redirect_uri,
-        "response_type": "code",
-        "scope": "openid email profile User.Read",
-    }
-    if state:
-        params["state"] = state
-    return f"{MICROSOFT_AUTH_URL}?{urlencode(params)}"
-
-
-async def exchange_microsoft_code(code: str) -> Optional[dict]:
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                MICROSOFT_TOKEN_URL,
-                data={
-                    "code": code,
-                    "client_id": config.microsoft_client_id,
-                    "client_secret": config.microsoft_client_secret,
-                    "redirect_uri": config.microsoft_redirect_uri,
-                    "grant_type": "authorization_code",
-                },
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Microsoft token exchange failed: {e}")
-            return None
-
-
-async def get_microsoft_userinfo(access_token: str) -> Optional[dict]:
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(
-                MICROSOFT_USERINFO_URL,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Microsoft userinfo failed: {e}")
-            return None
-
-
 # ── Magic Links ─────────────────────────────────────────────────
 
 _magic_link_store: dict[str, dict] = {}
@@ -260,8 +134,6 @@ def verify_magic_token(token: str, email: str) -> bool:
 
 
 # ── MFA ─────────────────────────────────────────────────────────
-
-import pyotp
 
 
 def generate_mfa_secret() -> str:

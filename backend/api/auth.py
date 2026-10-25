@@ -1,9 +1,9 @@
 """Auth API endpoints with multi-provider support.
 
-Supports: email/password, Google OAuth, GitHub OAuth, Microsoft OAuth,
+Supports: email/password, Google OAuth,
           magic links, MFA, session management, trusted devices.
 """
-from __future__ import annotations
+
 import hashlib
 import os
 import secrets
@@ -22,18 +22,38 @@ from sqlalchemy import select
 from loguru import logger
 
 from backend.db.session import get_session
-from backend.db.models import User, UserSession, UserDevice, Organization, Workspace, Project, OrganizationMember, WorkspaceMember
-from backend.db.schemas import (
-    RegisterRequest, LoginRequest, TokenResponse, UserResponse,
+from backend.db.models import (
+    User,
+    UserSession,
+    UserDevice,
+    Organization,
+    Workspace,
+    Project,
+    OrganizationMember,
+    WorkspaceMember,
 )
-from backend.auth.jwt import create_access_token, create_refresh_token, get_token_subject
+from backend.db.schemas import (
+    RegisterRequest,
+    LoginRequest,
+    TokenResponse,
+    UserResponse,
+)
+from backend.auth.jwt import (
+    create_access_token,
+    create_refresh_token,
+    get_token_subject,
+)
 from backend.auth.password import hash_password, verify_password
 from backend.auth.providers import (
-    get_google_auth_url, exchange_google_code, get_google_userinfo,
-    get_github_auth_url, exchange_github_code, get_github_userinfo,
-    get_microsoft_auth_url, exchange_microsoft_code, get_microsoft_userinfo,
-    create_magic_link, verify_magic_token, generate_mfa_secret, generate_mfa_qr_code,
-    verify_mfa_code, generate_recovery_codes,
+    get_google_auth_url,
+    exchange_google_code,
+    get_google_userinfo,
+    create_magic_link,
+    verify_magic_token,
+    generate_mfa_secret,
+    generate_mfa_qr_code,
+    verify_mfa_code,
+    generate_recovery_codes,
     config as oauth_config,
 )
 from backend.auth.dependencies import get_current_user
@@ -42,7 +62,9 @@ from backend.core.ratelimit import limiter
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-async def _build_tokens(user: User, refresh_token: Optional[str] = None) -> TokenResponse:
+async def _build_tokens(
+    user: User, refresh_token: Optional[str] = None
+) -> TokenResponse:
     """Build JWT tokens and bridge the user's identity to Supabase.
 
     The Supabase identity is provisioned in the background so RLS, realtime
@@ -83,13 +105,14 @@ async def _build_tokens(user: User, refresh_token: Optional[str] = None) -> Toke
             tokens.supabase_access_token = session["access_token"]
             tokens.supabase_refresh_token = session["refresh_token"]
     except Exception as exc:  # pragma: no cover - resilience path
-        print(f"[supabase-bridge] skipped for {user.email}: {exc}")
+        logger.warning(f"Supabase bridge skipped for {user.email}: {exc}")
     return tokens
 
 
 async def _create_session(user: User, request: Request, session: AsyncSession) -> str:
     """Create a refresh-token session. Returns the raw refresh token (caller sets it as a cookie)."""
     from backend.auth.jwt import REFRESH_TOKEN_EXPIRE_DAYS
+
     refresh_token_value = create_refresh_token(user.id)
     token_hash = hashlib.sha256(refresh_token_value.encode()).hexdigest()
     user_session = UserSession(
@@ -97,7 +120,8 @@ async def _create_session(user: User, request: Request, session: AsyncSession) -
         refresh_token_hash=token_hash,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         last_used_at=datetime.now(timezone.utc),
     )
     session.add(user_session)
@@ -112,16 +136,30 @@ async def _create_default_organization(db_session: AsyncSession, user: User) -> 
     )
     db_session.add(org)
     await db_session.flush()
-    db_session.add(OrganizationMember(organization_id=org.id, user_id=user.id, role="owner"))
-    ws = Workspace(name="General", slug="general", organization_id=org.id, owner_id=user.id)
+    db_session.add(
+        OrganizationMember(organization_id=org.id, user_id=user.id, role="owner")
+    )
+    ws = Workspace(
+        name="General", slug="general", organization_id=org.id, owner_id=user.id
+    )
     db_session.add(ws)
     await db_session.flush()
     db_session.add(WorkspaceMember(workspace_id=ws.id, user_id=user.id, role="owner"))
-    db_session.add(Project(name="Default Project", slug="default", organization_id=org.id, workspace_id=ws.id, owner_id=user.id))
+    db_session.add(
+        Project(
+            name="Default Project",
+            slug="default",
+            organization_id=org.id,
+            workspace_id=ws.id,
+            owner_id=user.id,
+        )
+    )
     await db_session.flush()
 
 
-async def _find_or_create_user(email: str, name: str, provider_data: dict, provider: str, db_session: AsyncSession) -> User:
+async def _find_or_create_user(
+    email: str, name: str, provider_data: dict, provider: str, db_session: AsyncSession
+) -> User:
     filters = [User.email == email]
     if provider_id := provider_data.get("id"):
         filters.append(getattr(User, f"{provider}_id") == provider_id)
@@ -130,7 +168,9 @@ async def _find_or_create_user(email: str, name: str, provider_data: dict, provi
     user = result.scalar_one_or_none()
 
     if not user and provider_id:
-        result = await db_session.execute(select(User).where(getattr(User, f"{provider}_id") == provider_id))
+        result = await db_session.execute(
+            select(User).where(getattr(User, f"{provider}_id") == provider_id)
+        )
         user = result.scalar_one_or_none()
 
     if user:
@@ -139,7 +179,9 @@ async def _find_or_create_user(email: str, name: str, provider_data: dict, provi
         if not user.name:
             user.name = name
         if provider_data.get("avatar_url") or provider_data.get("picture"):
-            user.avatar_url = provider_data.get("avatar_url") or provider_data.get("picture")
+            user.avatar_url = provider_data.get("avatar_url") or provider_data.get(
+                "picture"
+            )
         user.last_login_at = datetime.now(timezone.utc)
     else:
         user = User(
@@ -244,21 +286,27 @@ async def refresh(
             f"Refresh token reuse or revoked session for user={user_id}; revoking all sessions"
         )
         stale = await session.execute(
-            select(UserSession).where(UserSession.user_id == user_id, UserSession.is_active)
+            select(UserSession).where(
+                UserSession.user_id == user_id, UserSession.is_active
+            )
         )
         for stale_session in stale.scalars().all():
             stale_session.is_active = False
         # Commit explicitly: the exception below would otherwise trigger the
         # request-scoped rollback and discard the revocation.
         await session.commit()
-        raise HTTPException(status_code=401, detail="Session revoked; please log in again")
+        raise HTTPException(
+            status_code=401, detail="Session revoked; please log in again"
+        )
 
     if user_session.expires_at.tzinfo is None:
         user_session.expires_at = user_session.expires_at.replace(tzinfo=timezone.utc)
     if user_session.expires_at < now:
         user_session.is_active = False
         await session.commit()
-        raise HTTPException(status_code=401, detail="Session expired; please log in again")
+        raise HTTPException(
+            status_code=401, detail="Session expired; please log in again"
+        )
 
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -267,7 +315,9 @@ async def refresh(
 
     # Rotate: issue a new refresh token and store its hash in the same row.
     new_refresh_token = create_refresh_token(user.id)
-    user_session.refresh_token_hash = hashlib.sha256(new_refresh_token.encode()).hexdigest()
+    user_session.refresh_token_hash = hashlib.sha256(
+        new_refresh_token.encode()
+    ).hexdigest()
     user_session.last_used_at = now
     await session.flush()
 
@@ -312,7 +362,9 @@ async def get_org_status(
     db_session: AsyncSession = Depends(get_session),
 ):
     result = await db_session.execute(
-        select(OrganizationMember).where(OrganizationMember.user_id == current_user.id).limit(1)
+        select(OrganizationMember)
+        .where(OrganizationMember.user_id == current_user.id)
+        .limit(1)
     )
     member = result.scalar_one_or_none()
     return {"has_organization": member is not None}
@@ -363,11 +415,17 @@ async def _handle_oauth_callback(
 ) -> HTMLResponse:
     tokens = await exchange_func(code)
     if not tokens:
-        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Failed to exchange authorization code")
+        return _oauth_callback_html(
+            TokenResponse(access_token="", refresh_token=""),
+            error="Failed to exchange authorization code",
+        )
 
     userinfo = await userinfo_func(tokens.get("access_token", ""))
     if not userinfo:
-        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Failed to get user info")
+        return _oauth_callback_html(
+            TokenResponse(access_token="", refresh_token=""),
+            error="Failed to get user info",
+        )
 
     email = ""
     for key in email_keys:
@@ -378,7 +436,10 @@ async def _handle_oauth_callback(
     user = await _find_or_create_user(
         email=email,
         name=userinfo.get(name_key, ""),
-        provider_data={"id": str(userinfo.get(id_key, "")), "avatar_url": userinfo.get(avatar_key)},
+        provider_data={
+            "id": str(userinfo.get(id_key, "")),
+            "avatar_url": userinfo.get(avatar_key),
+        },
         provider=provider,
         db_session=session,
     )
@@ -387,6 +448,7 @@ async def _handle_oauth_callback(
 
 
 # ── Google OAuth ────────────────────────────────────────────────
+
 
 @router.get("/google")
 async def google_login():
@@ -412,7 +474,10 @@ async def google_callback(
 ) -> HTMLResponse:
     stored_state = request.cookies.get("oauth_state")
     if not stored_state or not state or stored_state != state:
-        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Invalid state parameter")
+        return _oauth_callback_html(
+            TokenResponse(access_token="", refresh_token=""),
+            error="Invalid state parameter",
+        )
     resp = await _handle_oauth_callback(
         provider="google",
         code=code,
@@ -429,93 +494,8 @@ async def google_callback(
     return resp
 
 
-# ── GitHub OAuth ────────────────────────────────────────────────
-
-@router.get("/github")
-async def github_login():
-    state = secrets.token_urlsafe(32)
-    response = RedirectResponse(url=get_github_auth_url(state=state))
-    response.set_cookie(
-        key="oauth_state",
-        value=state,
-        max_age=600,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )
-    return response
-
-
-@router.get("/github/callback")
-async def github_callback(
-    code: str,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    state: str = Query(None),
-) -> HTMLResponse:
-    stored_state = request.cookies.get("oauth_state")
-    if not stored_state or not state or stored_state != state:
-        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Invalid state parameter")
-    resp = await _handle_oauth_callback(
-        provider="github",
-        code=code,
-        exchange_func=exchange_github_code,
-        userinfo_func=get_github_userinfo,
-        name_key="name",
-        email_keys=["email"],
-        avatar_key="avatar_url",
-        id_key="id",
-        request=request,
-        session=session,
-    )
-    resp.delete_cookie("oauth_state")
-    return resp
-
-
-# ── Microsoft OAuth ─────────────────────────────────────────────
-
-@router.get("/microsoft")
-async def microsoft_login():
-    state = secrets.token_urlsafe(32)
-    response = RedirectResponse(url=get_microsoft_auth_url(state=state))
-    response.set_cookie(
-        key="oauth_state",
-        value=state,
-        max_age=600,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )
-    return response
-
-
-@router.get("/microsoft/callback")
-async def microsoft_callback(
-    code: str,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    state: str = Query(None),
-) -> HTMLResponse:
-    stored_state = request.cookies.get("oauth_state")
-    if not stored_state or not state or stored_state != state:
-        return _oauth_callback_html(TokenResponse(access_token="", refresh_token=""), error="Invalid state parameter")
-    resp = await _handle_oauth_callback(
-        provider="microsoft",
-        code=code,
-        exchange_func=exchange_microsoft_code,
-        userinfo_func=get_microsoft_userinfo,
-        name_key="displayName",
-        email_keys=["mail", "userPrincipalName"],
-        avatar_key="",
-        id_key="id",
-        request=request,
-        session=session,
-    )
-    resp.delete_cookie("oauth_state")
-    return resp
-
-
 # ── Forgot Password ─────────────────────────────────────────────
+
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -546,6 +526,7 @@ async def reset_password(
     session: AsyncSession = Depends(get_session),
 ):
     from backend.auth.jwt import decode_token as _decode_reset
+
     payload = _decode_reset(body.token)
     if not payload or payload.get("type") != "password_reset":
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
@@ -557,6 +538,7 @@ async def reset_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     from backend.auth.password import hash_password
+
     user.hashed_password = hash_password(body.password)
     await session.flush()
     # Password changed: invalidate every existing session.
@@ -571,6 +553,7 @@ async def reset_password(
 
 # ── Magic Link ─────────────────────────────────────────────────
 
+
 class MagicLinkRequest(RegisterRequest):
     pass
 
@@ -578,6 +561,7 @@ class MagicLinkRequest(RegisterRequest):
 class MagicLinkVerify(BaseModel):
     token: str
     email: str
+
 
 @router.post("/magic-link")
 @limiter.limit("5/hour")
@@ -589,7 +573,10 @@ async def request_magic_link(
     url, token, expires = create_magic_link(body.email)
     if os.getenv("ENVIRONMENT", "development") != "production":
         logger.info(f"Magic link for {body.email}: {url}")
-        return {"message": "If the email exists, a magic link has been sent", "url": url}
+        return {
+            "message": "If the email exists, a magic link has been sent",
+            "url": url,
+        }
     return {"message": "If the email exists, a magic link has been sent"}
 
 
@@ -614,6 +601,7 @@ async def verify_magic_link(
 
 
 # ── MFA ─────────────────────────────────────────────────────────
+
 
 class MFASetupResponse(BaseModel):
     secret: str
@@ -675,6 +663,7 @@ async def disable_mfa(
 
 # ── Sessions ───────────────────────────────────────────────────
 
+
 class SessionResponse(BaseModel):
     id: str
     ip_address: Optional[str] = None
@@ -692,10 +681,12 @@ async def list_sessions(
     session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(
-        select(UserSession).where(
+        select(UserSession)
+        .where(
             UserSession.user_id == current_user.id,
             UserSession.is_active,
-        ).order_by(UserSession.last_used_at.desc().nullslast())
+        )
+        .order_by(UserSession.last_used_at.desc().nullslast())
     )
     return [SessionResponse.model_validate(s) for s in result.scalars().all()]
 
@@ -721,6 +712,7 @@ async def revoke_session(
 
 
 # ── Devices ────────────────────────────────────────────────────
+
 
 class DeviceResponse(BaseModel):
     id: str
