@@ -9,6 +9,25 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./__tests__/setup.ts"],
     include: ["./__tests__/**/*.test.{ts,tsx}"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "lcov"],
+      reportsDirectory: "./coverage",
+      include: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+      exclude: [
+        "**/*.d.ts",
+        "**/*.test.{ts,tsx}",
+        "app/**/layout.tsx",
+        "app/**/error.tsx",
+        "lib/supabase/**",
+      ],
+      thresholds: {
+        statements: 20,
+        branches: 15,
+        functions: 16,
+        lines: 21,
+      },
+    },
   },
   resolve: {
     alias: {
