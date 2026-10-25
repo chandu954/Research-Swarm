@@ -1,13 +1,20 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { render, screen } from "@testing-library/react";
 import Sidebar from "@/components/Sidebar";
 import { AuthProvider } from "@/lib/auth";
+
+const originalFetch = global.fetch;
 
 beforeAll(() => {
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
     json: () => Promise.resolve({ conversations: [] }),
   });
+});
+
+afterAll(() => {
+  global.fetch = originalFetch;
+  vi.restoreAllMocks();
 });
 
 describe("Sidebar", () => {
