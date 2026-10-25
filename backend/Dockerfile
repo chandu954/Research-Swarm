@@ -12,7 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . /app/
+# The build context is the repository root so the image keeps the
+# `backend.*` package layout expected by the uvicorn command below.
+COPY backend/ /app/backend/
 
 RUN mkdir -p /data/uploads /data/chroma_db /data/logs /data/memory && \
     chown -R appuser:appgroup /data && \

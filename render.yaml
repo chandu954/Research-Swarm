@@ -34,6 +34,20 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_BRIDGE_SECRET
+        sync: false
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: VECTOR_DB_PATH
+        value: /data/chroma_db
       - key: EMBEDDING_MODEL
         value: openai/text-embedding-3-small
       - key: GOOGLE_CLIENT_ID
@@ -42,17 +56,3 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         value: https://research-swarm-api.onrender.com/auth/google/callback
-      - key: GITHUB_CLIENT_ID
-        sync: false
-      - key: GITHUB_CLIENT_SECRET
-        sync: false
-      - key: GITHUB_REDIRECT_URI
-        value: https://research-swarm-api.onrender.com/auth/github/callback
-      - key: MICROSOFT_CLIENT_ID
-        sync: false
-      - key: MICROSOFT_CLIENT_SECRET
-        sync: false
-      - key: MICROSOFT_REDIRECT_URI
-        value: https://research-swarm-api.onrender.com/auth/microsoft/callback
-      - key: MICROSOFT_TENANT
-        value: common

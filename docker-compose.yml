@@ -26,14 +26,8 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    # GPU acceleration (requires nvidia-container-toolkit; remove if no GPU)
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # CPU inference works on standard Docker hosts. GPU acceleration can be
+    # enabled with a host-specific Compose override when NVIDIA is available.
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
@@ -45,8 +39,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: research-swarm-backend
     ports:
       - "8000:8000"
