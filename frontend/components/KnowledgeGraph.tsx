@@ -14,9 +14,10 @@ import {
   type NodeProps,
   Handle,
   Position,
+  type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { BrainCircuit, Globe2, FileText, Lightbulb, Building2, BookOpen, Search, Filter } from "lucide-react";
+import { BrainCircuit, Globe2, FileText, Lightbulb, Building2, BookOpen, Search } from "lucide-react";
 import type { SourceCitation } from "@/lib/types";
 import { buildGraph, ENTITY_TYPE_CONFIG, type GraphEntity } from "@/lib/knowledge-graph";
 import { cn } from "@/lib/utils";
@@ -36,17 +37,21 @@ typeColors.person = "#f472b6";
 
 const ENTITY_TYPES = ENTITY_TYPE_CONFIG.map((c) => c.type);
 
-function EntityNode({ data }: NodeProps) {
+function EntityNode({ data, selected }: NodeProps) {
   const entity = data.entity as GraphEntity;
   const Icon = typeIcons[entity.type] || BrainCircuit;
   const color = typeColors[entity.type] || "#8b5cf6";
 
   return (
     <div
-      className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-lg backdrop-blur-xl"
+      className="flex animate-scale-in items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-lg backdrop-blur-xl transition-[border-color,background-color,box-shadow,transform] duration-200"
       style={{
-        borderColor: `${color}30`,
-        backgroundColor: `${color}08`,
+        borderColor: selected ? color : `${color}30`,
+        backgroundColor: selected ? `${color}1c` : `${color}08`,
+        boxShadow: selected
+          ? `0 0 0 3px ${color}33, 0 10px 28px rgb(0 0 0 / 0.4)`
+          : undefined,
+        transform: selected ? "scale(1.06)" : undefined,
       }}
     >
       <Handle type="target" position={Position.Left} className="!border-none !bg-transparent" />
@@ -80,6 +85,7 @@ interface KnowledgeGraphProps {
 export default function KnowledgeGraph({ answer, sources }: KnowledgeGraphProps) {
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { entities: allEntities, relations: allRelations } = useMemo(
     () => buildGraph(answer, sources.map((s) => ({ title: s.title, url: s.url }))),
@@ -119,23 +125,36 @@ export default function KnowledgeGraph({ answer, sources }: KnowledgeGraphProps)
           x: 150 + Math.cos((i / Math.max(filteredEntities.length, 1)) * Math.PI * 2) * 200,
           y: 100 + Math.sin((i / Math.max(filteredEntities.length, 1)) * Math.PI * 2) * 200 + (i % 3) * 30,
         },
+        selected: entity.id === selectedId,
         data: { entity },
       })),
-    [filteredEntities],
+    [filteredEntities, selectedId],
   );
 
   const initialEdges: Edge[] = useMemo(
     () =>
-      filteredRelations.map((r, i) => ({
-        id: `e-${i}`,
-        source: r.source,
-        target: r.target,
-        label: r.label,
-        style: { stroke: "rgba(255,255,255,0.15)", strokeWidth: 1.5 },
-        labelStyle: { fill: "rgba(255,255,255,0.3)", fontSize: 9 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(255,255,255,0.2)" },
-      })),
-    [filteredRelations],
+      filteredRelations.map((r, i) => {
+        const isConnected = selectedId != null && (r.source === selectedId || r.target === selectedId);
+        return {
+          id: `e-${i}`,
+          source: r.source,
+          target: r.target,
+          label: r.label,
+          style: {
+            stroke: isConnected ? "rgba(139, 92, 246, 0.7)" : "rgba(255,255,255,0.15)",
+            strokeWidth: isConnected ? 2.5 : 1.5,
+          },
+          labelStyle: {
+            fill: isConnected ? "rgba(196, 181, 253, 0.9)" : "rgba(255,255,255,0.3)",
+            fontSize: 9,
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: isConnected ? "rgba(139, 92, 246, 0.7)" : "rgba(255,255,255,0.2)",
+          },
+        };
+      }),
+    [filteredRelations, selectedId],
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -144,6 +163,14 @@ export default function KnowledgeGraph({ answer, sources }: KnowledgeGraphProps)
   useEffect(() => {
     setNodes(initialNodes);
   }, [initialNodes, setNodes]);
+
+  const handleNodeClick: NodeMouseHandler = useCallback((_, node) => {
+    setSelectedId((prev) => (prev === node.id ? null : node.id));
+  }, []);
+
+  const handlePaneClick = useCallback(() => {
+    setSelectedId(null);
+  }, []);
 
   if (allEntities.length === 0) return null;
 
@@ -196,6 +223,8 @@ export default function KnowledgeGraph({ answer, sources }: KnowledgeGraphProps)
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onPaneClick={handlePaneClick}
           nodeTypes={nodeTypes}
           fitView
           minZoom={0.3}
@@ -216,6 +245,10 @@ export default function KnowledgeGraph({ answer, sources }: KnowledgeGraphProps)
             maskColor="rgba(0,0,0,0.3)"
           />
         </ReactFlow>
+      </div>
+      <div className="flex items-center justify-between border-t border-white/[0.06] px-3 py-1.5 text-[9px] text-[var(--text-muted)]">
+        <span>Click a node to trace connections · scroll to zoom · drag to pan</span>
+        <span className="hidden sm:inline">Esc or click canvas to clear</span>
       </div>
     </section>
   );

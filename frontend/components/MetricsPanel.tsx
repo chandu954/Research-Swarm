@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart3, Database, FileText, Timer } from "lucide-react";
+import { useMemo } from "react";
+import { BarChart3, Database, FileText, Timer, TrendingDown, TrendingUp } from "lucide-react";
 import type { AgentMetric } from "@/lib/types";
 import { formatExecutionTime } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,17 @@ export default function MetricsPanel({
     sourceCount > 0 ||
     documentCount > 0 ||
     metrics.length > 0;
+
+  const insight = useMemo(() => {
+    if (executionTime == null || lastRun?.execution_time_ms == null) return null;
+    const previous = lastRun.execution_time_ms / 1000;
+    if (previous <= 0 || executionTime <= 0) return null;
+    const delta = ((executionTime - previous) / previous) * 100;
+    return {
+      faster: delta < 0,
+      label: `${Math.abs(delta).toFixed(0)}% ${delta < 0 ? "faster" : "slower"} than last run`,
+    };
+  }, [executionTime, lastRun]);
 
   const items = [
     {
@@ -123,6 +135,21 @@ export default function MetricsPanel({
           </div>
         ))}
       </div>
+      {insight && (
+        <p
+          className={cn(
+            "mt-2 flex items-center gap-1 text-[9px] font-medium",
+            insight.faster ? "text-emerald-400" : "text-amber-400",
+          )}
+        >
+          {insight.faster ? (
+            <TrendingDown className="h-3 w-3" />
+          ) : (
+            <TrendingUp className="h-3 w-3" />
+          )}
+          {insight.label}
+        </p>
+      )}
     </section>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { BookOpen, ExternalLink, FileCheck2, Layers, ShieldCheck } from "lucide-react";
 import type { SourceCitation } from "@/lib/types";
 import {
@@ -45,12 +46,12 @@ function Favicon({
   }
 
   return (
-    <img
+    <Image
       src={src}
       alt=""
       width={20}
       height={20}
-      loading="lazy"
+      unoptimized
       onError={() => setFailed(true)}
       className={cn("flex-shrink-0 rounded-md object-contain", className)}
     />
