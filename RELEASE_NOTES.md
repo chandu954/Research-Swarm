@@ -24,8 +24,9 @@ This release completes the production-readiness milestone for ResearchSwarm.
 - Backend security regression suite
 - Migration chain verification
 - Planner/graph test infrastructure stabilization
-- **190/190 tests passing**
-- Ruff clean
+- **293 backend tests and 107 frontend tests passing**
+- Backend coverage floor raised to 70%; frontend coverage reporting enabled in CI
+- Ruff and Black checks clean on changed code
 
 ## 📄 Report Experience
 
