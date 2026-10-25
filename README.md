@@ -265,49 +265,77 @@ research-swarm/
 
 ### Prerequisites
 
-- [Ollama](https://ollama.ai) >= 0.3.0
-- [Docker](https://docker.com) (optional)
+- Docker Engine with Docker Compose v2 (recommended)
 - Python 3.12+
-- Node.js 20+
+- Node.js 24 LTS
+- pnpm 11.28.7 (provided by Corepack from `frontend/package.json`)
+- For local development without Docker: [Ollama](https://ollama.ai) and the models listed below
 
 ### Docker (Recommended)
 
 ```bash
-# Clone
-git clone https://github.com/yourusername/research-swarm.git
-cd research-swarm
+git clone https://github.com/chandu954/Research-Swarm.git
+cd Research-Swarm
+cp .env.example .env
 
-# Pull Ollama models
-ollama pull qwen3:14b llama3:8b gemma3:12b nomic-embed-text
+# Generate a unique local JWT secret without printing it, replacing the example value.
+python3 - <<'PY'
+from pathlib import Path
+import re
+import secrets
 
-# Start all services
-docker-compose up -d
+path = Path(".env")
+contents = path.read_text()
+contents, replacements = re.subn(
+    r"(?m)^JWT_SECRET_KEY=.*$",
+    "JWT_SECRET_KEY=" + secrets.token_hex(32),
+    contents,
+)
+if replacements != 1:
+    raise SystemExit("Expected exactly one JWT_SECRET_KEY entry in .env")
+path.write_text(contents)
+PY
 
-# Open the app
-open http://localhost:3000
+docker compose config --quiet
+docker compose up --build -d
+
+# Download the models into the Compose-managed Ollama volume.
+docker compose exec ollama ollama pull qwen3:14b
+docker compose exec ollama ollama pull llama3:8b
+docker compose exec ollama ollama pull gemma3:12b
+docker compose exec ollama ollama pull nomic-embed-text
+docker compose ps
+
+# Open http://localhost:3000. Stop services with `docker compose down`;
+# persistent database, model, and backend data volumes are retained.
 ```
+
+Compose runs Ollama on CPU by default so it can start on standard Docker hosts. GPU acceleration requires a host-specific Compose override. The bundled PostgreSQL credentials are for local development only. On startup, the backend creates missing tables and applies its lightweight column updates; production schema changes should use the repository's Alembic migration tooling.
 
 ### Local Development
 
-#### Backend
+Create a Python environment from the repository root:
 
 ```bash
-cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env with your settings
-uvicorn backend.api.main:app --reload --port 8000
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements.txt
+cp backend/.env.example backend/.env
+.venv/bin/python -m uvicorn backend.api.main:app --reload --port 8000
 ```
 
-#### Frontend
+Set a strong `JWT_SECRET_KEY` in `backend/.env`. The backend defaults to local SQLite when `DATABASE_URL` is unset; set a PostgreSQL URL to use PostgreSQL. Ollama must be running and the configured models pulled. Search and OAuth integrations need their corresponding provider credentials; local unit tests do not.
+
+In a second terminal, install and start the frontend:
 
 ```bash
+corepack enable
 cd frontend
-npm install
+pnpm install --frozen-lockfile
 cp .env.example .env.local
-npm run dev
+pnpm dev
 ```
+
+The frontend API URL defaults to `http://localhost:8000`. Configure the Supabase public URL and anon key in `frontend/.env.local` when using Supabase-backed browser authentication. Server-only provider keys belong in the backend environment and must not use a `NEXT_PUBLIC_` prefix.
 
 ---
 
@@ -425,20 +453,32 @@ data: completed
 ## Testing
 
 ```bash
-cd backend
-pytest tests/ -v --cov=agents --cov=tools --cov=api --cov=db --cov=auth --cov-report=term-missing
+.venv/bin/python -m pytest backend/tests/ -v --cov=backend --cov-report=term-missing
+cd frontend
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm exec playwright install chromium
+pnpm test:e2e
+pnpm build
 ```
 
-**Coverage:** 60+ tests across 6 test files covering planner, graph, tools, auth, API, and memory.
+Run the backend test command from the repository root. Tests force an isolated SQLite database and temporary file storage; they do not use credentials from a developer's `.env` file. Coverage measures `backend` application code, not tests. CI currently enforces a 70% application coverage floor.
+
+CI pins Black 24.10.0 and checks changed Python lines. The legacy backend has 80 files that fail a whole-repository Black check, so broad formatting is deferred; Ruff still checks the complete backend. Run `python scripts/check_changed_formatting.py HEAD WORKTREE --fix` from `backend/` to format only locally changed Python lines before opening a change.
+
+Run frontend commands from `frontend/`. Frontend coverage is available with `pnpm test:coverage`. Playwright starts an isolated Next.js server and uses deterministic browser mocks; browser installation is required once per machine.
 
 ### CI Pipeline (GitHub Actions)
 
 | Job | What it does |
 |---|---|
 | `lint-backend` | ruff check, black check, AST syntax check |
-| `test-backend` | pytest with minimum 30% coverage |
-| `lint-frontend` | TypeScript type check (`tsc --noEmit`) |
-| `docker-build` | Build all Docker images |
+| `test-backend` | pytest with application-only coverage (70% minimum) |
+| `lint-frontend` | ESLint and TypeScript type check |
+| `test-frontend` | Vitest, Playwright, and production build |
+| `docker-build` | Build backend and frontend images |
 
 ---
 
