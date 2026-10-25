@@ -34,7 +34,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
-  oauthLogin: (provider: "google" | "github" | "microsoft") => void;
+  oauthLogin: (provider: "google") => void;
   refreshToken: () => Promise<boolean>;
 }
 
@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const oauthLogin = useCallback(async (provider: "google" | "github" | "microsoft"): Promise<void> => {
+  const oauthLogin = useCallback(async (provider: "google"): Promise<void> => {
     if (!window) return;
     const apiUrl = getApiUrl();
     const width = 600;

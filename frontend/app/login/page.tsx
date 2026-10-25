@@ -5,13 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LogIn, Mail, Lock, Eye, EyeOff, User,
   BrainCircuit, AlertCircle, CheckCircle2,
-  Loader2, Github, ArrowLeft, KeyRound, Send,
+  Loader2, ArrowLeft, KeyRound, Send,
   ShieldCheck, ExternalLink,
 } from "lucide-react";
 import { getErrorMessage, validateEmail, validatePassword, validateName } from "@/lib/errors";
 import { api } from "@/lib/api-client";
 import { useLoginAuthFlow } from "@/lib/useLoginAuthFlow";
 import type { AuthBanner } from "@/lib/auth-state-machine";
+import AuthStatusBanner from "@/components/auth/AuthStatusBanner";
+import PasswordStrengthMeter from "@/components/auth/PasswordStrengthMeter";
+import SocialProviders from "@/components/auth/SocialProviders";
 
 type AuthView = "login" | "register" | "forgot-password" | "reset-password" | "check-email";
 
@@ -20,51 +23,6 @@ interface FieldErrors {
   password?: string;
   name?: string;
   confirmPassword?: string;
-}
-
-const SOCIAL_PROVIDERS = [
-  { id: "google" as const, label: "Google", icon: () => (
-    <svg className="h-5 w-5" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-  ) },
-  { id: "github" as const, label: "GitHub", icon: () => <Github className="h-5 w-5" /> },
-  { id: "microsoft" as const, label: "Microsoft", icon: () => (
-    <svg className="h-5 w-5" viewBox="0 0 24 24"><path fill="currentColor" d="M11.37 2h-9v9h9v-9zm0 11h-9v9h9v-9zm11-11h-9v9h9v-9zm0 11h-9v9h9v-9z"/></svg>
-  ) },
-];
-
-function AuthStatusBanner({ banner }: { banner: AuthBanner }) {
-  const styles: Record<AuthBanner["kind"], { border: string; bg: string; text: string; icon: string }> = {
-    checking: { border: "border-white/[0.06]", bg: "bg-white/[0.03]", text: "text-gray-400", icon: "text-gray-400" },
-    backend_offline: { border: "border-amber-500/20", bg: "bg-amber-500/10", text: "text-amber-300", icon: "text-amber-400" },
-    network_offline: { border: "border-amber-500/20", bg: "bg-amber-500/10", text: "text-amber-300", icon: "text-amber-400" },
-    error: { border: "border-rose-500/20", bg: "bg-rose-500/10", text: "text-rose-300", icon: "text-rose-400" },
-    success: { border: "border-emerald-500/20", bg: "bg-emerald-500/10", text: "text-emerald-300", icon: "text-emerald-400" },
-    session_expired: { border: "border-amber-500/20", bg: "bg-amber-500/10", text: "text-amber-300", icon: "text-amber-400" },
-  };
-  const s = styles[banner.kind];
-  const isAlert = banner.kind === "error" || banner.kind === "backend_offline" || banner.kind === "network_offline" || banner.kind === "session_expired";
-
-  return (
-    <motion.div
-      key={banner.kind}
-      initial={{ opacity: 0, y: -8, height: 0 }}
-      animate={{ opacity: 1, y: 0, height: "auto" }}
-      exit={{ opacity: 0, y: -8, height: 0 }}
-      transition={{ duration: 0.2 }}
-      role={isAlert ? "alert" : "status"}
-      aria-live={isAlert ? "assertive" : "polite"}
-      className={`mb-4 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 ${s.border} ${s.bg}`}
-    >
-      {banner.kind === "checking" ? (
-        <Loader2 className={`mt-0.5 h-3.5 w-3.5 animate-spin ${s.icon}`} />
-      ) : banner.kind === "success" ? (
-        <CheckCircle2 className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${s.icon}`} />
-      ) : (
-        <AlertCircle className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${s.icon}`} />
-      )}
-      <span className={`text-xs leading-5 ${s.text}`}>{banner.message}</span>
-    </motion.div>
-  );
 }
 
 export default function LoginPage() {
@@ -185,7 +143,7 @@ export default function LoginPage() {
     }
   }, [view, email, password, name, resetToken, validate, clearFormErrors, performLogin, performRegister, authActionsDisabled]);
 
-  const handleSocialLogin = useCallback(async (provider: "google" | "github" | "microsoft") => {
+  const handleSocialLogin = useCallback(async (provider: "google") => {
     if (authActionsDisabled) return;
     clearFormErrors();
     await performOAuth(provider);
@@ -270,29 +228,11 @@ export default function LoginPage() {
         </AnimatePresence>
 
         {view !== "check-email" && (
-          <div className="mb-5 space-y-2.5">
-            {SOCIAL_PROVIDERS.map((provider, i) => (
-              <motion.button
-                key={provider.id}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 + i * 0.05, duration: 0.3 }}
-                onClick={() => handleSocialLogin(provider.id)}
-                disabled={authActionsDisabled}
-                aria-label={`Continue with ${provider.label}`}
-                aria-busy={isOAuthLoading(provider.id)}
-                className="group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-gray-300 transition-all hover:border-white/[0.14] hover:bg-white/[0.06] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isOAuthLoading(provider.id) && (
-                  <span className="absolute inset-0 flex items-center justify-center bg-white/[0.04] backdrop-blur-sm">
-                    <Loader2 className="h-4 w-4 animate-spin text-gray-300" />
-                  </span>
-                )}
-                <provider.icon />
-                <span>Continue with {provider.label}</span>
-              </motion.button>
-            ))}
-          </div>
+          <SocialProviders
+            disabled={authActionsDisabled}
+            isLoading={isOAuthLoading}
+            onSelect={handleSocialLogin}
+          />
         )}
 
         {view !== "check-email" && view !== "reset-password" && (
@@ -555,30 +495,6 @@ export default function LoginPage() {
           </p>
         </div>
       </motion.div>
-    </div>
-  );
-}
-
-function PasswordStrengthMeter({ password }: { password: string }) {
-  const score =
-    (password.length >= 8 ? 1 : 0) +
-    (password.length >= 12 ? 1 : 0) +
-    (/[A-Z]/.test(password) ? 1 : 0) +
-    (/[a-z]/.test(password) ? 1 : 0) +
-    (/[0-9]/.test(password) ? 1 : 0) +
-    (/[^A-Za-z0-9]/.test(password) ? 1 : 0);
-
-  const colors = ["bg-rose-500", "bg-orange-500", "bg-yellow-500", "bg-lime-500", "bg-emerald-500", "bg-emerald-400"];
-  const labels = ["Very weak", "Weak", "Fair", "Good", "Strong", "Very strong"];
-
-  return (
-    <div className="mt-1.5" role="progressbar" aria-valuenow={Math.min(100, (score / 6) * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Password strength: ${labels[Math.min(score, 5)]}`}>
-      <div className="flex gap-1">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i < score ? colors[i] : "bg-white/[0.08]"}`} />
-        ))}
-      </div>
-      <p className="mt-0.5 text-[10px] text-gray-500">{labels[Math.min(score, 5)]}</p>
     </div>
   );
 }
