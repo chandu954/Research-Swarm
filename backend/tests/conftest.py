@@ -1,19 +1,37 @@
 """Pytest fixtures and configuration for ResearchSwarm tests."""
+
 from __future__ import annotations
+import atexit
 import os
-import asyncio
+import shutil
+import tempfile
 import pytest
 from unittest.mock import MagicMock, patch
 
 # ── Test environment must be configured BEFORE any backend imports ──
+_TEST_DATA_DIR = tempfile.mkdtemp(prefix="research-swarm-tests-")
+atexit.register(shutil.rmtree, _TEST_DATA_DIR, ignore_errors=True)
 os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-0123456789abcdef0123456789abcdef")
-if not os.environ.get("DATABASE_URL"):
-    os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./data/test_security.db"
+os.environ.setdefault(
+    "JWT_SECRET_KEY", "test-secret-key-0123456789abcdef0123456789abcdef"
+)
+# Tests must never inherit a developer or production database/storage target.
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TEST_DATA_DIR}/test.db"
+os.environ["UPLOAD_DIR"] = os.path.join(_TEST_DATA_DIR, "uploads")
+os.environ["CHROMA_PERSIST_DIR"] = os.path.join(_TEST_DATA_DIR, "chroma")
+os.environ["MEMORY_DIR"] = os.path.join(_TEST_DATA_DIR, "memory")
+# Prevent local .env credentials from making authentication tests call Supabase.
+os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
+os.environ["SUPABASE_ANON_KEY"] = ""
+os.environ["SUPABASE_URL"] = "http://127.0.0.1:54321"
 
-from backend.agents.graph import create_research_graph, reset_graph
-from backend.agents.memory import ConversationMemory
-from backend.tools.registry import ToolRegistry, get_registry, reset_registry
+from backend.agents.graph import create_research_graph, reset_graph  # noqa: E402
+from backend.agents.memory import ConversationMemory  # noqa: E402
+from backend.tools.registry import (  # noqa: E402
+    ToolRegistry,
+    get_registry,
+    reset_registry,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -54,26 +72,68 @@ def memory() -> ConversationMemory:
 @pytest.fixture
 def sample_plan_result(doc_id: str = "test_doc") -> list[dict]:
     return [
-        {"step_id": 1, "agent": "research_agent", "action": "search_web", "description": "Search for info", "status": "pending"},
-        {"step_id": 2, "agent": "document_agent", "action": "load_pdf", "description": "Load document", "status": "pending"},
-        {"step_id": 3, "agent": "document_agent", "action": "retrieve_chunks", "description": "Retrieve chunks", "status": "pending"},
-        {"step_id": 4, "agent": "answer_agent", "action": "generate_answer", "description": "Generate answer", "status": "pending"},
+        {
+            "step_id": 1,
+            "agent": "research_agent",
+            "action": "search_web",
+            "description": "Search for info",
+            "status": "pending",
+        },
+        {
+            "step_id": 2,
+            "agent": "document_agent",
+            "action": "load_pdf",
+            "description": "Load document",
+            "status": "pending",
+        },
+        {
+            "step_id": 3,
+            "agent": "document_agent",
+            "action": "retrieve_chunks",
+            "description": "Retrieve chunks",
+            "status": "pending",
+        },
+        {
+            "step_id": 4,
+            "agent": "answer_agent",
+            "action": "generate_answer",
+            "description": "Generate answer",
+            "status": "pending",
+        },
     ]
 
 
 @pytest.fixture
 def sample_web_results() -> list[dict]:
     return [
-        {"title": "Test Result 1", "url": "https://example.com/1", "snippet": "This is test result one with relevant content about AI.", "source": "duckduckgo"},
-        {"title": "Test Result 2", "url": "https://example.com/2", "snippet": "This is test result two with more research content.", "source": "duckduckgo"},
+        {
+            "title": "Test Result 1",
+            "url": "https://example.com/1",
+            "snippet": "This is test result one with relevant content about AI.",
+            "source": "duckduckgo",
+        },
+        {
+            "title": "Test Result 2",
+            "url": "https://example.com/2",
+            "snippet": "This is test result two with more research content.",
+            "source": "duckduckgo",
+        },
     ]
 
 
 @pytest.fixture
 def sample_document_chunks() -> list[dict]:
     return [
-        {"content": "Machine learning is a subset of artificial intelligence. It involves training models on data.", "metadata": {"page_number": 1, "doc_id": "test_doc"}, "score": 0.95},
-        {"content": "Deep learning uses neural networks with multiple layers to learn representations.", "metadata": {"page_number": 2, "doc_id": "test_doc"}, "score": 0.87},
+        {
+            "content": "Machine learning is a subset of artificial intelligence. It involves training models on data.",
+            "metadata": {"page_number": 1, "doc_id": "test_doc"},
+            "score": 0.95,
+        },
+        {
+            "content": "Deep learning uses neural networks with multiple layers to learn representations.",
+            "metadata": {"page_number": 2, "doc_id": "test_doc"},
+            "score": 0.87,
+        },
     ]
 
 
@@ -86,17 +146,8 @@ def sample_user() -> dict:
     }
 
 
-# ── Async helpers ──────────────────────────────────────────────
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create a single event loop for the test session."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 # ── Mock Ollama ────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_ollama_generate():
@@ -116,13 +167,21 @@ def mock_ollama_embed():
 
 # ── Mock tool registry ─────────────────────────────────────────
 
+
 @pytest.fixture
 def registry_with_search(tool_registry) -> ToolRegistry:
     """Register a mock search tool."""
+
     async def mock_search(query: str, max_results: int = 5) -> list[dict]:
         return [
-            {"title": "Mock Result", "url": "https://mock.com", "snippet": f"Mock result for {query}", "source": "mock"}
+            {
+                "title": "Mock Result",
+                "url": "https://mock.com",
+                "snippet": f"Mock result for {query}",
+                "source": "mock",
+            }
         ]
+
     tool_registry.register(
         "web_search",
         mock_search,
@@ -134,8 +193,13 @@ def registry_with_search(tool_registry) -> ToolRegistry:
 @pytest.fixture
 def registry_with_pdf(tool_registry) -> ToolRegistry:
     """Register a mock PDF loader."""
+
     def mock_load_pdf(file_path: str):
-        return ("Mock PDF content with artificial intelligence and machine learning topics.", [{"page_number": 1, "text": "Mock PDF content"}])
+        return (
+            "Mock PDF content with artificial intelligence and machine learning topics.",
+            [{"page_number": 1, "text": "Mock PDF content"}],
+        )
+
     tool_registry.register(
         "load_pdf",
         mock_load_pdf,
@@ -145,6 +209,7 @@ def registry_with_pdf(tool_registry) -> ToolRegistry:
 
 
 # ── Mock graph ─────────────────────────────────────────────────
+
 
 @pytest.fixture
 def research_graph():

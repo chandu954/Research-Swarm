@@ -100,6 +100,237 @@ class TestTenantIsolation:
         )
         assert resp.status_code == 403
 
+
+class TestOrganizationLifecycle:
+    def test_organization_and_membership_lifecycle(self, client):
+        from uuid import uuid4
+
+        owner_email = f"owner-{uuid4()}@example.com"
+        owner = register(client, owner_email, "Org Owner")
+        my_orgs(client, owner)
+
+        created = client.post(
+            "/organizations",
+            headers=auth_headers(owner),
+            json={
+                "name": "Research Team",
+                "slug": f"research-{uuid4().hex[:10]}",
+                "description": "Initial",
+            },
+        )
+        assert created.status_code == 201, created.text
+        org = created.json()
+        org_id = org["id"]
+        org_headers = auth_headers(owner, org_id)
+        assert org["member_count"] == 1
+
+        duplicate = client.post(
+            "/organizations",
+            headers=auth_headers(owner),
+            json={"name": org["name"], "slug": org["slug"]},
+        )
+        assert duplicate.status_code == 409
+
+        details = client.get(f"/organizations/{org_id}", headers=org_headers)
+        assert details.status_code == 200
+        assert details.json()["member_count"] == 1
+        updated = client.patch(
+            f"/organizations/{org_id}",
+            headers=org_headers,
+            json={
+                "name": "Updated Team",
+                "description": "Updated",
+                "avatar_url": "https://example.com/avatar.png",
+            },
+        )
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "Updated Team"
+
+        guest_email = f"guest-{uuid4()}@example.com"
+        register(client, guest_email, "Guest")
+        added = client.post(
+            f"/organizations/{org_id}/members",
+            headers=org_headers,
+            json={"email": guest_email, "role": "researcher"},
+        )
+        assert added.status_code == 201, added.text
+        member_id = added.json()["id"]
+        assert added.json()["role"] == "researcher"
+        assert (
+            client.post(
+                f"/organizations/{org_id}/members",
+                headers=org_headers,
+                json={"email": guest_email, "role": "viewer"},
+            ).status_code
+            == 409
+        )
+        assert (
+            client.post(
+                f"/organizations/{org_id}/members",
+                headers=org_headers,
+                json={"email": f"missing-{uuid4()}@example.com", "role": "viewer"},
+            ).status_code
+            == 404
+        )
+
+        members = client.get(f"/organizations/{org_id}/members", headers=org_headers)
+        assert members.status_code == 200
+        assert {item["email"] for item in members.json()} >= {owner_email, guest_email}
+        assert (
+            client.patch(
+                f"/organizations/{org_id}/members/{member_id}",
+                headers=org_headers,
+                json={"role": "manager"},
+            ).json()["role"]
+            == "manager"
+        )
+        assert (
+            client.patch(
+                f"/organizations/{org_id}/members/missing",
+                headers=org_headers,
+                json={"role": "viewer"},
+            ).status_code
+            == 404
+        )
+        owner_member = next(item for item in members.json() if item["role"] == "owner")
+        assert (
+            client.patch(
+                f"/organizations/{org_id}/members/{owner_member['id']}",
+                headers=org_headers,
+                json={"role": "admin"},
+            ).status_code
+            == 400
+        )
+        assert (
+            client.delete(
+                f"/organizations/{org_id}/members/{owner_member['id']}",
+                headers=org_headers,
+            ).status_code
+            == 400
+        )
+        assert client.delete(
+            f"/organizations/{org_id}/members/{member_id}", headers=org_headers
+        ).json() == {"status": "removed"}
+        assert (
+            client.delete(
+                f"/organizations/{org_id}/members/missing", headers=org_headers
+            ).status_code
+            == 404
+        )
+
+        assert client.delete(
+            f"/organizations/{org_id}", headers=org_headers
+        ).json() == {"status": "deleted"}
+        assert (
+            client.get(f"/organizations/{org_id}", headers=org_headers).status_code
+            == 404
+        )
+
+    def test_workspace_and_project_lifecycle(self, client):
+        from uuid import uuid4
+
+        owner = register(
+            client, f"workspace-owner-{uuid4()}@example.com", "Workspace Owner"
+        )
+        org = my_orgs(client, owner)[0]
+        org_id = org["id"]
+        headers = auth_headers(owner, org_id)
+
+        created = client.post(
+            f"/organizations/{org_id}/workspaces",
+            headers=headers,
+            json={"name": "Données / R&D"},
+        )
+        assert created.status_code == 201, created.text
+        workspace = created.json()
+        workspace_id = workspace["id"]
+        assert workspace["slug"] == "donnees--rd"
+        assert (
+            client.post(
+                f"/organizations/{org_id}/workspaces",
+                headers=headers,
+                json={"name": "Duplicate", "slug": workspace["slug"]},
+            ).status_code
+            == 409
+        )
+        listed_workspaces = client.get(
+            f"/organizations/{org_id}/workspaces", headers=headers
+        )
+        assert listed_workspaces.status_code == 200
+        assert workspace_id in {item["id"] for item in listed_workspaces.json()}
+        assert (
+            client.get(
+                f"/organizations/{org_id}/workspaces/{workspace_id}", headers=headers
+            ).status_code
+            == 200
+        )
+        updated_workspace = client.patch(
+            f"/organizations/{org_id}/workspaces/{workspace_id}",
+            headers=headers,
+            json={"name": "Updated Workspace", "description": "For regressions"},
+        )
+        assert updated_workspace.status_code == 200
+        assert updated_workspace.json()["name"] == "Updated Workspace"
+        assert (
+            client.get(
+                f"/organizations/{org_id}/workspaces/missing", headers=headers
+            ).status_code
+            == 404
+        )
+
+        project = client.post(
+            f"/organizations/{org_id}/workspaces/{workspace_id}/projects",
+            headers=headers,
+            json={"name": "Démo Project"},
+        )
+        assert project.status_code == 201, project.text
+        project_id = project.json()["id"]
+        assert project.json()["slug"] == "demo-project"
+        assert (
+            client.post(
+                f"/organizations/{org_id}/workspaces/{workspace_id}/projects",
+                headers=headers,
+                json={"name": "Duplicate", "slug": "demo-project"},
+            ).status_code
+            == 409
+        )
+        projects_url = f"/organizations/{org_id}/workspaces/{workspace_id}/projects"
+        assert project_id in {
+            item["id"] for item in client.get(projects_url, headers=headers).json()
+        }
+        project_url = f"{projects_url}/{project_id}"
+        assert client.get(project_url, headers=headers).status_code == 200
+        updated_project = client.patch(
+            project_url,
+            headers=headers,
+            json={"name": "Renamed Project", "description": "Updated"},
+        )
+        assert updated_project.status_code == 200
+        assert updated_project.json()["name"] == "Renamed Project"
+        assert client.get(f"{projects_url}/missing", headers=headers).status_code == 404
+        assert client.delete(project_url, headers=headers).json() == {
+            "status": "deleted"
+        }
+        assert client.get(project_url, headers=headers).status_code == 404
+
+        assert client.delete(
+            f"/organizations/{org_id}/workspaces/{workspace_id}", headers=headers
+        ).json() == {"status": "deleted"}
+        assert (
+            client.get(
+                f"/organizations/{org_id}/workspaces/{workspace_id}", headers=headers
+            ).status_code
+            == 404
+        )
+        assert (
+            client.delete(
+                f"/organizations/{org_id}/workspaces/missing", headers=headers
+            ).status_code
+            == 404
+        )
+
+
+class TestTenantIsolationRoutes:
     def test_add_member_to_foreign_org_rejected(self, client, two_users):
         alice, bob_org = two_users["alice"], two_users["bob_org"]
         resp = client.post(
