@@ -58,7 +58,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       setCheckingOrg(false);
     }
     checkOrg();
-  }, [token, authLoading, router]);
+  }, [token, authLoading, refreshToken, router]);
 
   if (authLoading || checkingOrg) {
     return (
