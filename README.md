@@ -455,22 +455,39 @@ data: completed
 ## Testing
 
 ```bash
+# Backend (run from the repository root)
 .venv/bin/python -m pytest backend/tests/ -v --cov=backend --cov-report=term-missing
+# CI enforces a 90% application-coverage floor via --cov-fail-under=90.
+# Tests force an isolated SQLite database and temporary file storage; they do
+# not use credentials from a developer's `.env` file and never touch production
+# services. ChromaDB-backed semantic-memory tests require the chromadb wheel,
+# which is available on Python 3.12 (the CI/runtime version).
+
+# Frontend (run from frontend/)
 cd frontend
 pnpm install --frozen-lockfile
 pnpm lint
 pnpm typecheck
-pnpm test
+pnpm test:coverage        # Vitest + coverage (enforces 25/18/21/27 thresholds)
 pnpm exec playwright install chromium
-pnpm test:e2e
-pnpm build
+pnpm test:e2e             # Playwright E2E with deterministic backend mocks
+pnpm build                # Production Next.js build
 ```
 
-Run the backend test command from the repository root. Tests force an isolated SQLite database and temporary file storage; they do not use credentials from a developer's `.env` file. Coverage measures `backend` application code, not tests. CI currently enforces a 70% application coverage floor.
+Run the backend test command from the repository root. Coverage measures `backend`
+application code, not tests. Frontend coverage is available with `pnpm test:coverage`.
+Playwright starts an isolated Next.js server and uses deterministic browser mocks;
+browser installation is required once per machine.
 
-CI pins Black 24.10.0 and checks changed Python lines. The legacy backend has 80 files that fail a whole-repository Black check, so broad formatting is deferred; Ruff still checks the complete backend. Run `python scripts/check_changed_formatting.py HEAD WORKTREE --fix` from `backend/` to format only locally changed Python lines before opening a change.
+### Coverage thresholds
 
-Run frontend commands from `frontend/`. Frontend coverage is available with `pnpm test:coverage`. Playwright starts an isolated Next.js server and uses deterministic browser mocks; browser installation is required once per machine.
+| Area | Statements | Branches | Functions | Lines | Gate |
+|------|-----------|----------|-----------|-------|------|
+| Backend (application code) | — | — | — | — | `--cov-fail-under=90` |
+| Frontend | 25% | 18% | 21% | 27% | `vitest --coverage` thresholds |
+
+These thresholds match verified coverage and block CI on regression. Raise them only
+after coverage has genuinely improved.
 
 ### CI Pipeline (GitHub Actions)
 
@@ -527,12 +544,24 @@ NEXT_PUBLIC_API_URL=https://your-backend.railway.app
 - [x] Dark/light mode
 - [x] Docker Compose deployment
 - [x] CI/CD pipeline
-- [ ] WebSocket streaming
-- [ ] Multi-language support
-- [ ] End-to-end Playwright tests
-- [ ] PDF preview in browser
-- [ ] Export answers as PDF
-- [ ] Agent performance analytics dashboard
+- [x] WebSocket streaming
+- [x] Multi-language support
+- [x] End-to-end Playwright tests
+- [x] PDF preview in browser
+- [x] Export answers as PDF
+- [x] Agent performance analytics dashboard
+
+---
+
+## Troubleshooting
+
+| Problem | Likely cause / fix |
+|---------|--------------------|
+| Backend tests fail on semantic-memory tests | ChromaDB wheel missing on Python 3.14 locally. CI/runtime uses Python 3.12 where `chromadb` installs; use Python 3.12 for the full suite. |
+| `pnpm test:coverage` fails coverage threshold | A change removed coverage or added uncovered code. Restore the assertion or add tests; do not lower `vitest.config.ts` thresholds without improving coverage. |
+| Frontend build fails on `NEXT_PUBLIC_API_URL` | Production builds reject localhost values. Set `NEXT_PUBLIC_API_URL` to the deployed backend URL (never commit real values). |
+| `docker compose up` fails | Ensure Docker Engine + Compose v2 are installed and `.env` exists (copy from `.env.example` and set `JWT_SECRET_KEY`). |
+| Tests read a developer/production database | Backend tests force `DATABASE_URL` to an isolated SQLite file; frontend tests mock all network. If they reach live services, check `.env` is not leaking `DATABASE_URL` into test env. |
 
 ---
 
