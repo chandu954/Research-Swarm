@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { AlertTriangle, Home, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 export default function WorkspaceError({
   error,
@@ -12,7 +13,7 @@ export default function WorkspaceError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[WorkspaceError]", error);
+    logger.error("Workspace route crashed", { error, digest: error.digest });
   }, [error]);
 
   return (

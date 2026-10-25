@@ -2,6 +2,7 @@
 
 import { Component, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -25,7 +26,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
   }
 
   componentDidCatch(error: Error, errorInfo: unknown) {
-    console.error("[ErrorBoundary]", error, errorInfo);
+    logger.error("Uncaught render error", { error, errorInfo });
     this.props.onError?.(error, errorInfo);
   }
 

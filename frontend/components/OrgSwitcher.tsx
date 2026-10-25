@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Building2, Plus, ChevronDown, Check, FolderKanban, Layers } from "lucide-react";
 import { useTenant, type Organization, type Workspace, type Project } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 export function OrgSwitcher() {
   const {
@@ -37,7 +38,7 @@ export function OrgSwitcher() {
       setCreateName("");
       setOpen(false);
     } catch (e) {
-      console.error("Failed to create org", e);
+      logger.error("Failed to create organization", { error: e });
     }
   }
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./auth";
 import { checkHealth } from "./api-client";
 import { classifyAuthError } from "./auth-errors";
+import { logger } from "./logger";
 import {
   authFlowReducer,
   INITIAL_AUTH_FLOW_STATE,
@@ -149,7 +150,7 @@ export function useLoginAuthFlow(options: UseLoginAuthFlowOptions = {}) {
   );
 
   const performOAuth = useCallback(
-    async (provider: "google" | "github" | "microsoft") => {
+    async (provider: "google") => {
       if (submitLockRef.current) return;
       submitLockRef.current = true;
       dispatch({ type: "OAUTH_REDIRECT", provider });
@@ -187,16 +188,13 @@ export function useLoginAuthFlow(options: UseLoginAuthFlowOptions = {}) {
       state.status === "redirecting" ||
       redirectStartedRef.current;
 
-    if (process.env.NODE_ENV === "development") {
-      // Helps confirm why backend_offline banner appears during success flow.
-      // eslint-disable-next-line no-console
-      console.debug("[auth-flow][banner]", {
-        freezeSuccess,
-        uiSuccess: uiSuccessRef.current,
-        fsm: state.status,
-        redirectStarted: redirectStartedRef.current,
-      });
-    }
+    // Helps confirm why backend_offline banner appears during success flow.
+    logger.debug("Auth flow banner decision", {
+      freezeSuccess,
+      uiSuccess: uiSuccessRef.current,
+      fsm: state.status,
+      redirectStarted: redirectStartedRef.current,
+    });
 
     if (freezeSuccess) {
       return { kind: "success", message: "Success! Redirecting..." } as const;

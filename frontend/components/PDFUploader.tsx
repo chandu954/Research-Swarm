@@ -15,6 +15,7 @@ import {
 import { uploadPDF, deleteDocument, getDocumentDownloadUrl } from "@/lib/api";
 import type { UploadedDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 interface PDFUploaderProps {
   documents: UploadedDocument[];
@@ -103,7 +104,7 @@ export default function PDFUploader({
       try {
         await deleteDocument(id);
       } catch (err) {
-        console.warn("Failed to delete document on server:", err);
+        logger.warn("Failed to delete document on server", { error: err });
       }
       onDocumentsChange(
         documents.filter((document) => document.document_id !== id),

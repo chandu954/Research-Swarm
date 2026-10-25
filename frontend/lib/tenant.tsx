@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { useAuth } from "./auth";
 import { api, ORG_ID_KEY, WS_ID_KEY } from "./api-client";
+import { logger } from "./logger";
 
 export interface Organization {
   id: string;
@@ -76,11 +77,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         const found = storedId ? orgs.find(o => o.id === storedId) : orgs[0];
         return found || orgs[0] || null;
       });
-    } catch (err) { console.warn("Failed to load organizations:", err); }
+    } catch (error) { logger.warn("Failed to load organizations", { error }); }
     setIsLoading(false);
   // Intentionally exclude currentOrg — including it would cause an
   // infinite loop (org change triggers refresh which changes org state).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const refreshWorkspaces = useCallback(async () => {
@@ -95,10 +95,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         const found = storedId ? wsList.find(w => w.id === storedId) : wsList[0];
         return found || wsList[0] || null;
       });
-    } catch (err) { console.warn("Failed to load workspaces:", err); }
+    } catch (error) { logger.warn("Failed to load workspaces", { error }); }
   // Exclude currentWorkspace to avoid loop — workspace selection
   // should not trigger a full workspace list refresh.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, currentOrg]);
 
   const refreshProjects = useCallback(async () => {
@@ -107,7 +106,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       const projList: Project[] = await api.get(`/organizations/${currentOrg.id}/workspaces/${currentWorkspace.id}/projects`);
       setProjects(projList);
       if (projList.length === 0) setCurrentProjectState(null);
-    } catch (err) { console.warn("Failed to load projects:", err); }
+    } catch (error) { logger.warn("Failed to load projects", { error }); }
   }, [token, currentOrg, currentWorkspace]);
 
   useEffect(() => { refreshOrganizations(); }, [refreshOrganizations]);

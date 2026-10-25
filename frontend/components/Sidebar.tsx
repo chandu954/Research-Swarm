@@ -22,6 +22,7 @@ import { useConfirm } from "@/lib/confirm-context";
 import ThemeToggle from "./ThemeToggle";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface SidebarProps {
   documents: UploadedDocument[];
@@ -141,7 +142,7 @@ export default function Sidebar({
         setConversations(convs);
       })
       .catch((err) => {
-        console.warn("Failed to load conversations:", err);
+        logger.warn("Failed to load conversations", { error: err });
       })
       .finally(() => setLoading(false));
   }, []);
@@ -164,7 +165,7 @@ export default function Sidebar({
       await deleteConversation(id);
       setConversations((prev) => prev.filter((c) => c.id !== id));
     } catch (err) {
-      console.warn("Failed to delete conversation:", err);
+      logger.warn("Failed to delete conversation", { error: err });
     }
     setMenuConvId(null);
   }, [confirm]);
@@ -181,7 +182,7 @@ export default function Sidebar({
         prev.map((c) => (c.id === id ? { ...c, query: newTitle } : c)),
       );
     } catch (err) {
-      console.warn("Failed to rename conversation:", err);
+      logger.warn("Failed to rename conversation", { error: err });
     }
     setRenamingId(null);
   }, [renameValue]);
