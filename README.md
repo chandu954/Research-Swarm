@@ -312,6 +312,8 @@ docker compose ps
 
 Compose runs Ollama on CPU by default so it can start on standard Docker hosts. GPU acceleration requires a host-specific Compose override. The bundled PostgreSQL credentials are for local development only. On startup, the backend creates missing tables and applies its lightweight column updates; production schema changes should use the repository's Alembic migration tooling.
 
+`NEXT_PUBLIC_*` values are compiled into the frontend browser bundle at build time. Compose passes them from `.env` as build arguments, so rebuild the frontend image (`docker compose build frontend`) after changing the public API or Supabase configuration.
+
 ### Local Development
 
 Create a Python environment from the repository root:
