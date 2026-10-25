@@ -48,7 +48,7 @@ vi.mock("@/lib/websocket", () => ({
 }));
 
 const liveWorkspace = {
-  documents: [],
+  documents: [] as Array<{ id: string; name: string; size_bytes: number; status: string; pages?: number }>,
   collections: [],
   sessions: [],
   reports: [],
@@ -87,6 +87,11 @@ function researchResult(overrides: Partial<ResearchResult> = {}): ResearchResult
 
 beforeEach(() => {
   vi.clearAllMocks();
+  liveWorkspace.documents = [];
+  liveWorkspace.collections = [];
+  liveWorkspace.sessions = [];
+  liveWorkspace.reports = [];
+  liveWorkspace.lastMetrics = null;
   apiMocks.listDocuments.mockResolvedValue([]);
   apiMocks.subscribeResearchLogs.mockReturnValue(new AbortController());
   apiMocks.cancelResearch.mockResolvedValue({ status: "cancelled", task_id: "task-1" });
@@ -270,5 +275,73 @@ describe("useResearchWorkspace", () => {
 
     await waitFor(() => expect(result.current.documents).toHaveLength(1));
     expect(result.current.documents[0].document_id).toBe("doc-1");
+  });
+
+  it("loads a saved conversation and maps message ids, timestamps, and sources", async () => {
+    apiMocks.loadConversation.mockResolvedValueOnce({
+      messages: [
+        { message_id: "saved-1", role: "user", content: "Saved question", timestamp: 123 },
+        { id: "saved-2", role: "assistant", content: "Saved answer", sources: [{ title: "Source" }] },
+      ],
+    });
+    const { result } = renderHook(() => useResearchWorkspace());
+
+    await act(async () => result.current.handleSelectConversation("conversation-1"));
+
+    expect(apiMocks.loadConversation).toHaveBeenCalledWith("conversation-1");
+    expect(result.current.conversationId).toBe("conversation-1");
+    expect(result.current.messages).toMatchObject([
+      { id: "saved-1", role: "user", content: "Saved question", timestamp: 123, sources: [] },
+      { id: "saved-2", role: "assistant", content: "Saved answer", sources: [{ title: "Source" }] },
+    ]);
+    expect(result.current.query).toBe("Saved question");
+    expect(result.current.lastAnswer).toBe("Saved answer");
+  });
+
+  it("clears selection and loaded documents when clearing the workspace", async () => {
+    apiMocks.listDocuments.mockResolvedValueOnce([
+      { id: "doc-1", filename: "paper.pdf", size_bytes: 10, status: "ready" },
+    ]);
+    const { result } = renderHook(() => useResearchWorkspace());
+    await waitFor(() => expect(result.current.documents).toHaveLength(1));
+    act(() => result.current.setSelectedDocs(["doc-1"]));
+
+    await act(async () => result.current.handleClearAll());
+
+    expect(result.current.documents).toEqual([]);
+    expect(result.current.selectedDocs).toEqual([]);
+    expect(result.current.messages).toEqual([]);
+    expect(result.current.phase).toBe("idle");
+  });
+
+  it("does not add an answerless result as a successful response", async () => {
+    apiMocks.runResearch.mockResolvedValueOnce(researchResult({ answer: "  ", errors: ["No evidence"] }));
+    const { result } = renderHook(() => useResearchWorkspace());
+
+    await act(async () => result.current.handleSend("Question without answer"));
+
+    expect(result.current.phase).toBe("failed");
+    expect(result.current.runError).toBe("No evidence");
+    expect(result.current.messages.at(-1)?.content).toContain("No evidence");
+    expect(result.current.messages.some((message) => message.content === "Thinking...")).toBe(false);
+  });
+
+  it("merges realtime documents and preserves completed response logs", async () => {
+    liveWorkspace.documents = [
+      { id: "live-doc", name: "live.pdf", size_bytes: 5, status: "ready", pages: 2 },
+    ];
+    const { result, rerender } = renderHook(() => useResearchWorkspace());
+    await waitFor(() => expect(result.current.mergedDocuments).toEqual([
+      expect.objectContaining({ document_id: "live-doc", filename: "live.pdf", page_count: 2 }),
+    ]));
+
+    apiMocks.runResearch.mockResolvedValueOnce(researchResult({
+      logs: [{ agent: "planner", action: "plan", status: "completed", timestamp: 1 }],
+    }));
+    await act(async () => result.current.handleSend("merge test"));
+    rerender();
+    expect(result.current.mergedLogs).toEqual([
+      expect.objectContaining({ agent: "planner", action: "plan", status: "completed" }),
+    ]);
   });
 });

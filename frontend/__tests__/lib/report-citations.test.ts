@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseCitationSegments,
+  buildUsedInMap,
+  countCitationOccurrences,
   extractCitedIndices,
+  formatEvidenceScore,
+  parseCitationSegments,
+  parseReferences,
   splitSections,
   computeEvidenceScore,
   sourceEvidenceScore,
@@ -125,5 +129,89 @@ describe("computeEvidenceScore", () => {
     const result = computeEvidenceScore([], []);
     expect(result.overall).toBe(0);
     expect(result.label).toBe("Weak");
+  });
+});
+
+describe("countCitationOccurrences", () => {
+  it("counts how many times each source index is cited", () => {
+    const counts = countCitationOccurrences("[Source 1] ... [Source 2] ... [Source 1]");
+    expect(counts.get(1)).toBe(2);
+    expect(counts.get(2)).toBe(1);
+    expect(counts.get(3)).toBeUndefined();
+  });
+
+  it("ignores citations in References section", () => {
+    const md = "See [Source 1].\n\n## References\n\n[1] paper\n[2] paper";
+    const counts = countCitationOccurrences(md);
+    expect(counts.get(1)).toBe(1);
+    expect(counts.get(2)).toBeUndefined();
+  });
+
+  it("returns empty map for no citations", () => {
+    expect(countCitationOccurrences("no citations here")).toEqual(new Map());
+  });
+});
+
+describe("formatEvidenceScore", () => {
+  it("formats score to one decimal", () => {
+    expect(formatEvidenceScore(8.5)).toBe("8.5");
+    expect(formatEvidenceScore(7)).toBe("7.0");
+    expect(formatEvidenceScore(0)).toBe("0.0");
+  });
+});
+
+describe("parseReferences", () => {
+  it("parses markdown link references", () => {
+    const entries = parseReferences("[RAG paper](https://arxiv.org/abs/1) — a survey\n[Another](https://arxiv.org/abs/2)");
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ index: 1, title: "RAG paper", url: "https://arxiv.org/abs/1" });
+    expect(entries[1]).toMatchObject({ index: 2, title: "Another", url: "https://arxiv.org/abs/2" });
+  });
+
+  it("parses plain URL lines", () => {
+    const entries = parseReferences("https://example.com/paper some description");
+    expect(entries).toHaveLength(1);
+    expect(entries[0].url).toBe("https://example.com/paper");
+  });
+
+  it("skips empty lines", () => {
+    const entries = parseReferences("\n\n\n");
+    expect(entries).toEqual([]);
+  });
+
+  it("treats uncategorized text as a reference entry", () => {
+    const entries = parseReferences("Just a title with no link");
+    expect(entries).toHaveLength(1);
+    expect(entries[0].title).toBe("Just a title with no link");
+  });
+});
+
+describe("buildUsedInMap", () => {
+  it("maps source indices to section headings that cite them", () => {
+    const sources = [
+      { source_type: "web", title: "a", hybrid_score: 0.5 },
+      { source_type: "web", title: "b", hybrid_score: 0.5 },
+    ];
+    const usedSections = [
+      { index: 1, heading: "Findings", content: "See [Source 1] here." },
+      { index: 2, heading: "Analysis", content: "See [Source 2] and [Source 1]." },
+    ];
+    const map = buildUsedInMap(sources, usedSections);
+    expect(map.get(1)).toEqual(["Findings", "Analysis"]);
+    expect(map.get(2)).toEqual(["Analysis"]);
+  });
+
+  it("ignores sections without headings", () => {
+    const sources = [{ source_type: "web", title: "a", hybrid_score: 0.5 }];
+    const usedSections = [{ index: 1, heading: null, content: "See [Source 1]." }];
+    const map = buildUsedInMap(sources, usedSections);
+    expect(map.size).toBe(0);
+  });
+
+  it("ignores out-of-range indices", () => {
+    const sources = [{ source_type: "web", title: "a", hybrid_score: 0.5 }];
+    const usedSections = [{ index: 1, heading: "Findings", content: "See [Source 99]." }];
+    const map = buildUsedInMap(sources, usedSections);
+    expect(map.size).toBe(0);
   });
 });

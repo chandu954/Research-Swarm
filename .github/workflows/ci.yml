@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install black==24.10.0 ruff==0.8.6 mypy==1.14.1
+          pip install black==26.10.1 ruff==0.8.6 mypy==1.14.1
 
       - name: Check formatting on changed Python lines (Black)
         env:
@@ -47,6 +47,11 @@ jobs:
 
       - name: Lint (Ruff)
         run: ruff check .
+
+      - name: Security audit (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --desc on
 
       - name: Check syntax
         run: |
@@ -96,7 +101,7 @@ jobs:
         env:
           JWT_SECRET_KEY: test-secret-key
         run: |
-          python -m pytest tests/ -v --cov=backend --cov-report=term-missing --cov-fail-under=90
+          python -m pytest tests/ -v --cov=backend --cov-config=.coveragerc --cov-report=term-missing --cov-fail-under=90
 
   lint-frontend:
     name: Lint Frontend (TypeScript)
@@ -127,6 +132,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Security audit (pnpm audit)
+        run: pnpm audit --audit-level high
 
   test-frontend:
     name: Test Frontend (Vitest)

@@ -6,6 +6,7 @@ import {
   isAuthInteractive,
   isAuthBlocked,
   isSubmitting,
+  isOAuthLoading,
   type AuthFlowState,
 } from "@/lib/auth-state-machine";
 
@@ -93,6 +94,69 @@ describe("authFlowReducer", () => {
     const next = authFlowReducer(state, { type: "DISMISS_ERROR" });
     expect(next.status).toBe("idle");
   });
+
+  it("DISMISS_ERROR returns to idle from oauth_failed", () => {
+    const state: AuthFlowState = {
+      status: "oauth_failed",
+      error: { reason: "oauth_cancelled", message: "Cancelled" },
+    };
+    const next = authFlowReducer(state, { type: "DISMISS_ERROR" });
+    expect(next.status).toBe("idle");
+  });
+
+  it("DISMISS_ERROR returns to idle from session_expired", () => {
+    const state: AuthFlowState = {
+      status: "session_expired",
+    };
+    const next = authFlowReducer(state, { type: "DISMISS_ERROR" });
+    expect(next.status).toBe("idle");
+  });
+
+  it("RESET always returns checking_backend", () => {
+    const state: AuthFlowState = { status: "authentication_failed", error: { reason: "unknown", message: "x" } };
+    const next = authFlowReducer(state, { type: "RESET" });
+    expect(next.status).toBe("checking_backend");
+  });
+
+  it("SESSION_EXPIRED is blocked during terminal states", () => {
+    const next = authFlowReducer(
+      { status: "authentication_success" },
+      { type: "SESSION_EXPIRED" },
+    );
+    expect(next.status).toBe("authentication_success");
+  });
+
+  it("CHECK_BACKEND_START returns state unchanged during authenticating", () => {
+    const next = authFlowReducer(
+      { status: "authenticating", method: "password" },
+      { type: "CHECK_BACKEND_START" },
+    );
+    expect(next.status).toBe("authenticating");
+  });
+
+  it("OAUTH_REDIRECT is blocked from backend_offline", () => {
+    const next = authFlowReducer(
+      { status: "backend_offline" },
+      { type: "OAUTH_REDIRECT", provider: "google" },
+    );
+    expect(next.status).toBe("backend_offline");
+  });
+
+  it("OAUTH_REDIRECT is blocked from non-interactive authenticating", () => {
+    const next = authFlowReducer(
+      { status: "authenticating", method: "password" },
+      { type: "OAUTH_REDIRECT", provider: "google" },
+    );
+    expect(next.status).toBe("authenticating");
+  });
+
+  it("AUTH_START from authentication_success transitions to authenticating", () => {
+    const next = authFlowReducer(
+      { status: "authentication_success" },
+      { type: "AUTH_START", method: "password" },
+    );
+    expect(next.status).toBe("authenticating");
+  });
 });
 
 describe("getAuthBanner", () => {
@@ -143,6 +207,21 @@ describe("selectors", () => {
     expect(isSubmitting({ status: "authenticating" })).toBe(true);
     expect(isSubmitting({ status: "redirecting" })).toBe(true);
     expect(isSubmitting({ status: "idle" })).toBe(false);
+  });
+
+  it("isOAuthLoading checks status, method and provider", () => {
+    expect(
+      isOAuthLoading({ status: "oauth_redirect", method: "oauth", provider: "google" }, "google"),
+    ).toBe(true);
+    expect(
+      isOAuthLoading({ status: "oauth_redirect", method: "oauth", provider: "google" }, "github"),
+    ).toBe(false);
+    expect(
+      isOAuthLoading({ status: "authenticating", method: "oauth", provider: "google" }, "google"),
+    ).toBe(true);
+    expect(
+      isOAuthLoading({ status: "idle", method: "oauth", provider: "google" }, "google"),
+    ).toBe(false);
   });
 });
 

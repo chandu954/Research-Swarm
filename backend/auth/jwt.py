@@ -1,10 +1,12 @@
 """JWT token creation and verification. No fallback secret — production must set JWT_SECRET_KEY."""
+
 from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from loguru import logger
 
 
@@ -20,7 +22,7 @@ def _get_secret() -> str:
     if not secret:
         raise RuntimeError(
             "JWT_SECRET_KEY environment variable is not set. "
-            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+            'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(64))"'
         )
     return secret
 
@@ -39,12 +41,16 @@ def _rotation_secrets() -> list[str]:
 
 def _kid(secret: str) -> str:
     import hashlib
+
     return hashlib.sha256(secret.encode()).hexdigest()[:8]
 
 
-def create_access_token(subject: str, extra_claims: Optional[dict[str, Any]] = None) -> str:
+def create_access_token(
+    subject: str, extra_claims: Optional[dict[str, Any]] = None
+) -> str:
     """Create a short-lived JWT access token (signed with the primary key)."""
     import uuid
+
     secret = _get_secret()
     now = datetime.now(timezone.utc)
     payload = {
@@ -70,6 +76,7 @@ def create_refresh_token(subject: str) -> str:
     session row changes on rotation (reuse detection relies on this).
     """
     import uuid
+
     secret = _get_secret()
     now = datetime.now(timezone.utc)
     payload = {
@@ -95,7 +102,7 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
     primary = candidates[0]
     try:
         unverified = jwt.get_unverified_header(token)
-    except JWTError:
+    except InvalidTokenError:
         return None
     kid = unverified.get("kid")
     selected = primary
@@ -114,7 +121,7 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
                 audience=JWT_AUDIENCE,
             )
             return payload
-        except JWTError as e:
+        except InvalidTokenError as e:
             logger.debug(f"JWT decode failed with candidate key: {e}")
     logger.warning("JWT decode failed for all candidate keys")
     return None
@@ -126,6 +133,8 @@ def get_token_subject(token: str, expected_type: str = "access") -> Optional[str
     if payload is None:
         return None
     if payload.get("type") != expected_type:
-        logger.warning(f"Token type mismatch: expected {expected_type}, got {payload.get('type')}")
+        logger.warning(
+            f"Token type mismatch: expected {expected_type}, got {payload.get('type')}"
+        )
         return None
     return payload.get("sub")

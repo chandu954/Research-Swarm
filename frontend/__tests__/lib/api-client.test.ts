@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkHealth, runResearch } from "@/lib/api-client";
+import { checkHealth, cancelResearch, runResearch, subscribeResearchLogs } from "@/lib/api-client";
 import {
   ORG_ID_KEY,
   TOKEN_KEY,
@@ -250,5 +250,93 @@ describe("runResearch", () => {
       document_model: "documents",
       answer_model: "answer",
     });
+  });
+
+  it("runResearch omits optional fields when not provided", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ answer: "ok" }));
+
+    await runResearch("Hello");
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).toEqual({ query: "Hello", document_ids: [] });
+    expect(body.stream_task_id).toBeUndefined();
+    expect(body.conversation_id).toBeUndefined();
+    expect(body.debate_mode).toBeUndefined();
+  });
+});
+
+describe("cancelResearch", () => {
+  it("posts to the cancel endpoint with task id and timeout", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: "cancelled", task_id: "t-1" }));
+
+    await cancelResearch("t-1");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:8000/research/t-1/cancel");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+    expect(init.timeout).toBe(10_000);
+  });
+});
+
+describe("subscribeResearchLogs", () => {
+  it("streams log events and calls callbacks", async () => {
+    const encoder = new TextEncoder();
+    const reader = {
+      read: vi.fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: encoder.encode(
+            "event: log\ndata: {\"agent\":\"researcher\",\"action\":\"started\"}\n",
+          ),
+        })
+        .mockResolvedValueOnce({ done: true, value: null }),
+      releaseLock: vi.fn(),
+    };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    } as unknown as Response);
+
+    const onLog = vi.fn();
+    const onDone = vi.fn();
+    const controller = subscribeResearchLogs("task-1", { onLog, onDone });
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(onLog).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: "researcher", action: "started" }),
+    );
+    expect(onDone).toHaveBeenCalledTimes(1);
+    controller.abort();
+  });
+
+  it("calls onError when the stream response is not ok", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ detail: "stream failed" }),
+    } as unknown as Response);
+
+    const onError = vi.fn();
+    const controller = subscribeResearchLogs("task-1", { onError });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 500 }),
+    );
+    controller.abort();
+  });
+
+  it("aborts on AbortError without calling onError", async () => {
+    fetchMock.mockRejectedValue(new DOMException("Aborted", "AbortError"));
+
+    const onError = vi.fn();
+    const controller = subscribeResearchLogs("task-1", { onError });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(onError).not.toHaveBeenCalled();
   });
 });

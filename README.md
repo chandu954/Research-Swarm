@@ -181,7 +181,7 @@ stateDiagram-v2
 | ChromaDB | Vector store for RAG |
 | PyMuPDF | PDF text extraction |
 | DuckDuckGo Search | Web search API |
-| python-jose | JWT encoding/decoding |
+| PyJWT | JWT encoding/decoding |
 | authlib | Google OAuth 2.0 |
 
 ---
@@ -266,7 +266,7 @@ research-swarm/
 ### Prerequisites
 
 - Docker Engine with Docker Compose v2 (recommended)
-- Python 3.12+
+- Python 3.12 (CI target)
 - Node.js 24 LTS
 - pnpm 11.28.7 (provided by Corepack from `frontend/package.json`)
 - For local development without Docker: [Ollama](https://ollama.ai) and the models listed below
@@ -455,27 +455,28 @@ data: completed
 ## Testing
 
 ```bash
-# Backend (run from the repository root)
-.venv/bin/python -m pytest backend/tests/ -v --cov=backend --cov-report=term-missing
+# Backend (match CI's working directory from the repository root)
+(cd backend && PYTHONPATH=.. ../.venv/bin/python -m pytest tests/ -v --cov=backend --cov-config=.coveragerc --cov-report=term-missing --cov-fail-under=90)
 # CI enforces a 90% application-coverage floor via --cov-fail-under=90.
 # Tests force an isolated SQLite database and temporary file storage; they do
 # not use credentials from a developer's `.env` file and never touch production
-# services. ChromaDB-backed semantic-memory tests require the chromadb wheel,
-# which is available on Python 3.12 (the CI/runtime version).
+# services. ChromaDB-dependent paths have dedicated test coverage. Python 3.12
+# is the version configured for CI.
 
 # Frontend (run from frontend/)
 cd frontend
 pnpm install --frozen-lockfile
 pnpm lint
 pnpm typecheck
-pnpm test:coverage        # Vitest + coverage (enforces 25/18/21/27 thresholds)
+pnpm test:coverage        # Vitest + coverage (enforces 30/24/23/32 thresholds)
 pnpm exec playwright install chromium
 pnpm test:e2e             # Playwright E2E with deterministic backend mocks
 pnpm build                # Production Next.js build
 ```
 
-Run the backend test command from the repository root. Coverage measures `backend`
-application code, not tests. Frontend coverage is available with `pnpm test:coverage`.
+The backend command enters `backend/` to match CI. Coverage uses `.coveragerc` to
+measure production modules and omit test files. Frontend coverage is available with
+`pnpm test:coverage`.
 Playwright starts an isolated Next.js server and uses deterministic browser mocks;
 browser installation is required once per machine.
 
@@ -484,17 +485,21 @@ browser installation is required once per machine.
 | Area | Statements | Branches | Functions | Lines | Gate |
 |------|-----------|----------|-----------|-------|------|
 | Backend (application code) | — | — | — | — | `--cov-fail-under=90` |
-| Frontend | 25% | 18% | 21% | 27% | `vitest --coverage` thresholds |
+| Frontend | 30% | 24% | 23% | 32% | `vitest --coverage` thresholds |
 
-These thresholds match verified coverage and block CI on regression. Raise them only
-after coverage has genuinely improved.
+The latest local measurement is 50.97% statements, 43.24% branches, 39.41%
+functions, and 52.80% lines across 293 frontend tests. The backend suite passed
+on Python 3.12 (CI's runtime): 574 tests and 94.03% production-code coverage.
+Python 3.14 was not verified: a local run was interrupted before the suite
+completed. The configured frontend gates remain 30/24/23/32 for statements,
+branches, functions, and lines.
 
 ### CI Pipeline (GitHub Actions)
 
 | Job | What it does |
 |---|---|
-| `lint-backend` | ruff check, black check, AST syntax check |
-| `test-backend` | pytest with application-only coverage (70% minimum) |
+| `lint-backend` | Ruff, changed-line Black formatting, dependency audit, AST syntax check |
+| `test-backend` | pytest with application-only coverage (90% minimum) |
 | `lint-frontend` | ESLint and TypeScript type check |
 | `test-frontend` | Vitest, Playwright, and production build |
 | `docker-build` | Build backend and frontend images |
@@ -557,7 +562,7 @@ NEXT_PUBLIC_API_URL=https://your-backend.railway.app
 
 | Problem | Likely cause / fix |
 |---------|--------------------|
-| Backend tests fail on semantic-memory tests | ChromaDB wheel missing on Python 3.14 locally. CI/runtime uses Python 3.12 where `chromadb` installs; use Python 3.12 for the full suite. |
+| Backend tests fail in ChromaDB-dependent cases | CI is configured for Python 3.12; check whether ChromaDB imports there. Python 3.14 has not been verified as a supported runtime. Tests mock ChromaDB boundaries where availability is optional. |
 | `pnpm test:coverage` fails coverage threshold | A change removed coverage or added uncovered code. Restore the assertion or add tests; do not lower `vitest.config.ts` thresholds without improving coverage. |
 | Frontend build fails on `NEXT_PUBLIC_API_URL` | Production builds reject localhost values. Set `NEXT_PUBLIC_API_URL` to the deployed backend URL (never commit real values). |
 | `docker compose up` fails | Ensure Docker Engine + Compose v2 are installed and `.env` exists (copy from `.env.example` and set `JWT_SECRET_KEY`). |

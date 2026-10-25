@@ -1,17 +1,19 @@
 # Contributing to ResearchSwarm
 
-This guide gets you from a clean checkout to a running local environment. The project
-has been verified to install, build, and test from a completely fresh clone.
+This guide describes setup and verification commands for a clean checkout. A separate
+clone of `main` at the current HEAD passed frozen frontend install, lint, typecheck,
+coverage, and production build checks; that clone did not include this workspace's
+uncommitted changes.
 
 ## Prerequisites
 
 | Tool        | Version                          | Notes                                        |
 | ----------- | -------------------------------- | -------------------------------------------- |
-| Node.js     | 22+ (24 recommended)             | Next.js 15                                    |
-| pnpm        | 11+ (verified on 11.9.0)         | Build-script approvals live in `pnpm-workspace.yaml` |
-| Python      | 3.12+ (3.14 verified)            | Backend venv lives at `.venv`                 |
+| Node.js     | 24.x | Required by `frontend/package.json` |
+| pnpm        | 11.28.7 | Pinned by `frontend/package.json` |
+| Python      | 3.12 | CI runtime; Python 3.14 is unverified |
 | Docker      | any recent                       | Required for the local Supabase stack        |
-| Supabase CLI| any recent                       | `supabase start` brings up the local stack   |
+| Supabase CLI | any recent | `supabase start` brings up the local stack |
 
 ## 1. Backend
 
@@ -62,7 +64,7 @@ supabase start        # from the repo root (supabase/config.toml, project "resum
 
 ```bash
 cd frontend
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 Create `frontend/.env.local`:
@@ -98,21 +100,32 @@ pnpm cleanup:e2e      # or: make cleanup-e2e    (removes only the test account's
 
 ## 5. Tests
 
-```bash
-cd frontend
+Backend checks (run from `backend/`, as in CI):
 
-pnpm test             # vitest unit/component suite (62 tests)
-pnpm test:e2e         # Playwright specs (login, research) — requires backend + frontend + seed running
-pnpm exec tsc --noEmit  # typecheck
+```bash
+PYTHONPATH=.. ../.venv/bin/python -m pytest tests/ -v --cov=backend --cov-config=.coveragerc --cov-report=term-missing --cov-fail-under=90
+```
+
+Frontend checks (run from `frontend/`):
+
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test:coverage
+pnpm test:e2e
+pnpm build
 ```
 
 ## 6. Build from a clean checkout
 
 ```bash
 git clone <repo-url> research-swarm && cd research-swarm/frontend
-pnpm install          # resolves deterministically from the committed lockfile
-pnpm build            # next build — must pass with zero type errors
-pnpm test             # 62/62 expected
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test:coverage
+pnpm build
 ```
 
 If `pnpm install` warns about ignored build scripts (`sharp`, `unrs-resolver`),
@@ -121,8 +134,8 @@ approvals belong in `frontend/pnpm-workspace.yaml` (`allowBuilds`), not in
 
 ## Checklist before opening a PR
 
-- [ ] `pnpm exec tsc --noEmit` clean
-- [ ] `pnpm test` passes
+- [ ] `pnpm typecheck` clean
+- [ ] `pnpm test:coverage` passes configured coverage thresholds
 - [ ] `pnpm build` succeeds from a fresh `node_modules`
 - [ ] Feature covered by a unit test when practical
 - [ ] UI changes smoke-tested against the seeded E2E account
