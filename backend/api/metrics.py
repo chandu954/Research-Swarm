@@ -23,8 +23,16 @@ async def metrics() -> dict[str, Any]:
         plugins = registry.list_plugins(ptype)
         plugin_info[ptype] = [
             {
-                "name": p.name if hasattr(p, "name") and callable(p.name) else getattr(p, "name", str(p)),
-                "version": p.version if hasattr(p, "version") and callable(p.version) else "?",
+                "name": (
+                    p.name()
+                    if hasattr(p, "name") and callable(p.name)
+                    else getattr(p, "name", str(p))
+                ),
+                "version": (
+                    p.version()
+                    if hasattr(p, "version") and callable(p.version)
+                    else getattr(p, "version", "?")
+                ),
                 "configured": registry.is_configured(ptype),
             }
             for p in (plugins or [])

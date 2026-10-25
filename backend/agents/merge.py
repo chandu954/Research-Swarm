@@ -11,7 +11,7 @@ def merge_research(
 
     for r in web_results:
         text = r.get("content", "") or r.get("snippet", "") or r.get("title", "")
-        if not text or text.strip() in seen_contents:
+        if not text or not text.strip() or text.strip() in seen_contents:
             continue
         seen_contents.add(text.strip())
         merged_evidence.append({
@@ -24,7 +24,7 @@ def merge_research(
 
     for c in document_chunks:
         text = c.get("content", "") or c.get("text", "")
-        if not text or text.strip() in seen_contents:
+        if not text or not text.strip() or text.strip() in seen_contents:
             continue
         seen_contents.add(text.strip())
         merged_evidence.append({

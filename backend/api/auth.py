@@ -597,7 +597,7 @@ async def verify_magic_link(
     user.last_login_at = datetime.now(timezone.utc)
     await session.flush()
     refresh_token = await _create_session(user, request, session)
-    return _build_tokens(user, refresh_token=refresh_token)
+    return await _build_tokens(user, refresh_token=refresh_token)
 
 
 # ── MFA ─────────────────────────────────────────────────────────

@@ -237,15 +237,16 @@ def _normalize_run_status(result: Optional[Dict[str, Any]]) -> str:
     ``failed`` so no path can leave a run permanently stuck in
     ``running``.
     """
-    status = (result or {}).get("status", "")
+    if not isinstance(result, dict):
+        return "failed"
+    status = result.get("status", "")
     if status in ("completed", "failed", "cancelled"):
         return status
-    if isinstance(result, dict):
-        result["status"] = "failed"
-        errors = result.setdefault("errors", [])
-        note = "Research ended without a terminal status and was marked failed"
-        if note not in [str(e) for e in errors]:
-            errors.append(note)
+    result["status"] = "failed"
+    errors = result.setdefault("errors", [])
+    note = "Research ended without a terminal status and was marked failed"
+    if note not in [str(e) for e in errors]:
+        errors.append(note)
     return "failed"
 
 

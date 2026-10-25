@@ -232,10 +232,13 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     sources: list[dict[str, Any]] = []
-    metadata: dict[str, Any] = {}
+    # The SQLAlchemy model exposes this column as ``metadata_`` because
+    # ``metadata`` is reserved by the declarative base. Read from the ORM
+    # attribute while keeping the public JSON field name unchanged.
+    metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="metadata_")
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 # ── Documents ────────────────────────────────────────────────────
@@ -263,6 +266,8 @@ class DocumentVersionResponse(BaseModel):
     change_summary: Optional[str] = None
     created_by: Optional[str] = None
     created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class DocumentDownloadUrlResponse(BaseModel):

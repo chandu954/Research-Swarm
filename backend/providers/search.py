@@ -213,10 +213,22 @@ def _format_results(raw: list[dict[str, Any]], source: str) -> list[dict[str, An
     return results
 
 
+_TRACKING_PARAMS = {"ref", "source", "camp", "medium", "content", "mc"}
+
+
 def _clean_url(url: str) -> str:
     if not url:
         return ""
-    url = re.sub(r"[\?&](utm_|ref|source|camp|medium|content|mc)=[^&]*", "", url)
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
-    return url
+    parsed = urllib.parse.urlsplit(url)
+    query = [
+        (key, value)
+        for key, value in urllib.parse.parse_qsl(
+            parsed.query, keep_blank_values=True
+        )
+        if key not in _TRACKING_PARAMS and not key.startswith("utm_")
+    ]
+    return urllib.parse.urlunsplit(
+        parsed._replace(query=urllib.parse.urlencode(query))
+    )
