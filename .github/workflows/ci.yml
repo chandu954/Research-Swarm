@@ -96,7 +96,7 @@ jobs:
         env:
           JWT_SECRET_KEY: test-secret-key
         run: |
-          python -m pytest tests/ -v --cov=backend --cov-report=term-missing --cov-fail-under=70
+          python -m pytest tests/ -v --cov=backend --cov-report=term-missing --cov-fail-under=90
 
   lint-frontend:
     name: Lint Frontend (TypeScript)
