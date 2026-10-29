@@ -26,6 +26,21 @@ async def register_builtin_plugins() -> None:
     reset_plugin_registry()
     registry = get_plugin_registry()
 
+    # Sentry error tracking (optional, no-op when SENTRY_DSN is unset)
+    sentry_dsn = os.getenv("SENTRY_DSN")
+    if sentry_dsn:
+        try:
+            import sentry_sdk
+
+            sentry_sdk.init(
+                dsn=sentry_dsn,
+                traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+                environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+            )
+            logger.info("Sentry error tracking initialized")
+        except ImportError:
+            logger.warning("SENTRY_DSN set but sentry-sdk not installed")
+
     # LLM providers
     from backend.llm.ollama_provider import OllamaProvider
     from backend.llm.openrouter_provider import OpenRouterProvider
