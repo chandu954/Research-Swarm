@@ -1,14 +1,15 @@
 """Document processing agent with RAG pipeline and reranking."""
 from __future__ import annotations
+
 import os
-from typing import Any
 from pathlib import Path
+from typing import Any
+
 from loguru import logger
 
-from backend.tools.registry import ToolRegistry, get_registry, ToolSpec, ToolCategory
-from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.core.registry import get_plugin_registry
-
+from backend.llm.factory import get_llm_provider_instance, resolve_model
+from backend.tools.registry import ToolCategory, ToolRegistry, ToolSpec, get_registry
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200

@@ -1,7 +1,9 @@
 """Vector database provider interface."""
 from __future__ import annotations
+
 from abc import abstractmethod
 from typing import Any
+
 from backend.core.plugin import PluginInterface, PluginSpec
 
 

@@ -9,8 +9,15 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
-
+from backend.auth.tenant import (
+    _resolve_permissions,
+    _slugify,
+    get_tenant_context,
+    require_org,
+    require_org_permission,
+    require_permission,
+)
+from backend.db.models import Conversation
 from backend.tests._api_test_helpers import (
     Session,
     _ctx,
@@ -21,21 +28,13 @@ from backend.tests._api_test_helpers import (
     _workspace,
     asyncio_run,
     reset_tenant_context,
-    resolve_org_from_subdomain,
     resolve_optional_tenant,
+    resolve_org_from_subdomain,
     resolve_tenant_dependencies,
     set_tenant_context,
     tenant_filter,
 )
-from backend.db.models import Conversation
-from backend.auth.tenant import (
-    _resolve_permissions,
-    _slugify,
-    get_tenant_context,
-    require_org,
-    require_org_permission,
-    require_permission,
-)
+from fastapi import HTTPException
 
 
 class TestTenantHelpers:

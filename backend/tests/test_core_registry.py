@@ -1,14 +1,15 @@
 """Tests for the unified PluginRegistry (core.registry)."""
 from __future__ import annotations
+
 import pytest
 from backend.core.plugin import PluginSpec
-from backend.core.registry import get_plugin_registry, reset_plugin_registry
-from backend.core.providers.llm import LLMProvider
-from backend.core.providers.search import SearchProvider
 from backend.core.providers.embedding import EmbeddingProvider
-from backend.core.providers.vector_db import VectorDBProvider
-from backend.core.providers.storage import StorageProvider
+from backend.core.providers.llm import LLMProvider
 from backend.core.providers.memory import MemoryProvider
+from backend.core.providers.search import SearchProvider
+from backend.core.providers.storage import StorageProvider
+from backend.core.providers.vector_db import VectorDBProvider
+from backend.core.registry import get_plugin_registry, reset_plugin_registry
 
 
 def _make_llm(name: str) -> LLMProvider:

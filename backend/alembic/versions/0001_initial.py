@@ -1,5 +1,7 @@
 """Initial migration: complete multi-tenant baseline (squashed).
 
+AUTO-GENERATED - DO NOT EDIT
+
 This is the corrected baseline for a fresh production database. It replaces
 the original 0001/0002 chain, which could not run end-to-end:
 
@@ -17,10 +19,11 @@ Revises: None
 Create Date: 2026-08-04 00:00:00.000000
 """
 from __future__ import annotations
+
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision: str = "0001"

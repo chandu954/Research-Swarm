@@ -1,17 +1,17 @@
 """Async SQLAlchemy session and engine for PostgreSQL."""
 from __future__ import annotations
+
 import os
 from typing import AsyncGenerator
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+from loguru import logger
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-from loguru import logger
-
 
 _raw_db_url: str = os.getenv(
     "DATABASE_URL",
@@ -73,7 +73,8 @@ async def _migrate_columns() -> None:
 
     Each column addition runs in its own transaction so failures don't cascade.
     """
-    from sqlalchemy import text as sa_text, Boolean, Integer, BigInteger
+    from sqlalchemy import BigInteger, Boolean, Integer
+    from sqlalchemy import text as sa_text
 
     for table_name, table in Base.metadata.tables.items():
         try:

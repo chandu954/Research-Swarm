@@ -3,21 +3,22 @@
 Flow: START -> planner -> parallel(research, document) -> merge -> answer -> END
 """
 from __future__ import annotations
+
 import time
-from typing import Dict, List, Any, Optional, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
+
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
 from loguru import logger
 
-from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import MemorySaver
-
+from backend.agents.answer_agent import AnswerAgent, AnswerRequest
+from backend.agents.document_agent import DocumentAgent
+from backend.agents.merge import merge_research
 from backend.agents.planner import Planner
 from backend.agents.research_agent import WebResearchAgent
-from backend.agents.document_agent import DocumentAgent
-from backend.agents.answer_agent import AnswerAgent, AnswerRequest
-from backend.agents.merge import merge_research
-from backend.llm.factory import resolve_model, apply_provider_overrides, restore_provider_overrides
-from backend.llm.context import ProviderOverrides
 from backend.api.stream import get_stream_manager
+from backend.llm.context import ProviderOverrides
+from backend.llm.factory import apply_provider_overrides, resolve_model, restore_provider_overrides
 from backend.tools.registry import get_registry
 
 

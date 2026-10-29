@@ -1,9 +1,16 @@
 """Tests for the LangGraph workflow — graph creation, node execution, state routing."""
 from __future__ import annotations
-from unittest.mock import patch, MagicMock
 
-from backend.agents.graph import create_research_graph, reset_graph, AgentState
-from backend.agents.graph import _run_planner_node, _run_research_node, _run_merge_node
+from unittest.mock import MagicMock, patch
+
+from backend.agents.graph import (
+    AgentState,
+    _run_merge_node,
+    _run_planner_node,
+    _run_research_node,
+    create_research_graph,
+    reset_graph,
+)
 
 
 class TestResearchGraph:

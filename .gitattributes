@@ -1,0 +1,2 @@
+# Mark generated files as linguist-generated so they are excluded from language stats
+frontend/**/database.types.ts linguist-generated=true

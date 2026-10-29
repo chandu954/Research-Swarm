@@ -1,8 +1,10 @@
 """Hybrid search: BM25 lexical + dense embedding fusion with cross-encoder reranking."""
 from __future__ import annotations
+
 import math
 import re
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 try:

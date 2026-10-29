@@ -5,13 +5,15 @@ Expert, Economist, Industry Expert) that each analyze the same research
 findings from their viewpoint. A Judge agent produces a balanced conclusion.
 """
 from __future__ import annotations
+
 import time
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
-from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.api.stream import get_stream_manager, make_log
+from backend.llm.factory import get_llm_provider_instance, resolve_model
 
 DEBATE_MODEL = resolve_model("answer_agent")
 

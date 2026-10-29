@@ -65,9 +65,11 @@ async def health_check(request: Request):
 async def debug_db(request: Request):
     """Debug: test DB tables and run migration."""
     ensure_app_state(request.app)
-    from backend.db.session import _engine, get_session
+    from sqlalchemy import select
+    from sqlalchemy import text as sa_text
+
     from backend.db.models import User
-    from sqlalchemy import text as sa_text, select
+    from backend.db.session import _engine, get_session
 
     async with _engine.begin() as conn:
         rows = await conn.execute(

@@ -1,11 +1,17 @@
 """Tests for authentication: JWT, password hashing, OAuth, dependencies."""
 from __future__ import annotations
-from unittest.mock import MagicMock
-import pytest
-from fastapi import HTTPException
 
+from unittest.mock import MagicMock
+
+import pytest
+from backend.auth.jwt import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    get_token_subject,
+)
 from backend.auth.password import hash_password, verify_password
-from backend.auth.jwt import create_access_token, create_refresh_token, decode_token, get_token_subject
+from fastapi import HTTPException
 
 
 class TestPassword:

@@ -1,7 +1,8 @@
 """Tests for the Planner agent — LLM-based plan generation, validation, and fallback."""
 from __future__ import annotations
+
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from backend.agents.planner import Planner, PlanResult
 

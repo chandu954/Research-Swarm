@@ -1,13 +1,14 @@
 """Structured JSON logging configuration."""
 from __future__ import annotations
-import os
-import sys
+
 import json
 import logging
+import os
+import sys
 from datetime import datetime, timezone
 from typing import Any
-from loguru import logger
 
+from loguru import logger
 
 _initialized = False
 

@@ -1,12 +1,13 @@
 """Slack plugin — search messages, list channels."""
 from __future__ import annotations
+
 import os
 from typing import Any
+
 import httpx
 
-from backend.plugins.base import Plugin
 from backend.core.plugin import PluginSpec
-
+from backend.plugins.base import Plugin
 
 SLACK_API = "https://slack.com/api"
 

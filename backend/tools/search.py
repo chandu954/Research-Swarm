@@ -1,7 +1,9 @@
 """Web search tool — uses the search aggregator for multi-provider results."""
 from __future__ import annotations
+
 import os
 from typing import Any
+
 from loguru import logger
 
 from backend.core.registry import get_plugin_registry
@@ -43,8 +45,9 @@ def hybrid_search_web(
     safesearch: str = "moderate",
 ) -> list[dict[str, Any]]:
     """Aggregate search across all configured providers + hybrid rerank."""
-    from backend.search.aggregator import aggregate_search
     import asyncio
+
+    from backend.search.aggregator import aggregate_search
     try:
         results = asyncio.run(
             aggregate_search(query, max_results=max_results, hybrid=True)

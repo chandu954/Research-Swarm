@@ -8,7 +8,6 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 

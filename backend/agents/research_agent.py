@@ -1,9 +1,11 @@
 """Web research agent with search, page reading, and code execution."""
 from __future__ import annotations
+
 from typing import Any
+
 from loguru import logger
 
-from backend.tools.registry import ToolRegistry, get_registry, ToolSpec, ToolCategory
+from backend.tools.registry import ToolCategory, ToolRegistry, ToolSpec, get_registry
 
 
 class WebResearchAgent:

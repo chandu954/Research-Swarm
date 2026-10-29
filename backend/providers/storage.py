@@ -1,12 +1,13 @@
 """Local filesystem storage provider."""
 from __future__ import annotations
+
 import os
 from pathlib import Path
+
 from loguru import logger
 
 from backend.core.plugin import PluginSpec
 from backend.core.providers.storage import StorageProvider
-
 
 UPLOAD_DIR = "./data/uploads"
 

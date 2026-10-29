@@ -48,8 +48,8 @@ async def register_builtin_plugins() -> None:
 
     # Search providers
     from backend.providers.search import (
-        DuckDuckGoProvider,
         BingProvider,
+        DuckDuckGoProvider,
         SerperProvider,
     )
 

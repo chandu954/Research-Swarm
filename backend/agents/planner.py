@@ -4,12 +4,14 @@ Uses Qwen3 via Ollama to dynamically generate execution plans
 instead of brittle regex matching.
 """
 from __future__ import annotations
+
 import json
 import re
-from typing import List, Dict, Any, Optional, Tuple
-from loguru import logger
+from typing import Any, Dict, List, Optional, Tuple
 
+from loguru import logger
 from pydantic import BaseModel, Field
+
 from backend.llm.factory import get_llm_provider_instance, resolve_model
 from backend.tools.registry import ToolRegistry, get_registry
 

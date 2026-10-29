@@ -7,12 +7,11 @@ from typing import Any, Dict
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
-from loguru import logger
-
 from backend.api.common import ensure_app_state
 from backend.api.main import app
 from backend.core.logging import JSONFormatter, setup_logging
+from httpx import ASGITransport, AsyncClient
+from loguru import logger
 
 
 @pytest.fixture(autouse=True)

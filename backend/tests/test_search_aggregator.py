@@ -1,9 +1,10 @@
 """Tests for the parallel search aggregator."""
 from __future__ import annotations
+
 import pytest
-from backend.core.registry import get_plugin_registry, reset_plugin_registry
-from backend.core.providers.search import SearchProvider
 from backend.core.plugin import PluginSpec
+from backend.core.providers.search import SearchProvider
+from backend.core.registry import get_plugin_registry, reset_plugin_registry
 
 
 class _FastSearchA(SearchProvider):

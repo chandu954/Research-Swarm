@@ -3,20 +3,24 @@
 Never trusts values sent by the frontend. Resolves permissions from server-side context.
 """
 from __future__ import annotations
-from typing import Optional
+
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from typing import Optional
 
-from fastapi import Request, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.session import get_session
-from backend.db.models import (
-    User, Organization, OrganizationMember,
-    Workspace, Project,
-)
 from backend.auth.dependencies import get_current_user, get_optional_user
+from backend.db.models import (
+    Organization,
+    OrganizationMember,
+    Project,
+    User,
+    Workspace,
+)
+from backend.db.session import get_session
 
 
 @dataclass

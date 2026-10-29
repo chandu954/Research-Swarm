@@ -1,6 +1,8 @@
 """Web page reader — fetches and extracts readable content from URLs."""
 from __future__ import annotations
+
 from typing import Any
+
 from loguru import logger
 
 try:

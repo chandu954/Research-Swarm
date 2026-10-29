@@ -3,17 +3,18 @@
 Replaces the separate provider/plugin registries with one consistent API.
 """
 from __future__ import annotations
+
 from typing import Any
+
 from loguru import logger
 
 from backend.core.plugin import PluginInterface, PluginSpec
-from backend.core.providers.llm import LLMProvider
-from backend.core.providers.search import SearchProvider
 from backend.core.providers.embedding import EmbeddingProvider
-from backend.core.providers.vector_db import VectorDBProvider
-from backend.core.providers.storage import StorageProvider
+from backend.core.providers.llm import LLMProvider
 from backend.core.providers.memory import MemoryProvider
-
+from backend.core.providers.search import SearchProvider
+from backend.core.providers.storage import StorageProvider
+from backend.core.providers.vector_db import VectorDBProvider
 
 PLUGIN_TYPE_KEY = "_plugin_type"
 

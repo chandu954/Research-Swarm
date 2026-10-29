@@ -1,8 +1,8 @@
 """Ollama client for connecting to local models."""
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import httpx
 from loguru import logger
-
 from pydantic import BaseModel, Field
 
 

@@ -1,8 +1,10 @@
 """Health metrics endpoint for monitoring."""
 from __future__ import annotations
+
 import os
 import time
 from typing import Any
+
 from fastapi import APIRouter
 
 from backend.core.registry import get_plugin_registry

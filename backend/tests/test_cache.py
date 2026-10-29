@@ -1,6 +1,8 @@
 """Tests for the LRU cache."""
 from __future__ import annotations
+
 import time
+
 from backend.core.cache import LRUCache, get_cache, reset_cache
 
 

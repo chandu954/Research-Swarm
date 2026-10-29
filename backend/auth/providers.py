@@ -4,17 +4,17 @@ Supports: Google, Magic Links, MFA
 """
 
 from __future__ import annotations
-import os
-import pyotp
-import secrets
+
 import hashlib
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
-from datetime import datetime, timedelta, timezone
 
 import httpx
+import pyotp
 from loguru import logger
-
 
 # ── Configuration ───────────────────────────────────────────────
 

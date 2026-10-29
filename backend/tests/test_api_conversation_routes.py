@@ -5,17 +5,17 @@ Split from backend/tests/test_api_routes_units.py.
 
 from __future__ import annotations
 
-import pytest
-from fastapi import HTTPException
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from backend.tests._api_test_helpers import (
     Session,
-    _ctx,
     _conversation,
+    _ctx,
     _user,
     asyncio_run,
 )
+from fastapi import HTTPException
 
 
 class TestConversationRoutes:
@@ -58,7 +58,6 @@ class TestConversationRoutes:
 
     def test_create_conversation(self):
         from backend.api.conversations import create_conversation
-
         from backend.db.schemas import ConversationCreate
 
         session = Session()
@@ -87,9 +86,7 @@ class TestConversationRoutes:
 
     def test_get_conversation(self):
         from backend.api.conversations import get_conversation
-
         from backend.db.models import Message
-
         from backend.tests._api_test_helpers import NOW
 
         message = Message(
@@ -119,7 +116,6 @@ class TestConversationRoutes:
 
     def test_update_conversation(self):
         from backend.api.conversations import update_conversation
-
         from backend.db.schemas import ConversationUpdate
 
         conv = _conversation()

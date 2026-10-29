@@ -1,11 +1,14 @@
 """Entity extraction service for knowledge graph enrichment."""
 from __future__ import annotations
+
 import asyncio
 import json
 import re
 from typing import Optional
-from pydantic import BaseModel
+
 from loguru import logger
+from pydantic import BaseModel
+
 from backend.llm.factory import get_llm_provider_instance, resolve_model
 
 EXTRACT_SYSTEM_PROMPT = """You are an entity extraction specialist. Extract structured entities and relationships from the given research text.

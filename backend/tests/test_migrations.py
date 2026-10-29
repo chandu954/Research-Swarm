@@ -5,6 +5,7 @@ upgrade a fresh database head-to-tail, deterministically, and that the
 resulting schema contains the expected tables.
 """
 from __future__ import annotations
+
 import sqlite3
 
 REQUIRED_TABLES = {
@@ -21,6 +22,7 @@ REQUIRED_TABLES = {
 def _upgrade_fresh_db(monkeypatch, tmp_path, name: str) -> str:
     """Run ``alembic upgrade head`` against a fresh SQLite file; return its path."""
     from pathlib import Path
+
     from alembic import command
     from alembic.config import Config
 

@@ -22,7 +22,6 @@ from backend.core.registry import get_plugin_registry
 from backend.db.models import AuditLog, Document
 from backend.tools.registry import get_registry
 
-
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./data/uploads")
 for _directory in [UPLOAD_DIR, "./data/chroma_db", "./data/memory", "./data/logs"]:
     os.makedirs(_directory, exist_ok=True)

@@ -6,10 +6,11 @@ backend security audit (C1-C4) so the vulnerability classes cannot
 silently reappear.
 """
 from __future__ import annotations
+
 import os
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 # ── Fixtures ─────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ def api_app():
     the TestClient owns the event loop and its lifespan runs init_db().
     """
     import re
+
     from backend.db.session import _engine
 
     url = os.environ.get("DATABASE_URL", "")
@@ -587,6 +589,7 @@ class TestJWTAndSecrets:
 
     def test_token_from_rotation_key_still_verifies(self, monkeypatch):
         import os
+
         from backend.auth.jwt import create_access_token, decode_token
         old = os.environ.get("JWT_SECRET_KEYS_ROTATION")
         os.environ["JWT_SECRET_KEYS_ROTATION"] = "rotated-key-0123456789abcdef0123456789abcdef"
@@ -738,7 +741,7 @@ class TestRateLimits:
 
     def test_placeholder_secret_rejected(self, monkeypatch):
         """Copying .env.example into production must fail fast."""
-        from backend.core.config import validate_secrets, is_weak_secret
+        from backend.core.config import is_weak_secret, validate_secrets
         assert is_weak_secret("change-this-to-a-long-random-string-in-production")
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("JWT_SECRET_KEY", "change-this-to-a-long-random-string-in-production")

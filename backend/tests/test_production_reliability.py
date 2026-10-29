@@ -15,16 +15,17 @@ These tests are permanent: they must keep passing so the failure classes
 cannot silently reappear.
 """
 from __future__ import annotations
+
 import asyncio
 import os
 import threading
 import time
 import uuid
-
-import pytest
-import httpx
 from unittest.mock import AsyncMock
 
+import httpx
+import pytest
+from backend.core.plugin import PluginSpec
 from backend.llm.base import LLMProvider
 from backend.llm.retry import (
     ProviderConfigError,
@@ -33,13 +34,13 @@ from backend.llm.retry import (
     retry_after_seconds,
     with_retry,
 )
-from backend.core.plugin import PluginSpec
 
 # ── Fixtures ─────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
 def api_app():
     import re
+
     from backend.db.session import _engine
 
     url = os.environ.get("DATABASE_URL", "")

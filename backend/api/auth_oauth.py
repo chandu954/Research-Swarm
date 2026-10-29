@@ -7,12 +7,12 @@ email/password and session management.
 from __future__ import annotations
 
 import json
+from secrets import token_urlsafe
 from typing import Callable
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from secrets import token_urlsafe
 
 from backend.api.auth import (
     TokenResponse,
@@ -21,7 +21,11 @@ from backend.api.auth import (
     _find_or_create_user,
     get_session,
 )
-from backend.auth.providers import get_google_auth_url
+from backend.auth.providers import (
+    exchange_google_code,
+    get_google_auth_url,
+    get_google_userinfo,
+)
 
 router = APIRouter(tags=["auth"])
 

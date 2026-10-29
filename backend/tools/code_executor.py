@@ -4,13 +4,13 @@ WARNING: This tool uses subprocess and should only be enabled in trusted
 environments. No true sandboxing is applied.
 """
 from __future__ import annotations
+
 import os
 import subprocess  # noqa: S404
 import sys
 import tempfile
 import time
 from typing import Any
-
 
 _EXECUTION_TIMEOUT = 30
 _MAX_OUTPUT_LENGTH = 50_000

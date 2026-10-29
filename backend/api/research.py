@@ -60,7 +60,11 @@ async def run_research(
     try:
         from backend.core.supabase import (
             create_session as sb_create_session,
+        )
+        from backend.core.supabase import (
             get_profile,
+        )
+        from backend.core.supabase import (
             insert_message as sb_insert_message,
         )
 

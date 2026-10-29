@@ -1,10 +1,12 @@
 """Parallel search aggregator — queries all registered search providers and merges results."""
 from __future__ import annotations
+
 import asyncio
 import re
 from difflib import SequenceMatcher
 from typing import Any
 from urllib.parse import urlparse
+
 from loguru import logger
 
 from backend.core.registry import get_plugin_registry

@@ -8,15 +8,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
-
 from backend.api import research as research_api
 from backend.api.stream import StreamManager
 from backend.auth.tenant import TenantContext, _resolve_permissions
 from backend.core.ratelimit import limiter
 from backend.db.models import User
 from backend.db.schemas import ExtractEntitiesRequest, ResearchRequest
+from fastapi import HTTPException
+from fastapi.responses import StreamingResponse
 
 
 def asyncio_run(coroutine):

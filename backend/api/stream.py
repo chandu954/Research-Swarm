@@ -8,12 +8,14 @@ Architecture:
     logs via an async generator for SSE streaming.
 """
 from __future__ import annotations
-import json
+
 import asyncio
+import json
 import queue as _queue
 import time
 from datetime import datetime, timezone
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
+
 from loguru import logger
 
 

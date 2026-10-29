@@ -13,8 +13,8 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi.errors import RateLimitExceeded
 from loguru import logger
+from slowapi.errors import RateLimitExceeded
 
 from backend.agents.graph import create_research_graph
 from backend.api.auth import router as auth_router

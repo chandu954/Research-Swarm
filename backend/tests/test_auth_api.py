@@ -17,9 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pyotp
 import pytest
-from fastapi.testclient import TestClient
-
 from backend.auth.jwt import create_access_token, create_refresh_token, decode_token
+from fastapi.testclient import TestClient
 
 # ── Fixtures ─────────────────────────────────────────────────────
 
@@ -571,8 +570,8 @@ class TestSessionsAndDevices:
         assert device.trusted_at is not None
 
     def test_trust_unknown_device_raises_404(self):
-        from fastapi import HTTPException
         from backend.api.auth import trust_device
+        from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as excinfo:
             asyncio_run(

@@ -12,16 +12,18 @@ class TestVectorDBProvider:
         assert p.spec.version == "1.0.0"
 
     def test_chromadb_initialize_cleanup(self):
-        from backend.providers.vector_db import ChromaDBVectorStore
         import asyncio
+
+        from backend.providers.vector_db import ChromaDBVectorStore
 
         p = ChromaDBVectorStore()
         asyncio.run(p.initialize())
         asyncio.run(p.cleanup())
 
     def test_chromadb_before_init_does_not_raise(self):
-        from backend.providers.vector_db import ChromaDBVectorStore
         import asyncio
+
+        from backend.providers.vector_db import ChromaDBVectorStore
 
         p = ChromaDBVectorStore()
         # store() logs a warning and returns without raising before init
@@ -36,8 +38,9 @@ class TestStorageProvider:
         assert p.spec.name == "local"
 
     def test_local_storage_save_load_delete(self, monkeypatch, tmp_path):
-        from backend.providers.storage import LocalStorageProvider
         import asyncio
+
+        from backend.providers.storage import LocalStorageProvider
 
         monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
         p = LocalStorageProvider()
@@ -61,8 +64,9 @@ class TestStorageProvider:
             shutil.rmtree(p._base_path, ignore_errors=True)
 
     def test_local_storage_load_missing(self, monkeypatch, tmp_path):
-        from backend.providers.storage import LocalStorageProvider
         import asyncio
+
+        from backend.providers.storage import LocalStorageProvider
 
         monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
         p = LocalStorageProvider()
@@ -84,8 +88,9 @@ class TestMemoryProvider:
         assert p.spec.name == "conversation"
 
     def test_conversation_memory_store_retrieve(self):
-        from backend.providers.memory import ConversationMemoryProvider
         import asyncio
+
+        from backend.providers.memory import ConversationMemoryProvider
 
         p = ConversationMemoryProvider()
         asyncio.run(p.initialize())
@@ -102,8 +107,9 @@ class TestMemoryProvider:
             shutil.rmtree("./data/memory", ignore_errors=True)
 
     def test_conversation_memory_delete(self):
-        from backend.providers.memory import ConversationMemoryProvider
         import asyncio
+
+        from backend.providers.memory import ConversationMemoryProvider
 
         p = ConversationMemoryProvider()
         asyncio.run(p.initialize())
@@ -119,8 +125,9 @@ class TestMemoryProvider:
             shutil.rmtree("./data/memory", ignore_errors=True)
 
     def test_conversation_memory_missing_key(self):
-        from backend.providers.memory import ConversationMemoryProvider
         import asyncio
+
+        from backend.providers.memory import ConversationMemoryProvider
 
         p = ConversationMemoryProvider()
         asyncio.run(p.initialize())

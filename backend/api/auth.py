@@ -11,41 +11,40 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from datetime import timedelta
-from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from loguru import logger
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.session import get_session
-from backend.db.models import (
-    User,
-    UserSession,
-    UserDevice,
-    Organization,
-    Workspace,
-    Project,
-    OrganizationMember,
-    WorkspaceMember,
-)
-from backend.db.schemas import (
-    RegisterRequest,
-    LoginRequest,
-    TokenResponse,
-    UserResponse,
-)
+from backend.auth.dependencies import get_current_user
 from backend.auth.jwt import (
     create_access_token,
     create_refresh_token,
     get_token_subject,
 )
 from backend.auth.password import hash_password, verify_password
-from backend.auth.dependencies import get_current_user
 from backend.core.ratelimit import limiter
+from backend.db.models import (
+    Organization,
+    OrganizationMember,
+    Project,
+    User,
+    UserDevice,
+    UserSession,
+    Workspace,
+    WorkspaceMember,
+)
+from backend.db.schemas import (
+    LoginRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+)
+from backend.db.session import get_session
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -446,12 +445,10 @@ async def trust_device(
 from backend.api.auth_oauth import (  # noqa: E402, F401
     router as oauth_router,
     _oauth_callback_html,
-)  # noqa: F401
-from backend.api.auth_mfa import router as mfa_router  # noqa: E402
-from backend.auth.providers import (  # noqa: E402, F401
     exchange_google_code,
     get_google_userinfo,
-)
+)  # noqa: F401
+from backend.api.auth_mfa import router as mfa_router  # noqa: E402
 
 router.include_router(oauth_router)
 router.include_router(mfa_router)

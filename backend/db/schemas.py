@@ -1,11 +1,11 @@
 """Pydantic schemas for API request/response validation."""
 from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, Optional
 from enum import Enum
+from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field
-
 
 # ── Auth ─────────────────────────────────────────────────────────
 

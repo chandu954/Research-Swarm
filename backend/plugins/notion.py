@@ -1,12 +1,13 @@
 """Notion plugin — query databases, read pages."""
 from __future__ import annotations
+
 import os
 from typing import Any
+
 import httpx
 
-from backend.plugins.base import Plugin
 from backend.core.plugin import PluginSpec
-
+from backend.plugins.base import Plugin
 
 NOTION_API = "https://api.notion.com/v1"
 

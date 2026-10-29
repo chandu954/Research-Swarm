@@ -6,8 +6,6 @@ Split from backend/tests/test_api_routes_units.py.
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException
-
 from backend.tests._api_test_helpers import (
     Session,
     _ctx,
@@ -16,12 +14,12 @@ from backend.tests._api_test_helpers import (
     _workspace,
     asyncio_run,
 )
+from fastapi import HTTPException
 
 
 class TestWorkspaceRoutes:
     def test_create_workspace_conflict_and_success(self):
         from backend.api.workspaces import create_workspace
-
         from backend.db.schemas import WorkspaceCreate
 
         body = WorkspaceCreate(name="My Workspace")
@@ -48,7 +46,6 @@ class TestWorkspaceRoutes:
 
     def test_create_workspace_with_explicit_slug(self):
         from backend.api.workspaces import create_workspace
-
         from backend.db.schemas import WorkspaceCreate
 
         response = asyncio_run(
@@ -77,7 +74,6 @@ class TestWorkspaceRoutes:
             get_workspace,
             update_workspace,
         )
-
         from backend.db.schemas import WorkspaceUpdate
 
         ws = _workspace()
@@ -154,7 +150,6 @@ class TestWorkspaceRoutes:
             list_projects,
             update_project,
         )
-
         from backend.db.schemas import ProjectCreate, ProjectUpdate
 
         body = ProjectCreate(name="My Project")
@@ -275,9 +270,7 @@ class TestWorkspaceRoutes:
 
     def test_list_workspace_members(self):
         from backend.api.workspaces import list_workspace_members
-
         from backend.db.models import WorkspaceMember
-
         from backend.tests._api_test_helpers import NOW
 
         member = WorkspaceMember(

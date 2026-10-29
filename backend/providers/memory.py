@@ -1,13 +1,14 @@
 """Conversation memory provider wrapping ConversationMemory."""
 from __future__ import annotations
+
 import os
 from typing import Any
+
 from loguru import logger
 
+from backend.agents.memory import ConversationMemory
 from backend.core.plugin import PluginSpec
 from backend.core.providers.memory import MemoryProvider
-
-from backend.agents.memory import ConversationMemory
 
 
 class ConversationMemoryProvider(MemoryProvider):

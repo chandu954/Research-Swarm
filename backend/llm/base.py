@@ -1,16 +1,18 @@
 """LLM provider base — extends core provider with streaming support."""
 from __future__ import annotations
+
 from collections.abc import Generator
 from typing import Any, Optional
 
 from loguru import logger
 
+from backend.core.plugin import PluginSpec
+from backend.core.providers.llm import LLMProvider as CoreLLMProvider
 from backend.llm.retry import (
     ProviderUnavailableError,
     with_retry,
 )
-from backend.core.providers.llm import LLMProvider as CoreLLMProvider
-from backend.core.plugin import PluginSpec
+
 
 class LLMProvider(CoreLLMProvider):
     spec: PluginSpec

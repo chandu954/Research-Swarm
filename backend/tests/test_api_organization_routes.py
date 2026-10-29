@@ -6,8 +6,6 @@ Split from backend/tests/test_api_routes_units.py.
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException
-
 from backend.tests._api_test_helpers import (
     Session,
     _ctx,
@@ -16,12 +14,12 @@ from backend.tests._api_test_helpers import (
     _user,
     asyncio_run,
 )
+from fastapi import HTTPException
 
 
 class TestOrganizationRoutes:
     def test_create_conflict_and_success(self):
         from backend.api.organizations import create_organization
-
         from backend.db.schemas import OrganizationCreate
 
         body = OrganizationCreate(name="Org", slug="org", description="d")
@@ -67,7 +65,6 @@ class TestOrganizationRoutes:
 
     def test_update_organization(self):
         from backend.api.organizations import update_organization
-
         from backend.db.schemas import OrganizationUpdate
 
         org = _org()
@@ -139,7 +136,6 @@ class TestOrganizationRoutes:
 
     def test_add_member(self):
         from backend.api.organizations import add_member
-
         from backend.db.schemas import AddMemberRequest, MemberRole
 
         body = AddMemberRequest(email="new@example.com", role=MemberRole.RESEARCHER)
@@ -177,7 +173,6 @@ class TestOrganizationRoutes:
 
     def test_update_member_role(self):
         from backend.api.organizations import update_member_role
-
         from backend.db.schemas import MemberRole, UpdateMemberRoleRequest
 
         member = _membership(role="researcher")

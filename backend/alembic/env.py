@@ -1,13 +1,13 @@
 """Alembic environment configuration for async PostgreSQL."""
 from __future__ import annotations
+
 import asyncio
 from logging.config import fileConfig
 
 from alembic import context
+from backend.db.session import Base
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
-
-from backend.db.session import Base
 
 config = context.config
 if config.config_file_name is not None:

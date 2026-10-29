@@ -1,9 +1,9 @@
 """PDF text extraction tool using PyMuPDF."""
 import os
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
-from loguru import logger
+from typing import Any, Dict, List, Tuple
 
+from loguru import logger
 
 try:
     import fitz

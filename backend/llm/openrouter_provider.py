@@ -1,13 +1,14 @@
 """OpenRouter LLM provider — cloud models via OpenRouter API."""
 from __future__ import annotations
+
 from typing import Any
+
 import httpx
 from loguru import logger
 
-from backend.llm.base import LLMProvider
 from backend.core.plugin import PluginSpec
+from backend.llm.base import LLMProvider
 from backend.llm.context import get_openrouter_key
-
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 

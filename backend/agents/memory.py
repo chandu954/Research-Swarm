@@ -1,14 +1,15 @@
 """Conversation memory with semantic vector search for multi-turn research."""
 from __future__ import annotations
+
 import json
 import os
 import time
 import uuid
-from typing import List, Dict, Any, Optional
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from loguru import logger
+from typing import Any, Dict, List, Optional
 
+from loguru import logger
 
 MEMORY_DIR = "./data/memory"
 SEMANTIC_MEMORY_COLLECTION = "conversation_memories"

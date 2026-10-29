@@ -13,6 +13,7 @@ Revises: 0001
 Create Date: 2026-08-04 00:00:00.000000
 """
 from __future__ import annotations
+
 from typing import Sequence, Union
 
 revision: str = "0002"

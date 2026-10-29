@@ -1,5 +1,6 @@
 """Simple in-memory LRU cache for research results."""
 from __future__ import annotations
+
 import time
 from collections import OrderedDict
 from typing import Any

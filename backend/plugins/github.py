@@ -1,12 +1,13 @@
 """GitHub plugin — search issues, PRs, repos."""
 from __future__ import annotations
+
 import os
 from typing import Any
+
 import httpx
 
-from backend.plugins.base import Plugin
 from backend.core.plugin import PluginSpec
-
+from backend.plugins.base import Plugin
 
 GITHUB_API = "https://api.github.com"
 

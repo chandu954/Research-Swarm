@@ -1,16 +1,16 @@
 """Integration tests for the FastAPI endpoints."""
 from __future__ import annotations
-from datetime import datetime, timezone
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
 
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+import pytest_asyncio
 from backend.api.main import app
 from backend.auth import dependencies as auth_deps
-from backend.auth.tenant import resolve_tenant_dependencies, TenantContext
+from backend.auth.tenant import TenantContext, resolve_tenant_dependencies
 from backend.db.models import User
-
+from httpx import ASGITransport, AsyncClient
 
 TEST_USER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
 TEST_ORG_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"

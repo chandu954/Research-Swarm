@@ -1,16 +1,17 @@
 """FastAPI dependency injection for authentication (JWT + API Key)."""
 from __future__ import annotations
+
 import hashlib
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.session import get_session
-from backend.db.models import User, APIKey
 from backend.auth.jwt import get_token_subject
+from backend.db.models import APIKey, User
+from backend.db.session import get_session
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 

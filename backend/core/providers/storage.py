@@ -1,6 +1,8 @@
 """Storage provider interface (files, documents)."""
 from __future__ import annotations
+
 from abc import abstractmethod
+
 from backend.core.plugin import PluginInterface, PluginSpec
 
 

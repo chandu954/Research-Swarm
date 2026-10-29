@@ -15,8 +15,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
-
 from backend.auth.tenant import (
     TenantContext,
     _resolve_permissions,
@@ -55,6 +53,7 @@ from backend.db.schemas import (
     WorkspaceCreate,
     WorkspaceUpdate,
 )
+from fastapi import HTTPException
 
 
 def asyncio_run(coroutine):

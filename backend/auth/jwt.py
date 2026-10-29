@@ -1,6 +1,7 @@
 """JWT token creation and verification. No fallback secret — production must set JWT_SECRET_KEY."""
 
 from __future__ import annotations
+
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -8,7 +9,6 @@ from typing import Any, Optional
 import jwt
 from jwt import InvalidTokenError
 from loguru import logger
-
 
 JWT_ISSUER: str = os.getenv("JWT_ISSUER", "researchswarm")
 JWT_AUDIENCE: str = os.getenv("JWT_AUDIENCE", "researchswarm-api")

@@ -8,9 +8,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi.responses import JSONResponse
-
 from backend.tests._api_test_helpers import Session, _session_generator, asyncio_run
+from fastapi.responses import JSONResponse
 
 
 class TestHealthEndpoints:

@@ -9,17 +9,19 @@ These tests are permanent: they must keep passing so the vulnerability
 classes cannot silently reappear.
 """
 from __future__ import annotations
+
 import os
 import time
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 # ── Fixtures ─────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
 def api_app():
     import re
+
     from backend.db.session import _engine
 
     url = os.environ.get("DATABASE_URL", "")

@@ -1,11 +1,13 @@
 """Ollama LLM provider — local models via Ollama API."""
 from __future__ import annotations
+
 import os
 from typing import Any
+
 from loguru import logger
 
-from backend.llm.base import LLMProvider
 from backend.core.plugin import PluginSpec
+from backend.llm.base import LLMProvider
 from backend.models.ollama import OllamaClient, OllamaConfig
 
 

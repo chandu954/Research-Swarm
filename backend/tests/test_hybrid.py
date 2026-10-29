@@ -1,10 +1,11 @@
 """Tests for hybrid search pipeline (BM25 + dense fusion + reranking)."""
 from __future__ import annotations
+
 import pytest
 from backend.search.hybrid import (
-    build_bm25_index,
-    bm25_scores,
     _cosine_similarity,
+    bm25_scores,
+    build_bm25_index,
     fus_hybrid_score,
     hybrid_rerank,
 )

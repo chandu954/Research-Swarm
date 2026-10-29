@@ -1,12 +1,14 @@
 """Pytest fixtures and configuration for ResearchSwarm tests."""
 
 from __future__ import annotations
+
 import atexit
 import os
 import shutil
 import tempfile
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # ── Test environment must be configured BEFORE any backend imports ──
 _TEST_DATA_DIR = tempfile.mkdtemp(prefix="research-swarm-tests-")
@@ -47,6 +49,7 @@ def plugin_registry_ready():
     when it has been emptied.
     """
     import asyncio
+
     from backend.core.registry import get_plugin_registry
 
     if get_plugin_registry().list("llm"):

@@ -5,6 +5,7 @@ refuses to boot in production with missing or weak secrets, and ensures
 local development never silently runs on a published default.
 """
 from __future__ import annotations
+
 import os
 import secrets as _secrets
 

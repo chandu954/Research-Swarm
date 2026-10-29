@@ -1,7 +1,9 @@
 """ChromaDB vector store — concrete VectorDBProvider implementation."""
 from __future__ import annotations
+
 import os
 from typing import Any
+
 from loguru import logger
 
 try:
@@ -19,7 +21,6 @@ except ImportError:
 
 from backend.core.plugin import PluginSpec
 from backend.core.providers.vector_db import VectorDBProvider
-
 
 DEFAULT_PERSIST_DIR = "./data/chroma_db"
 DEFAULT_COLLECTION = "research_chunks"

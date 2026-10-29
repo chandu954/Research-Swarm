@@ -1,9 +1,11 @@
 """Built-in embedding providers: Ollama, OpenRouter."""
 from __future__ import annotations
+
 import os
 from typing import Any
-from loguru import logger
+
 import httpx
+from loguru import logger
 
 from backend.core.plugin import PluginSpec
 from backend.core.providers.embedding import EmbeddingProvider

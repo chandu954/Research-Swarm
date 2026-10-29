@@ -1,7 +1,9 @@
 """Tests for tools: search, registry, PDF loader, embedding, vector store, tracer."""
 from __future__ import annotations
+
 import tempfile
 from unittest.mock import MagicMock
+
 import pytest
 
 
@@ -91,9 +93,10 @@ class TestTracer:
 
     def test_tracer_start_and_end(self):
         """A trace should be created and persisted."""
-        from backend.tools.tracer import Tracer
-        import tempfile
         import os
+        import tempfile
+
+        from backend.tools.tracer import Tracer
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tracer = Tracer(trace_dir=tmpdir)

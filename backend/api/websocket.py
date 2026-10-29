@@ -1,13 +1,14 @@
 """WebSocket manager for real-time collaboration — presence, chat, typing, research/doc notifications."""
 from __future__ import annotations
+
 import asyncio
 import json
 import time
 from dataclasses import dataclass
-from typing import Dict, Set, Optional, Callable, Awaitable
+from typing import Awaitable, Callable, Dict, Optional, Set
+
 from fastapi import WebSocket
 from loguru import logger
-
 
 MAX_CHAT_HISTORY = 100
 TYPING_TIMEOUT = 5.0

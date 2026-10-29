@@ -8,8 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import WebSocketDisconnect
-
 from backend.agents.debate_agent import (
     DEBATE_MODEL,
     PERSPECTIVES,
@@ -27,6 +25,7 @@ from backend.agents.entity_extractor import (
     _fallback_extract,
     extract_entities,
 )
+from fastapi import WebSocketDisconnect
 
 
 def asyncio_run(coroutine):

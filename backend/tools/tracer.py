@@ -5,15 +5,16 @@ tool calls, and LLM invocations. Outputs structured JSON logs suitable for
 OpenTelemetry or LangSmith-style analysis.
 """
 from __future__ import annotations
+
 import json
 import time
 import uuid
-from typing import Dict, Any, Optional, List
-from pathlib import Path
 from contextlib import contextmanager
-from dataclasses import dataclass, field, asdict
-from loguru import logger
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+from loguru import logger
 
 TRACE_DIR = "./data/logs/traces"
 

@@ -1,10 +1,12 @@
 """Example plugin: Weather forecast via Open-Meteo (free, no API key needed)."""
 from __future__ import annotations
+
 from typing import Any
+
 import httpx
 
-from backend.plugins.base import Plugin
 from backend.core.plugin import PluginSpec
+from backend.plugins.base import Plugin
 
 
 class WeatherPlugin(Plugin):
