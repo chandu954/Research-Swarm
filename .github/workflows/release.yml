@@ -1,0 +1,27 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags: [v*]
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t ghcr.io/${{ github.repository_owner }}/research-swarm-backend:${{ github.ref_name }} -f backend/Dockerfile .
+
+      - name: Build frontend image
+        run: docker build -t ghcr.io/${{ github.repository_owner }}/research-swarm-frontend:${{ github.ref_name }} -f frontend/Dockerfile ./frontend
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

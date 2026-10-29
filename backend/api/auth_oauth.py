@@ -21,7 +21,7 @@ from backend.api.auth import (
     _find_or_create_user,
     get_session,
 )
-from backend.auth.providers import (
+from backend.auth.providers import (  # noqa: F401
     exchange_google_code,
     get_google_auth_url,
     get_google_userinfo,
