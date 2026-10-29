@@ -10,18 +10,13 @@ Both sub-routers are included below.
 from __future__ import annotations
 
 import hashlib
-import os
-import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-import json
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
 from datetime import timedelta
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
@@ -451,10 +446,12 @@ async def trust_device(
 from backend.api.auth_oauth import (  # noqa: E402, F401
     router as oauth_router,
     _oauth_callback_html,
+)  # noqa: F401
+from backend.api.auth_mfa import router as mfa_router  # noqa: E402
+from backend.auth.providers import (  # noqa: E402, F401
     exchange_google_code,
     get_google_userinfo,
 )
-from backend.api.auth_mfa import router as mfa_router  # noqa: E402
 
 router.include_router(oauth_router)
 router.include_router(mfa_router)

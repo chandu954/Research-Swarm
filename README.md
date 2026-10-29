@@ -207,7 +207,9 @@ research-swarm/
 │   │   └── tracer.py             # Span-based observability
 │   ├── api/
 │   │   ├── main.py               # FastAPI server (routes)
-│   │   ├── auth.py               # Auth router (JWT + OAuth)
+│   │   ├── auth.py               # Auth router core (JWT, sessions, devices)
+│   │   ├── auth_mfa.py           # Magic link + MFA endpoints
+│   │   ├── auth_oauth.py         # Google OAuth endpoints
 │   │   └── stream.py             # SSE stream manager
 │   ├── auth/
 │   │   └── dependencies.py       # FastAPI auth dependencies
@@ -489,7 +491,7 @@ browser installation is required once per machine.
 
 The latest local measurement is 50.97% statements, 43.24% branches, 39.41%
 functions, and 52.80% lines across 293 frontend tests. The backend suite passed
-on Python 3.12 (CI's runtime): 574 tests and 94.03% production-code coverage.
+on Python 3.12 (CI's runtime): 574 tests and 95.71% production-code coverage.
 Python 3.14 was not verified: a local run was interrupted before the suite
 completed. The configured frontend gates remain 30/24/23/32 for statements,
 branches, functions, and lines.
@@ -589,8 +591,8 @@ MIT License — see [LICENSE](LICENSE).
 <div align="center">
   <p>Built with ❤️ for AI Software Engineers</p>
   <p>
-    <a href="https://github.com/yourusername/research-swarm">GitHub</a> •
+    <a href="https://github.com/chandu954/research-swarm">GitHub</a> •
     <a href="https://researchswarm.vercel.app">Live Demo</a> •
-    <a href="https://your-docs-site.vercel.app">Documentation</a>
+    <a href="https://researchswarm.vercel.app/docs">Documentation</a>
   </p>
 </div>
