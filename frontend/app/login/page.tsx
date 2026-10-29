@@ -22,7 +22,7 @@ interface FieldErrors {
   email?: string;
   password?: string;
   name?: string;
-  confirmPassword?: string;
+  passwordConfirmation?: string;
 }
 
 export default function LoginPage() {
@@ -41,7 +41,7 @@ export default function LoginPage() {
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
@@ -95,14 +95,14 @@ export default function LoginPage() {
     if (view === "register") {
       const nameErr = validateName(name);
       if (nameErr) errors.name = nameErr;
-      if (confirmPassword && password !== confirmPassword) {
-        errors.confirmPassword = "Passwords do not match";
+      if (passwordConfirmation && password !== passwordConfirmation) {
+        errors.passwordConfirmation = "Passwords do not match";
       }
     }
 
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [email, password, name, confirmPassword, view]);
+    }, [email, password, name, passwordConfirmation, view]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -380,26 +380,26 @@ export default function LoginPage() {
 
             {(view === "register" || view === "reset-password") && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
-                <label htmlFor="confirmPassword" className="mb-1.5 block text-xs font-medium text-gray-400">
+                <label htmlFor="passwordConfirmation" className="mb-1.5 block text-xs font-medium text-gray-400">
                   Confirm password <span className="text-rose-400">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                   <input
-                    id="confirmPassword"
+                     id="passwordConfirmation"
                     type={showPassword ? "text" : "password"}
                     required
                     autoComplete="new-password"
                     disabled={inputsDisabled}
-                    value={confirmPassword}
-                    onChange={(e) => { setConfirmPassword(e.target.value); setFieldErrors(p => ({ ...p, confirmPassword: undefined })); }}
+                    value={passwordConfirmation}
+                    onChange={(e) => { setPasswordConfirmation(e.target.value); setFieldErrors(p => ({ ...p, passwordConfirmation: undefined })); }}
                     onKeyDown={handleKeyDown}
                     className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-10 pr-3 text-sm text-white placeholder-gray-500 outline-none transition-colors focus:border-violet-500/50 focus:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Repeat your password"
                   />
                 </div>
-                {fieldErrors.confirmPassword && (
-                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.confirmPassword}</motion.p>
+                {fieldErrors.passwordConfirmation && (
+                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="mt-1 text-[11px] text-rose-400">{fieldErrors.passwordConfirmation}</motion.p>
                 )}
               </motion.div>
             )}

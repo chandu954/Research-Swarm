@@ -1,0 +1,9 @@
+[rules]
+  [[rules]]
+  id = "confirm-password-match"
+  name = "Confirm password match validation"
+  description = "Form field validation key, not a secret"
+  regex = '(?i)passwords?\s+do\s+not\s+match'
+  secretGroup = 1
+  allowlist:
+    - "frontend/app/login/page.tsx"
