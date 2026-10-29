@@ -58,3 +58,4 @@ assets/demo-build/raw/
 # Keep environment templates tracked even though real env files are ignored
 !.env.example
 !**/.env.example
+.mypy_cache/
