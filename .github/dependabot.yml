@@ -1,19 +1,38 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /frontend
+  - package-ecosystem: "pip"
+    directory: "/backend"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: "weekly"
+    groups:
+      production-dependencies:
+        patterns:
+          - "*"
 
-  - package-ecosystem: pip
-    directory: /backend
+  - package-ecosystem: "npm"
+    directory: "/frontend"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: "weekly"
+    groups:
+      production-dependencies:
+        patterns:
+          - "*"
 
-  - package-ecosystem: github-actions
-    directory: /
+  - package-ecosystem: "npm"
+    directory: "/scripts"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: "weekly"
+    groups:
+      production-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"

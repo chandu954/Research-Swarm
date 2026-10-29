@@ -3,7 +3,6 @@
 Re-exports all models for backward compatibility.
 """
 
-from backend.db.session import Base
 from backend.db.models.activity import (
     APIKey,
     AuditLog,
@@ -35,6 +34,7 @@ from backend.db.models.org import (
     Workspace,
     WorkspaceMember,
 )
+from backend.db.session import Base
 
 __all__ = [
     "Base",

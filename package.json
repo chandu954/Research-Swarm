@@ -3,8 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "description": "ResearchSwarm AI — root tooling (cleanup/seed for the local Supabase E2E account)",
+  "packageManager": "pnpm@11.28.7",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "cleanup:e2e": ".venv/bin/python scripts/cleanup_e2e.py",
-    "seed:e2e": ".venv/bin/python scripts/seed_e2e.py"
+    "seed:e2e": ".venv/bin/python scripts/seed_e2e.py",
+    "lint": "pnpm -C frontend lint",
+    "typecheck": "pnpm -C frontend typecheck",
+    "test": "pnpm -C frontend test",
+    "test:coverage": "pnpm -C frontend test:coverage",
+    "build": "pnpm -C frontend build",
+    "dev": "pnpm -C frontend dev",
+    "bootstrap": "pnpm install && pnpm -C frontend install && pnpm -C scripts install"
   }
 }

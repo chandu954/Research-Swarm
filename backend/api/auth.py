@@ -442,13 +442,14 @@ async def trust_device(
 
 
 # Include sub-module routers (imported after all definitions to avoid circular imports).
-from backend.api.auth_oauth import (  # noqa: E402, F401
-    router as oauth_router,
+from backend.api.auth_mfa import router as mfa_router  # noqa: E402, I001
+from backend.api.auth_oauth import (  # noqa: E402, F401, I001
     _oauth_callback_html,
     exchange_google_code,
     get_google_userinfo,
+    router as oauth_router,
 )  # noqa: F401
-from backend.api.auth_mfa import router as mfa_router  # noqa: E402
+
 
 router.include_router(oauth_router)
 router.include_router(mfa_router)
