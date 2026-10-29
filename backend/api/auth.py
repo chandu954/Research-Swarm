@@ -1,8 +1,13 @@
 """Auth API endpoints with multi-provider support.
 
-Supports: email/password, Google OAuth,
-          magic links, MFA, session management, trusted devices.
+Supports: email/password, magic links, MFA, session management, trusted devices.
+
+Google OAuth routes live in backend/api/auth_oauth.py.
+Magic link, password reset, and MFA routes live in backend/api/auth_mfa.py.
+Both sub-routers are included below.
 """
+
+from __future__ import annotations
 
 import hashlib
 import os
@@ -44,18 +49,6 @@ from backend.auth.jwt import (
     get_token_subject,
 )
 from backend.auth.password import hash_password, verify_password
-from backend.auth.providers import (
-    get_google_auth_url,
-    exchange_google_code,
-    get_google_userinfo,
-    create_magic_link,
-    verify_magic_token,
-    generate_mfa_secret,
-    generate_mfa_qr_code,
-    verify_mfa_code,
-    generate_recovery_codes,
-    config as oauth_config,
-)
 from backend.auth.dependencies import get_current_user
 from backend.core.ratelimit import limiter
 
@@ -279,9 +272,6 @@ async def refresh(
     user_session = result.scalar_one_or_none()
 
     if not user_session or not user_session.is_active:
-        # The JWT itself is valid, but it is not the session's current token:
-        # either it was rotated (replay) or the session was revoked. Assume
-        # theft and revoke every session for this user.
         logger.warning(
             f"Refresh token reuse or revoked session for user={user_id}; revoking all sessions"
         )
@@ -292,8 +282,6 @@ async def refresh(
         )
         for stale_session in stale.scalars().all():
             stale_session.is_active = False
-        # Commit explicitly: the exception below would otherwise trigger the
-        # request-scoped rollback and discard the revocation.
         await session.commit()
         raise HTTPException(
             status_code=401, detail="Session revoked; please log in again"
@@ -313,7 +301,6 @@ async def refresh(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
-    # Rotate: issue a new refresh token and store its hash in the same row.
     new_refresh_token = create_refresh_token(user.id)
     user_session.refresh_token_hash = hashlib.sha256(
         new_refresh_token.encode()
@@ -362,306 +349,12 @@ async def get_org_status(
     db_session: AsyncSession = Depends(get_session),
 ):
     result = await db_session.execute(
-        select(OrganizationMember)
-        .where(OrganizationMember.user_id == current_user.id)
-        .limit(1)
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == current_user.id
+        ).limit(1)
     )
     member = result.scalar_one_or_none()
     return {"has_organization": member is not None}
-
-
-def _oauth_callback_html(tokens: TokenResponse, error: str = "") -> HTMLResponse:
-    """Render HTML page that sends tokens to opener popup and closes."""
-    app_url = oauth_config.app_url
-    if error:
-        script = f"""
-          if (window.opener) {{
-            window.opener.postMessage({{ error: {json.dumps(error)} }}, "{app_url}");
-            window.close();
-          }} else {{
-            window.location.href = "{app_url}/login?error=" + encodeURIComponent({json.dumps(error)});
-          }}
-        """
-    else:
-        script = f"""
-          if (window.opener) {{
-            window.opener.postMessage({{
-              access_token: {json.dumps(tokens.access_token)},
-              refresh_token: {json.dumps(tokens.refresh_token)},
-              supabase_access_token: {json.dumps(tokens.supabase_access_token)},
-              supabase_refresh_token: {json.dumps(tokens.supabase_refresh_token)}
-            }}, "{app_url}");
-            window.close();
-          }} else {{
-            window.location.href = "{app_url}/login?oauth=success";
-          }}
-        """
-    html = f"""<!DOCTYPE html>
-<html><body><script>{script}</script></body></html>"""
-    return HTMLResponse(html)
-
-
-async def _handle_oauth_callback(
-    provider: str,
-    code: str,
-    exchange_func,
-    userinfo_func,
-    name_key: str,
-    email_keys: list[str],
-    avatar_key: str,
-    id_key: str,
-    request: Request,
-    session: AsyncSession,
-) -> HTMLResponse:
-    tokens = await exchange_func(code)
-    if not tokens:
-        return _oauth_callback_html(
-            TokenResponse(access_token="", refresh_token=""),
-            error="Failed to exchange authorization code",
-        )
-
-    userinfo = await userinfo_func(tokens.get("access_token", ""))
-    if not userinfo:
-        return _oauth_callback_html(
-            TokenResponse(access_token="", refresh_token=""),
-            error="Failed to get user info",
-        )
-
-    email = ""
-    for key in email_keys:
-        email = userinfo.get(key, "")
-        if email:
-            break
-
-    user = await _find_or_create_user(
-        email=email,
-        name=userinfo.get(name_key, ""),
-        provider_data={
-            "id": str(userinfo.get(id_key, "")),
-            "avatar_url": userinfo.get(avatar_key),
-        },
-        provider=provider,
-        db_session=session,
-    )
-    refresh_token = await _create_session(user, request, session)
-    return _oauth_callback_html(await _build_tokens(user, refresh_token=refresh_token))
-
-
-# ── Google OAuth ────────────────────────────────────────────────
-
-
-@router.get("/google")
-async def google_login():
-    state = secrets.token_urlsafe(32)
-    response = RedirectResponse(url=get_google_auth_url(state=state))
-    response.set_cookie(
-        key="oauth_state",
-        value=state,
-        max_age=600,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-    )
-    return response
-
-
-@router.get("/google/callback")
-async def google_callback(
-    code: str,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    state: str = Query(None),
-) -> HTMLResponse:
-    stored_state = request.cookies.get("oauth_state")
-    if not stored_state or not state or stored_state != state:
-        return _oauth_callback_html(
-            TokenResponse(access_token="", refresh_token=""),
-            error="Invalid state parameter",
-        )
-    resp = await _handle_oauth_callback(
-        provider="google",
-        code=code,
-        exchange_func=exchange_google_code,
-        userinfo_func=get_google_userinfo,
-        name_key="name",
-        email_keys=["email"],
-        avatar_key="picture",
-        id_key="id",
-        request=request,
-        session=session,
-    )
-    resp.delete_cookie("oauth_state")
-    return resp
-
-
-# ── Forgot Password ─────────────────────────────────────────────
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    password: str = Field(..., min_length=8, max_length=128)
-
-
-@router.post("/forgot-password")
-@limiter.limit("5/hour")
-async def forgot_password(
-    body: ForgotPasswordRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
-    result = await session.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
-    if user:
-        logger.info(f"Password reset requested for {body.email}")
-    return {"message": "If the email exists, a password reset link has been sent"}
-
-
-@router.post("/reset-password")
-async def reset_password(
-    body: ResetPasswordRequest,
-    session: AsyncSession = Depends(get_session),
-):
-    from backend.auth.jwt import decode_token as _decode_reset
-
-    payload = _decode_reset(body.token)
-    if not payload or payload.get("type") != "password_reset":
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid reset token")
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    from backend.auth.password import hash_password
-
-    user.hashed_password = hash_password(body.password)
-    await session.flush()
-    # Password changed: invalidate every existing session.
-    result = await session.execute(
-        select(UserSession).where(UserSession.user_id == user.id, UserSession.is_active)
-    )
-    for user_session in result.scalars().all():
-        user_session.is_active = False
-    await session.flush()
-    return {"status": "password_reset"}
-
-
-# ── Magic Link ─────────────────────────────────────────────────
-
-
-class MagicLinkRequest(RegisterRequest):
-    pass
-
-
-class MagicLinkVerify(BaseModel):
-    token: str
-    email: str
-
-
-@router.post("/magic-link")
-@limiter.limit("5/hour")
-async def request_magic_link(
-    body: MagicLinkRequest,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
-    url, token, expires = create_magic_link(body.email)
-    if os.getenv("ENVIRONMENT", "development") != "production":
-        logger.info(f"Magic link for {body.email}: {url}")
-        return {
-            "message": "If the email exists, a magic link has been sent",
-            "url": url,
-        }
-    return {"message": "If the email exists, a magic link has been sent"}
-
-
-@router.post("/magic-link/verify", response_model=TokenResponse)
-async def verify_magic_link(
-    body: MagicLinkVerify,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
-    if not verify_magic_token(body.token, body.email):
-        raise HTTPException(status_code=401, detail="Invalid or expired magic link")
-
-    result = await session.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired magic link")
-
-    user.last_login_at = datetime.now(timezone.utc)
-    await session.flush()
-    refresh_token = await _create_session(user, request, session)
-    return await _build_tokens(user, refresh_token=refresh_token)
-
-
-# ── MFA ─────────────────────────────────────────────────────────
-
-
-class MFASetupResponse(BaseModel):
-    secret: str
-    qr_code_url: str
-    recovery_codes: list[str]
-
-
-class MFAVerifyRequest(BaseModel):
-    code: str
-
-
-class MFALoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-    mfa_code: str
-
-
-@router.post("/mfa/setup", response_model=MFASetupResponse)
-async def setup_mfa(
-    current_user: User = Depends(get_current_user),
-):
-    secret = generate_mfa_secret()
-    qr_url = generate_mfa_qr_code(secret, current_user.email)
-    codes = generate_recovery_codes()
-    current_user.mfa_secret = secret
-    current_user.mfa_recovery_codes = json.dumps(codes)
-    return MFASetupResponse(
-        secret=secret,
-        qr_code_url=qr_url,
-        recovery_codes=codes,
-    )
-
-
-@router.post("/mfa/verify")
-async def verify_mfa(
-    body: MFAVerifyRequest,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-):
-    if not current_user.mfa_secret:
-        raise HTTPException(status_code=400, detail="MFA not set up")
-    if not verify_mfa_code(current_user.mfa_secret, body.code):
-        raise HTTPException(status_code=400, detail="Invalid MFA code")
-    current_user.mfa_enabled = True
-    await session.flush()
-    return {"status": "mfa_enabled"}
-
-
-@router.post("/mfa/disable")
-async def disable_mfa(
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-):
-    current_user.mfa_enabled = False
-    current_user.mfa_secret = None
-    await session.flush()
-    return {"status": "mfa_disabled"}
-
-
-# ── Sessions ───────────────────────────────────────────────────
 
 
 class SessionResponse(BaseModel):
@@ -711,9 +404,6 @@ async def revoke_session(
     return {"status": "revoked"}
 
 
-# ── Devices ────────────────────────────────────────────────────
-
-
 class DeviceResponse(BaseModel):
     id: str
     device_name: Optional[str] = None
@@ -755,3 +445,16 @@ async def trust_device(
     device.trusted_at = datetime.now(timezone.utc)
     await session.flush()
     return {"status": "trusted"}
+
+
+# Include sub-module routers (imported after all definitions to avoid circular imports).
+from backend.api.auth_oauth import (  # noqa: E402, F401
+    router as oauth_router,
+    _oauth_callback_html,
+    exchange_google_code,
+    get_google_userinfo,
+)
+from backend.api.auth_mfa import router as mfa_router  # noqa: E402
+
+router.include_router(oauth_router)
+router.include_router(mfa_router)
