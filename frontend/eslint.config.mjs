@@ -15,6 +15,7 @@ const eslintConfig = [
       "coverage/**",
       "playwright-report/**",
       "test-results/**",
+      "lib/supabase/database.types.ts",
     ],
   },
 ];
